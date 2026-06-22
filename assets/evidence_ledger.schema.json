@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SerenityChanEvidenceLedger",
+  "type": "object",
+  "required": ["symbol", "market", "retrieved_at", "items"],
+  "properties": {
+    "symbol": {"type": "string"},
+    "market": {"type": "string", "enum": ["CN_A", "US", "HK", "OTHER"]},
+    "retrieved_at": {"type": "string"},
+    "rating_cap": {"type": "string", "enum": ["S", "A", "B", "C", "OBSERVE_ONLY"]},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "source", "source_level", "evidence_type", "confidence"],
+        "properties": {
+          "claim": {"type": "string"},
+          "source": {"type": "string"},
+          "source_level": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"]},
+          "document_type": {"type": "string"},
+          "document_date": {"type": "string"},
+          "retrieved_at": {"type": "string"},
+          "url_or_path": {"type": "string"},
+          "raw_hash": {"type": "string"},
+          "evidence_type": {"type": "string", "enum": ["reported_fact", "management_claim", "third_party_estimate", "analyst_inference", "unverified_lead"]},
+          "supports": {"type": "string"},
+          "missing_proof": {"type": "string"},
+          "confidence": {"type": "string", "enum": ["Strong", "Medium", "Weak", "Unverified"]},
+          "falsification_relevance": {"type": "string"}
+        }
+      }
+    }
+  }
+}

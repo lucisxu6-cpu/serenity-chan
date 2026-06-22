@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SerenityChanAnalysisRequest",
+  "type": "object",
+  "required": ["task_type", "market_scope"],
+  "properties": {
+    "task_type": {"type": "string", "enum": ["theme_scan", "single_company", "candidate_comparison", "data_audit"]},
+    "market_scope": {"type": "array", "items": {"type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL"]}},
+    "tickers": {"type": "array", "items": {"type": "string"}},
+    "theme": {"type": "string"},
+    "horizon": {"type": "string", "enum": ["3m", "6m", "12m", "3y", "5y", "long_term"]},
+    "risk_preference": {"type": "string", "enum": ["low", "medium", "high", "option_like"]},
+    "require_current_data": {"type": "boolean", "default": true},
+    "allow_partial": {"type": "boolean", "default": true},
+    "output_language": {"type": "string", "enum": ["zh-CN", "en"], "default": "zh-CN"}
+  }
+}
