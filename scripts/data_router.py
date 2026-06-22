@@ -28,9 +28,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
+    from data_layer_v3 import build_data_fetch_plan
     from data_layer_v3 import Market as CanonicalMarket
     from data_layer_v3 import resolve_symbol as canonical_resolve_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_router
+    from scripts.data_layer_v3 import build_data_fetch_plan
     from scripts.data_layer_v3 import Market as CanonicalMarket
     from scripts.data_layer_v3 import resolve_symbol as canonical_resolve_symbol
 
@@ -390,6 +392,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_resolve = sub.add_parser("resolve", help="Resolve ticker/stock code into market-aware symbol info")
     p_resolve.add_argument("symbol")
 
+    p_plan = sub.add_parser("plan", help="Build a market-aware data fetch plan")
+    p_plan.add_argument("symbol")
+    p_plan.add_argument("--horizon", default="12M")
+
     p_price = sub.add_parser("validate-price", help="Validate OHLCV CSV")
     p_price.add_argument("csv_path")
     p_price.add_argument("--market", choices=[m.value for m in Market], default="OTHER")
@@ -405,6 +411,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "resolve":
         emit(resolve_symbol(args.symbol))
+    elif args.cmd == "plan":
+        emit(build_data_fetch_plan(args.symbol, horizon=args.horizon))
     elif args.cmd == "validate-price":
         emit(validate_price_history(Path(args.csv_path), Market(args.market), args.adjust, args.min_bars))
     elif args.cmd == "validate-financial":

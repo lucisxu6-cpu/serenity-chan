@@ -1,0 +1,52 @@
+name: validate-skill
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install declared dependencies
+        run: |
+          if grep -Ev '^\s*(#|$)' requirements.txt >/dev/null; then
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
+          else
+            echo "No required third-party dependencies declared."
+          fi
+      - name: Validate release files
+        run: |
+          test -f LICENSE
+          test -f requirements.txt
+          test -f .github/workflows/validate.yml
+      - name: Compile scripts
+        run: python -m py_compile scripts/*.py
+      - name: Validate skill structure
+        run: python scripts/validate_skill.py .
+      - name: Validate JSON assets
+        run: |
+          python -m json.tool assets/scorecard.schema.json >/dev/null
+          python -m json.tool assets/output_contract.schema.json >/dev/null
+          python -m json.tool assets/scorecard_template.json >/dev/null
+          python -m json.tool evals/static_cases.json >/dev/null
+      - name: Smoke test routing
+        run: |
+          python scripts/data_router.py resolve 688019
+          python scripts/data_router.py plan AAPL
+          python -m scripts.data_router resolve 688019
+      - name: Smoke test scorecard
+        run: |
+          python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
+          python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
+      - name: Output contract and static evals
+        run: |
+          python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md
+          python scripts/run_static_evals.py
+          python -m scripts.run_static_evals

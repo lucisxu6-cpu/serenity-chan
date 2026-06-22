@@ -57,7 +57,7 @@ description: Use when performing data-first equity research for A-share, US, HK,
 优先使用：
 
 ```bash
-python scripts/data_layer_v3.py <symbol> --plan
+python scripts/data_router.py plan <symbol>
 python scripts/data_router.py resolve <symbol>
 ```
 

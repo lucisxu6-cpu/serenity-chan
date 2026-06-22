@@ -156,6 +156,7 @@ cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
 ```bash
 python scripts/validate_skill.py .
 python scripts/data_router.py resolve 688019
+python scripts/data_router.py plan AAPL
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
 python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md
@@ -316,6 +317,7 @@ Use serenity-chan-stock-skill to analyze the A-share domestic AI compute supply 
 ```bash
 python scripts/validate_skill.py .
 python scripts/data_router.py resolve 688019
+python scripts/data_router.py plan AAPL
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
 python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md

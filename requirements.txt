@@ -1,0 +1,2 @@
+# Core validation scripts use the Python standard library only.
+# Provider adapters may declare optional dependencies when they are added.
