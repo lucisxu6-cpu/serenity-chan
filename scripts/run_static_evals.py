@@ -9,7 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from validate_output_contract import validate_text
+try:
+    from validate_output_contract import validate_text
+    from serenity_chan_scorecard import score
+except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
+    from scripts.validate_output_contract import validate_text
+    from scripts.serenity_chan_scorecard import score
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -24,16 +29,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     for case in cases:
         name = case["name"]
-        report_path = root / case["report"]
         expect_pass = bool(case["expect_pass"])
-        result = validate_text(report_path.read_text(encoding="utf-8"))
-        passed = result.ok == expect_pass
+        kind = case.get("kind", "report")
+        findings: list[str] = []
+        result_payload: dict[str, Any] = {}
+
+        if kind == "report":
+            report_path = root / case["report"]
+            result = validate_text(report_path.read_text(encoding="utf-8"))
+            actual_pass = result.ok
+            findings = [f"{f.severity.upper()} {f.code}: {f.message}" for f in result.findings]
+            result_payload = result.extracted
+        elif kind == "scorecard":
+            scorecard_path = root / case["scorecard"]
+            try:
+                result_payload = score(json.loads(scorecard_path.read_text(encoding="utf-8")))
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        else:
+            raise ValueError(f"unknown static eval kind: {kind}")
+
+        expected_result = case.get("expected_result", {})
+        result_matches = all(result_payload.get(k) == v for k, v in expected_result.items())
+        passed = actual_pass == expect_pass and (not actual_pass or result_matches)
         marker = "PASS" if passed else "FAIL"
-        print(f"[{marker}] {name}: expected {'pass' if expect_pass else 'fail'}, got {'pass' if result.ok else 'fail'}")
+        print(f"[{marker}] {name}: expected {'pass' if expect_pass else 'fail'}, got {'pass' if actual_pass else 'fail'}")
         if not passed:
             failures += 1
-            for finding in result.findings:
-                print(f"  - {finding.severity.upper()} {finding.code}: {finding.message}")
+            if expected_result and actual_pass and not result_matches:
+                print(f"  - expected result fields: {expected_result}")
+                print(f"  - actual result fields: {result_payload}")
+            for finding in findings:
+                print(f"  - {finding}")
 
     return 1 if failures else 0
 

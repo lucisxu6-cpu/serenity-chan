@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
@@ -53,31 +52,31 @@ class ValidationResult:
     extracted: Dict[str, Optional[str]]
 
 
-def _find_first(patterns: Iterable[str], text: str, flags: int = re.IGNORECASE) -> Optional[str]:
-    for pattern in patterns:
-        match = re.search(pattern, text, flags)
-        if match:
-            return match.group(1).strip()
+def _field_lines(text: str) -> Iterable[str]:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("|"):
+            continue
+        yield re.sub(r"^(?:[-*+]\s+|\d+\.\s+)", "", stripped).strip()
+
+
+def _labeled_value(labels: Sequence[str], values: Sequence[str], text: str) -> Optional[str]:
+    value_pattern = "|".join(re.escape(value) for value in values)
+    for line in _field_lines(text):
+        for label in labels:
+            pattern = rf"^{re.escape(label)}\s*[：:]\s*\**\s*({value_pattern})\b"
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
     return None
 
 
 def _status_for(labels: Sequence[str], text: str) -> Optional[str]:
-    label_pattern = "|".join(re.escape(label) for label in labels)
-    status_pattern = "|".join(STATUSES)
-    value = _find_first([
-        rf"(?:{label_pattern})\s*[：:]\s*({status_pattern})\b",
-        rf"(?:{label_pattern}).{{0,24}}\b({status_pattern})\b",
-    ], text)
-    return value.upper() if value else None
+    return _labeled_value(labels, STATUSES, text)
 
 
 def _rating_for(labels: Sequence[str], text: str) -> Optional[str]:
-    label_pattern = "|".join(re.escape(label) for label in labels)
-    value = _find_first([
-        rf"(?:{label_pattern})\s*[：:]\s*\**\s*(OBSERVE_ONLY|S|A|B|C|D)\b",
-        rf"(?:{label_pattern}).{{0,16}}\**\s*(OBSERVE_ONLY|S|A|B|C|D)\b",
-    ], text)
-    return value.upper() if value else None
+    return _labeled_value(labels, tuple(RATING_ORDER), text)
 
 
 def _rating_above(value: Optional[str], cap: str) -> bool:
@@ -88,23 +87,27 @@ def _rating_above(value: Optional[str], cap: str) -> bool:
 
 def _has_heading(text: str, keywords: Sequence[str]) -> bool:
     for line in text.splitlines():
-        stripped = line.strip("# *\t ")
+        stripped = line.strip()
+        if not re.match(r"^#{2,6}\s+", stripped):
+            continue
+        stripped = stripped.lstrip("#").strip(" *\t ")
         if any(keyword.lower() in stripped.lower() for keyword in keywords):
             return True
     return False
 
 
 def _claims_current_buy_point(text: str) -> bool:
-    buy_point = _find_first([
-        r"当前买点\s*[：:]\s*(一买|二买|三买)",
-        r"Current\s+buy\s+point\s*[：:]\s*(first|second|third|1st|2nd|3rd)",
-    ], text)
-    if not buy_point:
-        return False
-    surrounding = re.search(r"当前买点\s*[：:].{0,32}", text)
-    if surrounding and re.search(r"数据不足|无买点|not enough|insufficient|no buy", surrounding.group(0), re.I):
-        return False
-    return True
+    labels = ["当前买点", "Current buy point", "Current Buy Point"]
+    claim_pattern = re.compile(r"(一买|二买|三买|first|second|third|1st|2nd|3rd)", re.I)
+    negation_pattern = re.compile(r"(数据不足|无买点|等待|not enough|insufficient|no buy|wait)", re.I)
+    for line in _field_lines(text):
+        for label in labels:
+            match = re.search(rf"^{re.escape(label)}\s*[：:]\s*(.+)$", line, re.I)
+            if match:
+                value = match.group(1)
+                if claim_pattern.search(value) and not negation_pattern.search(value):
+                    return True
+    return False
 
 
 def _has_strong_evidence_line(text: str) -> bool:
@@ -122,8 +125,16 @@ def _has_strong_evidence_line(text: str) -> bool:
 def validate_text(text: str) -> ValidationResult:
     findings: List[Finding] = []
     extracted: Dict[str, Optional[str]] = {
-        "rating": _rating_for(["评级", "Final rating", "Final Rating"], text),
-        "rating_cap": _rating_for(["评级上限", "Rating cap", "Max rating allowed", "Max Rating Allowed"], text),
+        "rating": _rating_for(["评级", "最终评级", "Final rating", "Final Rating"], text),
+        "rating_cap": _rating_for([
+            "评级上限",
+            "本报告评级上限",
+            "因数据限制，本报告评级上限",
+            "Rating cap",
+            "Rating Cap",
+            "Max rating allowed",
+            "Max Rating Allowed",
+        ], text),
         "current_price": _status_for(["当前价格", "Current price", "Price data"], text),
         "adjusted_history": _status_for(["历史复权行情", "复权历史行情", "Adjusted history", "Technical data"], text),
         "financials": _status_for(["财报数据", "最新财报", "Financial data", "Financials"], text),
@@ -159,18 +170,39 @@ def validate_text(text: str) -> ValidationResult:
     filings = extracted["filings"]
     buy_point_claimed = _claims_current_buy_point(text)
 
+    required_statuses = {
+        "current_price": "missing current-price status",
+        "adjusted_history": "missing adjusted-history status",
+        "financials": "missing financial-data status",
+        "filings": "missing filing/announcement status",
+    }
+    for key, message in required_statuses.items():
+        if extracted[key] is None:
+            findings.append(Finding("error", f"missing_{key}_status", message))
+
     if current_price in {"FAILED", "PENDING"} and buy_point_claimed:
         findings.append(Finding("error", "buy_point_without_current_price", "current buy point claimed while current price is unavailable"))
     if adjusted_history in {"FAILED", "PENDING"} and buy_point_claimed:
         findings.append(Finding("error", "buy_point_without_adjusted_history", "Chan buy point claimed without adjusted price history"))
+    if current_price in {"FAILED", "PENDING"} and _rating_above(rating_cap, "B"):
+        findings.append(Finding("error", "rating_cap_not_downgraded_for_price", "rating cap must be B or lower when current price is unavailable"))
+    if adjusted_history in {"FAILED", "PENDING"} and _rating_above(rating_cap, "B"):
+        findings.append(Finding("error", "rating_cap_not_downgraded_for_adjusted_history", "rating cap must be B or lower when adjusted history is unavailable"))
     if financials in {"FAILED", "PENDING"} and _rating_above(rating, "B"):
         findings.append(Finding("error", "high_rating_without_financials", "S/A rating is not allowed when latest financials are unavailable"))
+    if financials in {"FAILED", "PENDING"} and _rating_above(rating_cap, "B"):
+        findings.append(Finding("error", "rating_cap_not_downgraded_for_financials", "rating cap must be B or lower when latest financials are unavailable"))
     if filings in {"FAILED", "PENDING"} and _rating_above(rating, "B"):
         findings.append(Finding("error", "high_rating_without_filings", "S/A rating is not allowed when primary filings are unavailable"))
+    if filings in {"FAILED", "PENDING"} and _rating_above(rating_cap, "B"):
+        findings.append(Finding("error", "rating_cap_not_downgraded_for_filings", "rating cap must be B or lower when primary filings are unavailable"))
 
     weak_evidence_only = re.search(r"(KOL|社媒|截图|群聊|传闻|rumor|social)", text, re.I)
-    if weak_evidence_only and not _has_strong_evidence_line(text) and _rating_above(rating, "C"):
-        findings.append(Finding("error", "weak_evidence_high_rating", "weak evidence appears upgraded above C without strong support"))
+    if weak_evidence_only and not _has_strong_evidence_line(text):
+        if _rating_above(rating, "C"):
+            findings.append(Finding("error", "weak_evidence_high_rating", "weak evidence appears upgraded above C without strong support"))
+        if _rating_above(rating_cap, "C"):
+            findings.append(Finding("error", "weak_evidence_cap_not_downgraded", "rating cap must be C or lower when weak evidence lacks strong support"))
 
     if not all(marker in text for marker in ["我确定的事实", "我的推断", "还缺"]):
         findings.append(Finding("warning", "missing_uncertainty_statement", "uncertainty statement should include confirmed facts, inference, and missing evidence"))

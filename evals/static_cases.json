@@ -18,5 +18,42 @@
     "name": "weak-kol-high-rating-blocked",
     "report": "evals/fixtures/fail_weak_kol_high_rating.md",
     "expect_pass": false
+  },
+  {
+    "name": "rating-cap-does-not-count-as-final-rating",
+    "report": "evals/fixtures/fail_rating_cap_without_final_rating.md",
+    "expect_pass": false
+  },
+  {
+    "name": "missing-critical-data-statuses-blocked",
+    "report": "evals/fixtures/fail_missing_data_statuses.md",
+    "expect_pass": false
+  },
+  {
+    "name": "missing-evidence-heading-blocked",
+    "report": "evals/fixtures/fail_missing_evidence_heading.md",
+    "expect_pass": false
+  },
+  {
+    "name": "invalid-scorecard-market-blocked",
+    "kind": "scorecard",
+    "scorecard": "evals/fixtures/fail_invalid_market_scorecard.json",
+    "expect_pass": false
+  },
+  {
+    "name": "unknown-scorecard-penalty-blocked",
+    "kind": "scorecard",
+    "scorecard": "evals/fixtures/fail_unknown_penalty_scorecard.json",
+    "expect_pass": false
+  },
+  {
+    "name": "other-market-scorecard-observe-only",
+    "kind": "scorecard",
+    "scorecard": "evals/fixtures/pass_other_market_observe_scorecard.json",
+    "expect_pass": true,
+    "expected_result": {
+      "rating_cap": "OBSERVE_ONLY",
+      "final_rating": "OBSERVE_ONLY"
+    }
   }
 ]

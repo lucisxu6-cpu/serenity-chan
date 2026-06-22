@@ -10,6 +10,7 @@ Rating is capped by critical data failures and red flags.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ MODULE_WEIGHTS = {
 }
 
 REQUIRED_TOP_LEVEL = set(MODULE_WEIGHTS) | {"ticker", "market", "as_of_date", "penalties"}
+ALLOWED_MARKETS = {"CN_A", "US", "HK", "OTHER"}
 
 
 PENALTY_CAPS = {
@@ -119,10 +121,10 @@ def score(data: Dict[str, Any]) -> Dict[str, Any]:
             cap = _apply_cap(cap, new_cap)
             active_caps.append({"penalty": name, "cap": new_cap.value})
 
-    final_rating = _apply_cap(raw_rating, cap)
     if data.get("market") == "OTHER":
-        final_rating = Rating.OBSERVE_ONLY
+        cap = _apply_cap(cap, Rating.OBSERVE_ONLY)
         active_caps.append({"penalty": "market_unresolved", "cap": "OBSERVE_ONLY"})
+    final_rating = _apply_cap(raw_rating, cap)
 
     verdict_map = {
         Rating.S: "核心长线候选：买点出现后可重点研究",
@@ -163,6 +165,21 @@ def validate_input_shape(data: Mapping[str, Any]) -> None:
     penalties = data.get("penalties")
     if not isinstance(penalties, Mapping):
         raise ValueError("penalties must be an object of boolean flags")
+    market = data.get("market")
+    if market not in ALLOWED_MARKETS:
+        raise ValueError(f"market must be one of {sorted(ALLOWED_MARKETS)}, got {market!r}")
+    as_of_date = data.get("as_of_date")
+    if as_of_date != "YYYY-MM-DD":
+        try:
+            dt.date.fromisoformat(str(as_of_date))
+        except ValueError as exc:
+            raise ValueError("as_of_date must be YYYY-MM-DD") from exc
+    unknown_penalties = sorted(set(penalties) - set(PENALTY_CAPS))
+    if unknown_penalties:
+        raise ValueError(f"unknown penalty flags: {', '.join(unknown_penalties)}")
+    non_bool_penalties = sorted(k for k, v in penalties.items() if not isinstance(v, bool))
+    if non_bool_penalties:
+        raise ValueError(f"penalty flags must be boolean: {', '.join(non_bool_penalties)}")
 
 
 def to_markdown(result: Dict[str, Any]) -> str:
@@ -227,7 +244,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--validate-only", action="store_true", help="validate input shape and exit")
     args = parser.parse_args(argv)
     data = load_json(args.input)
-    validate_input_shape(data)
+    try:
+        validate_input_shape(data)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     if args.validate_only:
         print("OK: scorecard input")
         return 0

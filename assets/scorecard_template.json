@@ -72,10 +72,10 @@
     {
       "claim": "",
       "source": "",
-      "source_level": "L0/L1/L2/L3/L4",
+      "source_level": "",
       "supports": "",
       "missing_proof": "",
-      "confidence": "Strong/Medium/Weak"
+      "confidence": ""
     }
   ],
   "falsification_points": ["", "", ""]

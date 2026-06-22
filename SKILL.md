@@ -118,7 +118,7 @@ python scripts/data_router.py resolve <symbol>
 - 公告/filing：OK / PARTIAL / STALE / FAILED
 - 供应链证据：OK / PARTIAL / STALE / FAILED
 - 无法验证字段：____
-- 因数据限制，本报告评级上限：S/A/B/C/观察
+- 因数据限制，本报告评级上限：S/A/B/C/D/OBSERVE_ONLY
 ```
 
 硬规则：
@@ -233,13 +233,13 @@ Serenity 找到的是候选，基本面决定能否长线。
 
 模板见 `references/05_output_templates.md`。
 
-交付前如输出为 Markdown 报告，建议运行：
+交付 Markdown 报告前必须运行：
 
 ```bash
 python scripts/validate_output_contract.py <report.md>
 ```
 
-若该门禁失败，必须修正报告或明确说明无法满足的外部数据限制。
+若该门禁失败，必须修正报告；在无法取得外部数据时，报告必须降级到门禁允许的评级和动作后再交付。
 
 ---
 

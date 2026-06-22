@@ -1,0 +1,14 @@
+{
+  "ticker": "688019.SH",
+  "company": "Unknown Penalty Co",
+  "market": "CN_A",
+  "as_of_date": "2026-06-22",
+  "data_quality": {"symbol_resolution": 5},
+  "serenity": {"x": 5},
+  "evidence": {"x": 5},
+  "fundamentals": {"x": 5},
+  "valuation": {"x": 5},
+  "technical": {"x": 5},
+  "risk": {"x": 5},
+  "penalties": {"unknown_penalty": true}
+}

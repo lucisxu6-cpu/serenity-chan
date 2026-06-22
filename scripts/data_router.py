@@ -27,8 +27,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from data_layer_v3 import Market as CanonicalMarket
-from data_layer_v3 import resolve_symbol as canonical_resolve_symbol
+try:
+    from data_layer_v3 import Market as CanonicalMarket
+    from data_layer_v3 import resolve_symbol as canonical_resolve_symbol
+except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_router
+    from scripts.data_layer_v3 import Market as CanonicalMarket
+    from scripts.data_layer_v3 import resolve_symbol as canonical_resolve_symbol
 
 
 class Market(str, Enum):
