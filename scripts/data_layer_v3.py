@@ -228,10 +228,12 @@ def resolve_symbol(input_value: str, *, master_table: Optional[Mapping[str, Mapp
             isin=row.get("isin"),
         )
 
-    # Explicit A-share suffix
-    m = re.fullmatch(r"(\d{6})\.(SH|SZ|BJ)", token)
+    # Explicit A-share suffix. Accept Yahoo-style .SS, but normalize to .SH.
+    m = re.fullmatch(r"(\d{6})\.(SH|SZ|BJ|SS)", token)
     if m:
         code, exch = m.groups()
+        if exch == "SS":
+            exch = "SH"
         return SymbolInfo(raw, f"{code}.{exch}", Market.CN_A, exch, currency="CNY")
 
     # Prefix forms SH688019 / SZ300750 / BJ920593

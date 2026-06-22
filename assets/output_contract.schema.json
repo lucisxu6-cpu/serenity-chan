@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SerenityChanOutputContract",
+  "type": "object",
+  "required": [
+    "data_quality",
+    "rating",
+    "rating_cap",
+    "evidence",
+    "falsification",
+    "action",
+    "uncertainty"
+  ],
+  "properties": {
+    "data_quality": {
+      "type": "object",
+      "required": ["market_resolution", "current_price", "adjusted_history", "financials", "filings"],
+      "properties": {
+        "market_resolution": {"$ref": "#/$defs/status"},
+        "current_price": {"$ref": "#/$defs/status"},
+        "adjusted_history": {"$ref": "#/$defs/status"},
+        "financials": {"$ref": "#/$defs/status"},
+        "filings": {"$ref": "#/$defs/status"},
+        "supply_chain_evidence": {"$ref": "#/$defs/status"}
+      }
+    },
+    "rating": {"$ref": "#/$defs/rating"},
+    "rating_cap": {"$ref": "#/$defs/rating_cap"},
+    "evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence"}
+    },
+    "falsification": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "action": {
+      "type": "string",
+      "enum": ["观察", "等待买点", "等待二买", "等待三买", "小仓试错", "核心候选", "强观察", "剔除", "不参与", "数据不足"]
+    },
+    "uncertainty": {
+      "type": "object",
+      "required": ["confirmed", "inferred", "missing", "downgrade_trigger"],
+      "properties": {
+        "confirmed": {"type": "string"},
+        "inferred": {"type": "string"},
+        "missing": {"type": "string"},
+        "downgrade_trigger": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "status": {"type": "string", "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE"]},
+    "rating": {"type": "string", "enum": ["S", "A", "B", "C", "D", "OBSERVE_ONLY"]},
+    "rating_cap": {"type": "string", "enum": ["S", "A", "B", "C", "D", "OBSERVE_ONLY"]},
+    "evidence": {
+      "type": "object",
+      "required": ["claim", "source", "source_level", "confidence"],
+      "properties": {
+        "claim": {"type": "string"},
+        "source": {"type": "string"},
+        "source_level": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"]},
+        "confidence": {"type": "string", "enum": ["Strong", "Medium", "Weak", "Unverified"]},
+        "missing_proof": {"type": "string"}
+      }
+    }
+  }
+}

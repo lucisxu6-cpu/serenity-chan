@@ -37,10 +37,18 @@ cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
 
 ```bash
 python scripts/validate_skill.py .
-python scripts/data_layer_v3.py
+python scripts/data_layer_v3.py 688019 --plan
+python scripts/data_router.py resolve 688019
+python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
+python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md
+python scripts/run_static_evals.py
 ```
 
 ## Data rule
 
 If current price, adjusted history, latest financials, or primary filings cannot be obtained, the report must cap its rating and say what remains unverified. Do not guess.
+
+## Reliability gates
+
+Before publishing a generated report, run the output-contract validator against the Markdown file. Before changing skill logic, run the static eval suite so data failures, weak evidence, and unsupported buy-point claims remain downgraded instead of upgraded.

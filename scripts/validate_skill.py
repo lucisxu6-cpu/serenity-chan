@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+ALLOWED_FRONTMATTER_KEYS = {"name", "description", "license", "metadata"}
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
@@ -40,6 +41,9 @@ def main() -> None:
         errors.append("description is required")
     if len(description) > 1024:
         errors.append(f"description too long: {len(description)}")
+    unexpected_keys = sorted(set(fm) - ALLOWED_FRONTMATTER_KEYS)
+    if unexpected_keys:
+        errors.append(f"unexpected frontmatter keys: {', '.join(unexpected_keys)}")
     for sub in ["references", "assets", "scripts", "evals", "agents"]:
         if not (root / sub).exists():
             errors.append(f"missing directory: {sub}")

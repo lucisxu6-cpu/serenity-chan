@@ -1,0 +1,22 @@
+[
+  {
+    "name": "no-network-buy-point-downgraded",
+    "report": "evals/fixtures/pass_no_network_buy_point.md",
+    "expect_pass": true
+  },
+  {
+    "name": "weak-kol-evidence-downgraded",
+    "report": "evals/fixtures/pass_weak_kol_downgrade.md",
+    "expect_pass": true
+  },
+  {
+    "name": "missing-financials-high-rating-blocked",
+    "report": "evals/fixtures/fail_missing_financials_high_rating.md",
+    "expect_pass": false
+  },
+  {
+    "name": "weak-kol-high-rating-blocked",
+    "report": "evals/fixtures/fail_weak_kol_high_rating.md",
+    "expect_pass": false
+  }
+]

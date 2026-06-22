@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SerenityChanScorecard",
+  "type": "object",
+  "required": [
+    "ticker",
+    "market",
+    "as_of_date",
+    "data_quality",
+    "serenity",
+    "evidence",
+    "fundamentals",
+    "valuation",
+    "technical",
+    "risk",
+    "penalties"
+  ],
+  "properties": {
+    "ticker": {"type": "string", "minLength": 1},
+    "company": {"type": "string"},
+    "market": {"type": "string", "enum": ["CN_A", "US", "HK", "OTHER"]},
+    "as_of_date": {"type": "string"},
+    "data_quality": {"$ref": "#/$defs/module"},
+    "serenity": {"$ref": "#/$defs/module"},
+    "evidence": {"$ref": "#/$defs/module"},
+    "fundamentals": {"$ref": "#/$defs/module"},
+    "valuation": {"$ref": "#/$defs/module"},
+    "technical": {"$ref": "#/$defs/module"},
+    "risk": {"$ref": "#/$defs/module"},
+    "penalties": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"}
+    },
+    "evidence_notes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence_note"}
+    },
+    "falsification_points": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "module": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 5
+      }
+    },
+    "evidence_note": {
+      "type": "object",
+      "properties": {
+        "claim": {"type": "string"},
+        "source": {"type": "string"},
+        "source_level": {"type": "string"},
+        "supports": {"type": "string"},
+        "missing_proof": {"type": "string"},
+        "confidence": {"type": "string", "enum": ["Strong", "Medium", "Weak", "Unverified", ""]}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

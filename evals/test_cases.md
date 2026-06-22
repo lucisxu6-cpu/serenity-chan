@@ -1,5 +1,13 @@
 # Evaluation Test Cases
 
+Run the executable static cases with:
+
+```bash
+python scripts/run_static_evals.py
+```
+
+These fixtures assert that missing data, weak evidence, and unsupported current buy-point claims are downgraded or blocked before delivery.
+
 ## 1. A 股市场分流
 User: 分析 688019。
 Expected:

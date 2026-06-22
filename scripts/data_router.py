@@ -20,13 +20,15 @@ import csv
 import datetime as dt
 import json
 import math
-import re
 import statistics
 import sys
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+from data_layer_v3 import Market as CanonicalMarket
+from data_layer_v3 import resolve_symbol as canonical_resolve_symbol
 
 
 class Market(str, Enum):
@@ -102,73 +104,58 @@ def _source_pack(market: Market) -> Tuple[List[str], List[str], List[str]]:
 
 
 def resolve_symbol(value: str) -> SymbolInfo:
-    raw = value.strip()
-    token = raw.upper().replace(" ", "")
+    """Resolve symbols via the canonical data layer and adapt to this CLI contract."""
+    canonical = canonical_resolve_symbol(value)
     warnings: List[str] = []
 
-    # A-share explicit suffixes
-    m = re.fullmatch(r"(\d{6})\.(SH|SZ|BJ|SS)", token)
-    if m:
-        code, suffix = m.groups()
-        if suffix == "SS":
-            suffix = "SH"
-            warnings.append("Input used Yahoo-style .SS; normalized to A-share .SH.")
+    if canonical.market == CanonicalMarket.CN_A:
         market = Market.CN_A
-        exchange = suffix
-        normalized = f"{code}.{suffix}"
-        currency = "CNY"
-        aliases: Dict[str, str] = {"tushare": normalized, "wind": normalized}
-        if suffix == "SH":
-            aliases["yfinance"] = f"{code}.SS"
-        elif suffix == "SZ":
-            aliases["yfinance"] = f"{code}.SZ"
-        elif suffix == "BJ":
-            aliases["yfinance"] = f"{code}.BJ"
-        disclosure, price, financial = _source_pack(market)
-        return SymbolInfo(raw, normalized, market, exchange, currency, aliases, disclosure, price, financial, warnings)
-
-    # A-share six-digit no suffix inference
-    if re.fullmatch(r"\d{6}", token):
-        code = token
-        if code.startswith(("600", "601", "603", "605", "688")):
-            suffix = "SH"
-        elif code.startswith(("000", "001", "002", "003", "300", "301")):
-            suffix = "SZ"
-        elif code.startswith(("43", "83", "87", "92")):
-            suffix = "BJ"
-        else:
-            suffix = "UNKNOWN"
-            warnings.append("Six-digit code does not match common A-share prefixes; confirm market manually.")
-        if suffix != "UNKNOWN":
-            normalized = f"{code}.{suffix}"
-            market = Market.CN_A
-            aliases = {"tushare": normalized, "wind": normalized}
-            if suffix == "SH":
-                aliases["yfinance"] = f"{code}.SS"
-            elif suffix == "SZ":
-                aliases["yfinance"] = f"{code}.SZ"
-            disclosure, price, financial = _source_pack(market)
-            warnings.append(f"No suffix provided; inferred {normalized}. Confirm if ambiguity matters.")
-            return SymbolInfo(raw, normalized, market, suffix, "CNY", aliases, disclosure, price, financial, warnings)
-
-    # HK explicit or numeric with HK suffix
-    m = re.fullmatch(r"(\d{1,5})\.HK", token)
-    if m:
-        code = m.group(1).zfill(4)
-        normalized = f"{code}.HK"
-        market = Market.HK
-        disclosure, price, financial = _source_pack(market)
-        return SymbolInfo(raw, normalized, market, "HKEX", "HKD", {"yfinance": normalized}, disclosure, price, financial, warnings)
-
-    # US ticker, allow class dots/dashes
-    if re.fullmatch(r"[A-Z]{1,5}(\.[A-Z])?", token) or re.fullmatch(r"[A-Z]{1,5}-[A-Z]", token):
+    elif canonical.market == CanonicalMarket.US:
         market = Market.US
-        normalized = token.replace("-", ".")
-        disclosure, price, financial = _source_pack(market)
-        return SymbolInfo(raw, normalized, market, None, "USD", {"sec_ticker": normalized, "yfinance": normalized}, disclosure, price, financial, warnings)
+    elif canonical.market == CanonicalMarket.HK:
+        market = Market.HK
+    else:
+        market = Market.OTHER
 
-    disclosure, price, financial = _source_pack(Market.OTHER)
-    return SymbolInfo(raw, raw, Market.OTHER, None, "UNKNOWN", {}, disclosure, price, financial, ["Could not confidently resolve market. Ask user or provide suffix."])
+    normalized = canonical.symbol
+    exchange = canonical.exchange or None
+    aliases: Dict[str, str] = {}
+
+    if market == Market.CN_A:
+        aliases = {"tushare": normalized, "wind": normalized}
+        code = normalized.split(".", 1)[0]
+        if exchange == "SH":
+            aliases["yfinance"] = f"{code}.SS"
+        elif exchange == "SZ":
+            aliases["yfinance"] = f"{code}.SZ"
+        elif exchange == "BJ":
+            aliases["yfinance"] = f"{code}.BJ"
+    elif market == Market.HK:
+        aliases = {"yfinance": normalized}
+    elif market == Market.US:
+        aliases = {"sec_ticker": normalized, "yfinance": normalized}
+
+    raw_token = canonical.input_value.upper().replace(" ", "")
+    if raw_token.endswith(".SS") and normalized.endswith(".SH"):
+        warnings.append("Input used Yahoo-style .SS; normalized to A-share .SH.")
+    if raw_token.isdigit() and market == Market.CN_A:
+        warnings.append(f"No suffix provided; inferred {normalized}. Confirm if ambiguity matters.")
+    if market == Market.OTHER:
+        warnings.append("Could not confidently resolve market. Ask user or provide suffix.")
+
+    disclosure, price, financial = _source_pack(market)
+    return SymbolInfo(
+        canonical.input_value,
+        normalized,
+        market,
+        exchange,
+        canonical.currency or "UNKNOWN",
+        aliases,
+        disclosure,
+        price,
+        financial,
+        warnings,
+    )
 
 
 def _parse_float(value: Any) -> Optional[float]:

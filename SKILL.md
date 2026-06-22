@@ -1,14 +1,18 @@
 ---
 name: serenity-chan-stock-skill
-description: Data-first equity research skill combining Serenity-style supply-chain bottleneck hunting, fundamental/valuation underwriting, and Chan/多级别 technical timing. Use for A-share, US, HK and cross-market stock screening, single-company challenge, theme scans, long-term high-conviction candidate selection, evidence/falsification dashboards, and buy-point discipline. Always route market data and filings through market-specific sources before making current claims.
-version: "3.0.0"
-language: zh-CN-first
-license: MIT
-compatibility: Codex / Claude Code / Agent Skills-compatible clients
-requires_tools: web/search or filing/market-data tools for current analysis; python3 optional for scorecard/data validation
+description: Use when performing data-first equity research for A-share, US, HK, or cross-market stock screening, single-company thesis challenges, theme scans, candidate comparisons, evidence/falsification dashboards, valuation work, or Chan/GF-DMA buy-point discipline. Always route market data and filings through market-specific sources before making current price, financial, rating, or entry claims.
 ---
 
 # Serenity + 缠论长线高胜率选股鉴股 Skill
+
+## Skill Metadata
+
+- Version: 3.1.0
+- Language: zh-CN-first
+- License: MIT
+- Compatibility: Codex / Claude Code / Agent Skills-compatible clients
+- Required tools for current analysis: web/search or filing/market-data tools
+- Optional local tools: `python3` for routing, validation, scorecards, and static evals
 
 ## 0. Core Promise
 
@@ -31,11 +35,31 @@ requires_tools: web/search or filing/market-data tools for current analysis; pyt
 
 **最高原则：No Data, No Guess。没有取到关键数据时，必须降低评级上限，不允许编造价格、财报、客户、订单、估值或买点。**
 
+本 Skill 只提供研究框架、证据链、评级约束和风险边界，不提供个性化投资建议，不承诺收益，不执行交易。
+
 ---
 
 ## 1. Request Router
 
 先识别用户请求类型，再选择工作流。
+
+### 1.0 Mandatory Data Fetch Plan
+
+任何涉及当前股价、财报、估值、市值、客户/订单、评级或买点的任务，必须先输出 `Data Fetch Plan`，再进入分析。
+
+`Data Fetch Plan` 至少包含：
+
+- 解析后的市场、标准代码、交易所和货币。
+- 每类关键数据的首选源、结构化源、fallback 和 forbidden source。
+- 当前数据是否已经取到；没取到时先标记 `PENDING`，不能假装可用。
+- 缺失后的评级上限和禁止结论。
+
+优先使用：
+
+```bash
+python scripts/data_layer_v3.py <symbol> --plan
+python scripts/data_router.py resolve <symbol>
+```
 
 ### 1.1 Theme Scan / 主题扫描
 
@@ -209,6 +233,14 @@ Serenity 找到的是候选，基本面决定能否长线。
 
 模板见 `references/05_output_templates.md`。
 
+交付前如输出为 Markdown 报告，建议运行：
+
+```bash
+python scripts/validate_output_contract.py <report.md>
+```
+
+若该门禁失败，必须修正报告或明确说明无法满足的外部数据限制。
+
 ---
 
 ## 7. Anti-Hallucination Rules
@@ -237,14 +269,19 @@ Serenity 找到的是候选，基本面决定能否长线。
 - `references/05_output_templates.md` — 单股、主题、对比、数据审计模板。
 - `references/06_risk_compliance_no_guess.md` — 证据等级、评级上限、合规边界。
 - `assets/scorecard_template.json` — 综合评分模板。
+- `assets/scorecard.schema.json` — 评分输入 schema。
 - `assets/evidence_ledger.schema.json` — 证据台账 schema。
 - `assets/analysis_request.schema.json` — 分析请求 schema。
+- `assets/output_contract.schema.json` — 标准输出合同 schema。
 - `assets/prompt_pack.md` — 可复制提示词。
 - `scripts/data_router.py` — 市场识别、数据校验、质量报告脚手架。
 - `scripts/serenity_chan_scorecard.py` — 评分器。
+- `scripts/validate_output_contract.py` — Markdown 报告门禁，检查数据质量、评级上限、证据、证伪和禁用措辞。
+- `scripts/run_static_evals.py` — 本地静态 eval runner。
 - `scripts/validate_skill.py` — Skill 结构校验。
 - `examples/` — A 股、美股、主题扫描输出样例。
 - `evals/test_cases.md` — 行为测试。
+- `evals/static_cases.json` — 可运行静态 eval 用例。
 
 
 <!-- validator keywords: A 股 评级封顶 No Data, No Guess Market-Specific Data Routing -->

@@ -40,6 +40,8 @@ MODULE_WEIGHTS = {
     "risk": 10,
 }
 
+REQUIRED_TOP_LEVEL = set(MODULE_WEIGHTS) | {"ticker", "market", "as_of_date", "penalties"}
+
 
 PENALTY_CAPS = {
     "only_weak_evidence": Rating.C,
@@ -99,6 +101,7 @@ def _apply_cap(rating: Rating, cap: Rating) -> Rating:
 
 
 def score(data: Dict[str, Any]) -> Dict[str, Any]:
+    validate_input_shape(data)
     module_results: Dict[str, Any] = {}
     total = 0.0
     for module, weight in MODULE_WEIGHTS.items():
@@ -145,6 +148,21 @@ def score(data: Dict[str, Any]) -> Dict[str, Any]:
         "evidence_notes": data.get("evidence_notes", []),
         "falsification_points": [x for x in data.get("falsification_points", []) if str(x).strip()],
     }
+
+
+def validate_input_shape(data: Mapping[str, Any]) -> None:
+    missing = sorted(k for k in REQUIRED_TOP_LEVEL if k not in data)
+    if missing:
+        raise ValueError(f"scorecard missing required top-level keys: {', '.join(missing)}")
+    for module in MODULE_WEIGHTS:
+        value = data.get(module)
+        if not isinstance(value, Mapping) or not value:
+            raise ValueError(f"{module} must be a non-empty object of 0-5 ratings")
+        for key, rating in value.items():
+            _rating_0_5(rating, f"{module}.{key}")
+    penalties = data.get("penalties")
+    if not isinstance(penalties, Mapping):
+        raise ValueError("penalties must be an object of boolean flags")
 
 
 def to_markdown(result: Dict[str, Any]) -> str:
@@ -206,8 +224,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Score a Serenity + Chan stock thesis")
     parser.add_argument("input", help="Scorecard JSON path or '-' for stdin")
     parser.add_argument("--format", choices=["json", "md", "both"], default="json")
+    parser.add_argument("--validate-only", action="store_true", help="validate input shape and exit")
     args = parser.parse_args(argv)
-    result = score(load_json(args.input))
+    data = load_json(args.input)
+    validate_input_shape(data)
+    if args.validate_only:
+        print("OK: scorecard input")
+        return 0
+    result = score(data)
     if args.format == "json":
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.format == "md":

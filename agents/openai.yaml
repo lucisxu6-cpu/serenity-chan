@@ -1,12 +1,4 @@
-name: serenity-chan-stock-skill
-skill: serenity-chan-stock-skill
-language: zh-CN
-entrypoint: SKILL.md
-recommended_tools:
-  - web_search
-  - browser
-  - market_data
-  - python3
-  - filing_downloader
-notes: |
-  Data-first investment research skill. Always run market routing and data-quality checks before current valuation or Chan buy-point analysis.
+interface:
+  display_name: "Serenity Chan Stock"
+  short_description: "Data-first stock research and entry discipline"
+  default_prompt: "Use $serenity-chan-stock-skill to analyze a stock or theme with data-quality caps, evidence labels, valuation, and Chan buy-point discipline."
