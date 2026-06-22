@@ -1,0 +1,34 @@
+{
+  "market_route": {
+    "normalized_symbol": "MU",
+    "market": "US",
+    "currency": "USD",
+    "primary_disclosure_sources": ["CNINFO"],
+    "forbidden_sources": ["CNINFO"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "OK",
+    "financials": "OK",
+    "filings": "OK"
+  },
+  "rating": "A",
+  "rating_cap": "A",
+  "evidence": [
+    {
+      "claim": "Revenue is confirmed.",
+      "source": "CNINFO annual report",
+      "source_level": "L0",
+      "confidence": "Strong"
+    }
+  ],
+  "falsification": ["SEC filing contradicts the claim."],
+  "action": "强观察",
+  "uncertainty": {
+    "confirmed": "Wrong source was used.",
+    "inferred": "Still treated as strong evidence.",
+    "missing": "SEC/IR source.",
+    "downgrade_trigger": "SEC mismatch remains unresolved."
+  }
+}

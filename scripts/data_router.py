@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Data Router for serenity-chan-stock-skill v3.
+Data Router for serenity-chan-stock-skill.
 
 This script provides market-aware symbol resolution and local data validation.
 It intentionally avoids guessing and does not require paid vendor credentials.
@@ -20,6 +20,7 @@ import csv
 import datetime as dt
 import json
 import math
+import os
 import statistics
 import sys
 from dataclasses import asdict, dataclass, field
@@ -28,13 +29,19 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
-    from data_layer_v3 import build_data_fetch_plan
-    from data_layer_v3 import Market as CanonicalMarket
-    from data_layer_v3 import resolve_symbol as canonical_resolve_symbol
+    from data_layer import build_data_fetch_plan
+    from data_layer import Dataset as CanonicalDataset
+    from data_layer import Market as CanonicalMarket
+    from data_layer import default_real_providers
+    from data_layer import fetch_with_fallback
+    from data_layer import resolve_symbol as canonical_resolve_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_router
-    from scripts.data_layer_v3 import build_data_fetch_plan
-    from scripts.data_layer_v3 import Market as CanonicalMarket
-    from scripts.data_layer_v3 import resolve_symbol as canonical_resolve_symbol
+    from scripts.data_layer import build_data_fetch_plan
+    from scripts.data_layer import Dataset as CanonicalDataset
+    from scripts.data_layer import Market as CanonicalMarket
+    from scripts.data_layer import default_real_providers
+    from scripts.data_layer import fetch_with_fallback
+    from scripts.data_layer import resolve_symbol as canonical_resolve_symbol
 
 
 class Market(str, Enum):
@@ -49,6 +56,8 @@ class DataStatus(str, Enum):
     PARTIAL = "PARTIAL"
     STALE = "STALE"
     FAILED = "FAILED"
+    PENDING = "PENDING"
+    NOT_REQUESTED = "NOT_REQUESTED"
 
 
 class RatingCap(str, Enum):
@@ -261,7 +270,7 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
     if len(dates) < min_bars:
         report.warnings.append(f"Only {len(dates)} bars; {min_bars}+ preferred for 200DMA and medium-term structure.")
         report.rating_cap = RatingCap.B
-    if adjust.lower() not in {"qfq", "forward", "hfq", "backward", "none", "unadjusted", "unknown"}:
+    if adjust.lower() not in {"qfq", "forward", "hfq", "backward", "adjusted", "none", "unadjusted", "unknown"}:
         report.warnings.append(f"Unknown adjustment flag: {adjust}")
     if adjust.lower() in {"unknown", "none", "unadjusted"}:
         report.warnings.append("Historical price adjustment is not confirmed; Chan/DMA conclusions may be capped.")
@@ -347,10 +356,11 @@ def validate_financials(path: Path) -> ValidationReport:
 
     required_any = ["period", "revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
     bad = 0
+    missing_counts: Dict[str, int] = {k: 0 for k in required_any}
     for idx, row in enumerate(rows):
         for k in required_any:
             if k not in row:
-                report.warnings.append(f"Period index {idx} missing {k}.")
+                missing_counts[k] += 1
         assets = _parse_float(row.get("assets"))
         liabilities = _parse_float(row.get("liabilities"))
         equity = _parse_float(row.get("equity"))
@@ -369,10 +379,224 @@ def validate_financials(path: Path) -> ValidationReport:
             report.warnings.append(f"OCF/net income is low in period {row.get('period')}; explain working-capital quality.")
 
     report.stats["period_count"] = len(rows)
+    for key, count in missing_counts.items():
+        if count:
+            report.warnings.append(f"{count}/{len(rows)} periods missing {key}.")
+    core_fields = ["revenue", "net_income", "operating_cash_flow"]
+    core_complete_rows = [
+        row for row in rows
+        if all(row.get(key) is not None for key in core_fields)
+    ]
+    latest_core_period = max((str(row.get("period", "")) for row in core_complete_rows), default="")
+    report.stats["core_complete_period_count"] = len(core_complete_rows)
+    if latest_core_period:
+        report.stats["latest_core_complete_period"] = latest_core_period
+
+    if not core_complete_rows:
+        report.status = DataStatus.PARTIAL
+        report.rating_cap = RatingCap.B
+        report.warnings.append("No retained period has all core financial fields: revenue, net_income, and operating_cash_flow.")
+    elif len(core_complete_rows) < 2:
+        report.status = DataStatus.PARTIAL
+        report.rating_cap = min_cap(report.rating_cap, RatingCap.A)
+        report.warnings.append("Only one retained period has all core financial fields; trend analysis is partial.")
     if bad:
         report.status = DataStatus.PARTIAL
         report.rating_cap = RatingCap.B
     return report
+
+
+def _default_fetch_dir(symbol: str) -> Path:
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    root = Path(os.getenv("SERENITY_DATA_DIR", "/tmp/serenity-chan-data"))
+    safe_symbol = "".join(ch if ch.isalnum() or ch in {"-", ".", "_"} else "_" for ch in symbol)
+    return root / safe_symbol / stamp
+
+
+def _market_for_router(market: CanonicalMarket) -> Market:
+    if market == CanonicalMarket.CN_A:
+        return Market.CN_A
+    if market == CanonicalMarket.US:
+        return Market.US
+    if market == CanonicalMarket.HK:
+        return Market.HK
+    return Market.OTHER
+
+
+def _write_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+
+
+def _write_price_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = ["date", "open", "high", "low", "close", "volume", "adj_close", "raw_close"]
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({
+                "date": row.get("trade_date"),
+                "open": row.get("open"),
+                "high": row.get("high"),
+                "low": row.get("low"),
+                "close": row.get("close"),
+                "volume": row.get("volume"),
+                "adj_close": row.get("adj_close"),
+                "raw_close": row.get("raw_close"),
+            })
+
+
+def _cap_for_statuses(
+    statuses: Dict[str, str],
+    validation_caps: Optional[Sequence[str]] = None,
+    *,
+    required_datasets: Optional[Sequence[str]] = None,
+    downgrade_not_requested: bool = True,
+) -> RatingCap:
+    cap = RatingCap.S
+    order = [RatingCap.OBSERVE_ONLY, RatingCap.C, RatingCap.B, RatingCap.A, RatingCap.S]
+
+    def downgrade(target: RatingCap) -> None:
+        nonlocal cap
+        if order.index(target) < order.index(cap):
+            cap = target
+
+    keys = list(required_datasets) if required_datasets is not None else list(statuses)
+    for key in keys:
+        status = statuses.get(key, DataStatus.NOT_REQUESTED.value)
+        if status in {"FAILED", "PENDING"}:
+            downgrade(RatingCap.B)
+        elif status == "STALE":
+            downgrade(RatingCap.B)
+        elif status == "NOT_REQUESTED" and downgrade_not_requested:
+            downgrade(RatingCap.B)
+        elif status == "PARTIAL":
+            downgrade(RatingCap.A)
+    for raw_cap in validation_caps or []:
+        try:
+            downgrade(RatingCap(raw_cap))
+        except ValueError:
+            continue
+    return cap
+
+
+def fetch_real_data(
+    symbol_value: str,
+    *,
+    datasets: Sequence[str],
+    out_dir: Optional[str] = None,
+    chart_range: str = "2y",
+    interval: str = "1d",
+    min_bars: int = 250,
+) -> Dict[str, Any]:
+    symbol = canonical_resolve_symbol(symbol_value)
+    destination = Path(out_dir) if out_dir else _default_fetch_dir(symbol.symbol)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    providers = default_real_providers(symbol)
+    result_items: List[Dict[str, Any]] = []
+    statuses: Dict[str, str] = {}
+    validation_caps: List[str] = []
+    router_market = _market_for_router(symbol.market)
+    requested_dataset_values = [CanonicalDataset(dataset_name).value for dataset_name in datasets]
+
+    for dataset_name in requested_dataset_values:
+        dataset = CanonicalDataset(dataset_name)
+        provider_kwargs: Dict[str, Any] = {"raw_dir": destination / "raw"}
+        if dataset in {CanonicalDataset.PRICE_HISTORY_RAW, CanonicalDataset.PRICE_HISTORY_ADJUSTED}:
+            provider_kwargs.update({"range": chart_range, "interval": interval})
+        result = fetch_with_fallback(
+            providers,
+            symbol,
+            dataset,
+            **provider_kwargs,
+        )
+        data_path: Optional[str] = None
+        validation_payload: Optional[Dict[str, Any]] = None
+        status = "OK" if result.ok else "FAILED"
+
+        if result.ok:
+            if dataset in {CanonicalDataset.PRICE_HISTORY_RAW, CanonicalDataset.PRICE_HISTORY_ADJUSTED}:
+                csv_path = destination / f"{symbol.symbol}_{dataset.value}.csv"
+                _write_price_csv(csv_path, list(result.data or []))
+                data_path = str(csv_path)
+                validation = validate_price_history(
+                    csv_path,
+                    router_market,
+                    "adjusted" if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED else "unadjusted",
+                    min_bars,
+                )
+                status = validation.status.value
+                validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
+                validation_caps.append(validation.rating_cap.value)
+            else:
+                json_path = destination / f"{symbol.symbol}_{dataset.value}.json"
+                _write_json(json_path, result.data)
+                data_path = str(json_path)
+                if dataset == CanonicalDataset.FINANCIALS:
+                    validation = validate_financials(json_path)
+                    status = validation.status.value
+                    validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
+                    validation_caps.append(validation.rating_cap.value)
+
+        statuses[dataset.value] = status
+        result_items.append({
+            "dataset": dataset.value,
+            "status": status,
+            "source": result.source_name,
+            "source_level": getattr(result.source_level, "value", str(result.source_level)),
+            "retrieved_at": result.retrieved_at,
+            "as_of_date": result.as_of_date,
+            "currency": result.currency,
+            "adjust": result.adjust,
+            "data_path": data_path,
+            "raw_path": result.raw_path,
+            "raw_hash": result.raw_hash,
+            "warnings": result.warnings,
+            "errors": result.errors,
+            "validation": validation_payload,
+        })
+
+    critical_datasets = [
+        CanonicalDataset.CURRENT_QUOTE.value,
+        CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
+        CanonicalDataset.FINANCIALS.value,
+        CanonicalDataset.FILINGS.value,
+    ]
+    requested_cap = _cap_for_statuses(
+        statuses,
+        validation_caps,
+        required_datasets=requested_dataset_values,
+        downgrade_not_requested=False,
+    )
+    full_research_cap = _cap_for_statuses(
+        statuses,
+        validation_caps,
+        required_datasets=critical_datasets,
+        downgrade_not_requested=True,
+    )
+    data_quality = {
+        "market_resolution": "OK" if symbol.market != CanonicalMarket.UNKNOWN else "FAILED",
+        "current_price": statuses.get(CanonicalDataset.CURRENT_QUOTE.value, DataStatus.NOT_REQUESTED.value),
+        "adjusted_history": statuses.get(CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, DataStatus.NOT_REQUESTED.value),
+        "financials": statuses.get(CanonicalDataset.FINANCIALS.value, DataStatus.NOT_REQUESTED.value),
+        "filings": statuses.get(CanonicalDataset.FILINGS.value, DataStatus.NOT_REQUESTED.value),
+        "requested_data_rating_cap": requested_cap.value,
+        "full_research_rating_cap": full_research_cap.value,
+        "rating_cap": full_research_cap.value,
+    }
+    manifest = {
+        "symbol": symbol.__dict__,
+        "requested_datasets": requested_dataset_values,
+        "full_research_required_datasets": critical_datasets,
+        "out_dir": str(destination),
+        "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "data_quality": data_quality,
+        "results": result_items,
+    }
+    _write_json(destination / "manifest.json", manifest)
+    return manifest
 
 
 def emit(obj: Any) -> None:
@@ -408,6 +632,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_quotes = sub.add_parser("compare-quotes", help="Compare multiple quotes")
     p_quotes.add_argument("prices", nargs="+")
 
+    p_fetch = sub.add_parser("fetch", help="Fetch real preflight data into an auditable local bundle")
+    p_fetch.add_argument("symbol")
+    p_fetch.add_argument(
+        "--datasets",
+        nargs="+",
+        choices=[d.value for d in CanonicalDataset],
+        default=[
+            CanonicalDataset.CURRENT_QUOTE.value,
+            CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
+            CanonicalDataset.FINANCIALS.value,
+            CanonicalDataset.FILINGS.value,
+        ],
+    )
+    p_fetch.add_argument("--out-dir", help="output directory; defaults to /tmp/serenity-chan-data/<symbol>/<timestamp>")
+    p_fetch.add_argument("--range", dest="chart_range", default="2y", help="Yahoo chart range for price history")
+    p_fetch.add_argument("--interval", default="1d", help="Yahoo chart interval")
+    p_fetch.add_argument("--min-bars", type=int, default=250)
+    p_fetch.add_argument("--sec-user-agent", help="SEC-compliant User-Agent, e.g. 'Your Name your.email@example.com'")
+
     args = parser.parse_args(argv)
     if args.cmd == "resolve":
         emit(resolve_symbol(args.symbol))
@@ -419,6 +662,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         emit(validate_financials(Path(args.json_path)))
     elif args.cmd == "compare-quotes":
         emit(compare_quotes([_parse_float(x) or 0.0 for x in args.prices]))
+    elif args.cmd == "fetch":
+        if args.sec_user_agent:
+            os.environ["SEC_USER_AGENT"] = args.sec_user_agent
+        emit(fetch_real_data(
+            args.symbol,
+            datasets=args.datasets,
+            out_dir=args.out_dir,
+            chart_range=args.chart_range,
+            interval=args.interval,
+            min_bars=args.min_bars,
+        ))
     return 0
 
 

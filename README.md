@@ -2,130 +2,189 @@
 
 Language: [中文](#中文) | [English](#english)
 
+`serenity-chan-stock-skill` turns a market theme, stock ticker, or candidate pool into a data-first equity research workflow with auditable evidence, falsification triggers, market-specific source routing, and rating caps.
+
+It is not a trading bot and does not provide personalized investment advice. Its job is to keep AI research grounded: fetch data first, separate fact from inference, cap conclusions when evidence is missing, and never mix A-share, US, and HK disclosure sources.
+
 ---
 
 ## 中文
 
-`serenity-chan-stock-skill` 是一个数据优先的股票研究 skill，用于 A 股、美股、港股和跨市场主题研究。它把主题、股票代码或候选池转化为可核验、可证伪、可跟踪的研究结论，而不是直接给出交易指令。
+### 一句话
 
-本 skill 只提供研究框架、证据链、评级约束和风险边界，不提供个性化投资建议，不承诺收益，不执行交易。
-
-### 核心思想
-
-本 skill 的核心原则是 `No Data, No Guess`：没有取到关键数据时，必须降低评级上限，不允许编造当前价格、市值、财报、客户、订单、估值或买点。
-
-完整分析链路如下：
+把“这个题材/这只股票值不值得研究？”变成一份可核验、可证伪、可跟踪的研究结论。
 
 ```text
-市场/政策/技术叙事
-→ 已发生需求变化
-→ 产业链/供应链分层
-→ 真正扩产瓶颈
-→ 映射公司
-→ 证据等级
-→ 财务兑现
-→ 内在增长与市场隐含预期
-→ 技术位置与缠论买点
-→ 仓位条件与证伪点
+不是：直接喊买入、追热点、编数据
+而是：先取数、验来源、找瓶颈、算兑现、看位置、给评级上限和证伪条件
 ```
 
-默认输出不是“推荐买入”，而是：核心长线候选、强观察对象、高弹性主题、已拥挤/高估对象、剔除或证伪对象。
+### 它解决什么问题
 
-### 工作流
+| 常见 AI 投研问题 | serenity-chan-stock-skill 的处理方式 |
+|---|---|
+| 看起来很完整，其实没有真实数据 | 强制 Data-First preflight，关键数据缺失必须降级 |
+| A 股、美股、港股源混用 | 先解析市场，再走市场专属披露源和行情源 |
+| 热点题材直接映射股票 | 先排产业链层级，再排公司，先找瓶颈再找标的 |
+| 用技术买点证明公司好 | Chan Lens 只判断位置，不替代基本面证据 |
+| 高增长叙事被无限外推 | H4/H5 增长必须由原始披露、订单、产能或财务兑现支持 |
+| 输出无法复盘 | 必须给证据等级、缺失字段、评级上限和证伪触发器 |
 
-1. 先识别请求类型：主题扫描、单股鉴股、候选对比或数据核验。
-2. 先解析市场和代码：A 股、美股、港股不能混用披露源、行情源和财务源。
-3. 先输出 `Data Fetch Plan`：明确每类关键数据的首选源、结构化源、fallback、forbidden source 和失败降级规则。
-4. 再做数据预检：当前价格、复权历史、最新财报、公告/filing、供应链证据必须逐项标记状态。
-5. 再进入研究判断：产业链瓶颈、公司证据、财务兑现、估值赔率、技术位置分开分析。
-6. 最后输出评级、动作、证伪条件和需要继续跟踪的触发器。
+### 核心原则
+
+**No Data, No Guess.**
+
+没有取到关键数据时，不允许编造当前价格、市值、财报、客户、订单、估值或买点。取不到就写清楚，评级上限必须下降。
+
+```mermaid
+flowchart LR
+  A["用户输入<br/>主题 / 代码 / 候选池"] --> B["市场解析<br/>CN_A / US / HK"]
+  B --> C["真实取数<br/>quote / history / financials / filings"]
+  C --> D{"数据质量门禁"}
+  D -->|OK| E["Serenity Lens<br/>产业链瓶颈"]
+  D -->|缺失或错源| F["评级封顶<br/>No Data, No Guess"]
+  E --> G["Fundamental Lens<br/>财务兑现与估值"]
+  G --> H["Chan Lens<br/>位置与买点纪律"]
+  H --> I["结论<br/>评级 / 动作 / 证伪条件"]
+  F --> I
+```
+
+### 什么时候使用
+
+| 场景 | 你可以这样问 |
+|---|---|
+| 单股研究 | `分析 NVDA，先取真实数据，再判断长线胜率、估值和买点纪律。` |
+| A 股主题扫描 | `分析国产算力链，先排产业链瓶颈，再筛 1-3 个长线候选。` |
+| 跨市场比较 | `比较 NVDA、TSM、688019.SH，注意不要混用披露源和货币口径。` |
+| 新闻转财报 | `这条 AI infrastructure news 会传导到哪些公司财报？给 1-4 季度验证路径。` |
+| 数据核验 | `不要猜，先确认当前价、复权历史、财报和 filing 是否取到。` |
+
+### 三个分析镜头
+
+| 镜头 | 负责回答 | 不允许做什么 |
+|---|---|---|
+| Serenity Lens | 钱流向哪一层？真正卡点在哪里？谁控制瓶颈？ | 不能直接把热点词变成股票清单 |
+| Fundamental + Valuation Lens | 收入、利润、现金流、估值和隐含增长能否兑现？ | 不能用概念热度提高内在增长假设 |
+| Chan Lens | 好公司现在是不是好位置？有没有结构化买点？ | 不能用技术形态拯救被证伪的基本面 |
+
+### 市场路由
+
+同强不同源：A 股、美股、港股经过同样严格的判断层级，但不能互相借用主披露源。
+
+| 市场 | 代码例子 | 主披露源 | 内置/可用能力 | 不能做 |
+|---|---|---|---|---|
+| A 股 | `688019.SH` / `300750.SZ` | 巨潮、上交所、深交所、北交所 | Yahoo L2 行情/历史，CNINFO 公告元数据 | 用 SEC 替代巨潮/交易所公告 |
+| 美股 | `NVDA` / `MU` / `AMD` | SEC EDGAR、Company IR | Yahoo L2 行情/历史，SEC companyfacts/submissions | 用 A 股 F10 或摘要替代 SEC |
+| 港股 | `0700.HK` / `9988.HK` | HKEXnews、公司公告 | Yahoo L2 行情/历史 | 混用 A/H、ADR 的价格、股本和货币 |
+
+```mermaid
+flowchart TB
+  subgraph CN["A 股 CN_A"]
+    CN1["CNINFO / SSE / SZSE / BSE"]
+    CN2["CNY / A 股代码 / 复权口径"]
+  end
+  subgraph US["美股 US"]
+    US1["SEC EDGAR / Company IR"]
+    US2["USD / ticker / SEC XBRL"]
+  end
+  subgraph HK["港股 HK"]
+    HK1["HKEXnews / Company reports"]
+    HK2["HKD / HK ticker / 配售与流动性"]
+  end
+  CN -.-> US
+  US -.-> CN
+  HK -.-> CN
+  HK -.-> US
+```
+
+虚线表示 forbidden substitution：可以做跨市场比较，但不能把一个市场的披露源、价格、股本或货币口径直接替代另一个市场。
 
 ### 数据质量门禁
 
 任何涉及当前股价、历史走势、估值、财报、订单、客户关系、公告、买点或评级的任务，都必须先做数据预检。
 
-报告必须包含：
+| 数据项 | 可用状态 | 失败后影响 |
+|---|---|---|
+| 市场与代码解析 | `OK / PARTIAL / FAILED` | 解析失败只能 `OBSERVE_ONLY` |
+| 当前价格 | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED` | 不能给当前买点，评级最高 B |
+| 历史复权行情 | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED` | 不能输出缠论买点，技术评级最高 C |
+| 财报数据 | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED` | 不能给 S/A 长线结论 |
+| 公告/filing | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED` | 客户、订单、产能只能算线索 |
+| 供应链证据 | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED` | 弱证据不能支撑高评级 |
 
-```markdown
-## 数据质量与限制
-- 市场与代码解析：OK / PARTIAL / FAILED
-- 当前价格：OK / PARTIAL / STALE / FAILED / PENDING
-- 历史复权行情：OK / PARTIAL / STALE / FAILED / PENDING
-- 财报数据：OK / PARTIAL / STALE / FAILED / PENDING
-- 公告/filing：OK / PARTIAL / STALE / FAILED / PENDING
-- 供应链证据：OK / PARTIAL / STALE / FAILED / PENDING
-- 无法验证字段：____
-- 因数据限制，本报告评级上限：S/A/B/C/D/OBSERVE_ONLY
+`NOT_APPLICABLE` 和 `NOT_REQUESTED` 不是成功状态。正式评级任务中，它们等同于关键数据不可用，必须触发评级封顶。
+
+### 评级含义
+
+| 评级 | 含义 | 使用边界 |
+|---|---|---|
+| S | 核心长线候选 | 数据、证据、财务、估值和位置都很强 |
+| A | 强观察对象 | 结论强，但仍需等待验证或买点 |
+| B | 有潜力但有缺口 | 数据、证据、估值或时点存在明显缺口 |
+| C | 主题型或交易型 | 不适合作长线核心，只能跟踪线索 |
+| D | 剔除或反面样本 | 已证伪、风险过大或质量不达标 |
+| OBSERVE_ONLY | 仅观察 | 市场、代码或关键数据未解析 |
+
+评分是 100 分制，但最终评级必须受数据质量上限约束。
+
+```mermaid
+flowchart LR
+  S1["数据质量 15"] --> R["Final Rating"]
+  S2["Serenity 瓶颈 20"] --> R
+  S3["证据质量 15"] --> R
+  S4["财务兑现 15"] --> R
+  S5["估值赔率 15"] --> R
+  S6["技术位置 10"] --> R
+  S7["风险证伪 10"] --> R
+  Cap["Data Quality Cap"] -. "强制封顶" .-> R
 ```
 
-硬规则：
+### 快速开始
 
-- 当前价格失败：不能给“当前买点”；评级最高 B。
-- 复权历史行情失败：不能输出缠论买点；技术评级最高 C。
-- 最新财报失败：不能给 S/A 长线结论。
-- 原始公告/filing 失败：客户、订单、产能只能算线索，不能算强证据。
-- 多源价格差异 > 0.5%：必须说明；> 2%：暂停估值和技术结论。
-- A 股数据不得默认用美股源；美股财报不得用 A 股 F10 代替；港股和 A/H 双重上市必须区分代码、货币、股本。
+解析代码和数据源计划：
 
-### 市场路由
+```bash
+python scripts/data_router.py resolve 688019
+python scripts/data_router.py plan NVDA
+```
 
-| 市场 | 代码例子 | 披露主源 | 行情/财务优先级 | 关键风险 |
-|---|---|---|---|---|
-| A 股 | 688019.SH / 300750.SZ / 920593.BJ | 巨潮、上交所、深交所、北交所 | Wind/Choice/CSMAR/Tushare 到 AKShare/BaoStock 辅助 | 复权口径、F10 错误、互动平台弱证据 |
-| 美股 | AAPL / NVDA / MU | SEC EDGAR、公司 IR | Polygon/FactSet/Bloomberg/Tiingo/Yahoo/Stooq；SEC XBRL 财报 | split、ADR、非 GAAP、SBC、ATM/S-3 |
-| 港股 | 0700.HK / 9988.HK | HKEXnews、公司公告 | Wind/Choice/港交所/财经数据商 | 港币、流动性、配售、A/H 差异 |
+真实取数并生成可审计数据包：
 
-### 三个分析镜头
+```bash
+python scripts/data_router.py fetch NVDA \
+  --out-dir /tmp/serenity-chan-data/NVDA-smoke \
+  --sec-user-agent "Your Name your.email@example.com"
+```
 
-`Serenity Lens`：寻找真正卡住产业链的瓶颈，而不是追热点。核心问题是：谁在花大钱，钱流到哪一层，哪一层最窄，谁控制窄口，市场是否错分，以及这个错分能否在 1-4 个季度内被财报或公告验证。
-
-`Fundamental + Valuation Lens`：验证候选能否成为长线对象。重点检查收入增速、核心业务占比、毛利率、净利率、经营现金流、应收、存货、合同负债、capex、折旧、融资稀释、客户集中度、市场隐含增长和三情景估值。
-
-`Chan Lens`：只负责位置，不负责证明公司好坏。必须区分“好赛道”“好公司”“好股票”“当前好买点”。禁止用技术买点拯救已证伪的基本面，也禁止在利好当天无结构追高。
-
-### 评分与评级
-
-综合评分为 100 分，但最终评级必须受数据质量上限约束。
-
-| 模块 | 权重 |
-|---|---:|
-| 数据质量与可核验性 | 15 |
-| Serenity 瓶颈强度 | 20 |
-| 客户/订单/供应链证据 | 15 |
-| 财务兑现质量 | 15 |
-| 估值与内在增长赔率 | 15 |
-| 缠论/技术位置 | 10 |
-| 风险、证伪与治理 | 10 |
-
-评级含义：
-
-- S：核心长线候选。
-- A：强观察对象。
-- B：有潜力但存在数据、证据或估值缺口。
-- C：主题型或交易型，不适合作长线核心。
-- D：剔除、证伪或反面样本。
-- OBSERVE_ONLY：仅观察，市场或关键数据未解析。
-
-### 输出合同
-
-标准报告必须包含：
-
-1. 结论先行：最值得优先研究、不适合追、仅观察等。
-2. 数据质量与限制。
-3. 一句话 thesis。
-4. 产业链位置和卡点。
-5. 证据等级：事实、推断、待验证。
-6. 财务兑现与估值。
-7. 缠论/技术位置。
-8. 催化剂和 1-4 季度验证路径。
-9. 证伪条件。
-10. 行动框架：观察、等买点、小仓试错、核心候选、剔除。
-
-交付 Markdown 报告前必须运行：
+运行报告门禁：
 
 ```bash
 python scripts/validate_output_contract.py <report.md>
+python scripts/validate_output_contract_json.py <contract.json>
 ```
+
+运行本地 eval：
+
+```bash
+python scripts/run_static_evals.py
+python scripts/run_real_data_smoke.py --case-set all \
+  --out-root /tmp/serenity-chan-real-data-smoke \
+  --sec-user-agent "Your Name your.email@example.com"
+```
+
+### 内置工具
+
+| 路径 | 作用 |
+|---|---|
+| `scripts/data_layer.py` | 市场解析、真实数据 adapter、源路由底层契约 |
+| `scripts/data_router.py` | CLI 入口，生成 fetch plan、真实数据包和质量报告 |
+| `scripts/market_source_policy.py` | Markdown/JSON 共享的市场错源检测规则 |
+| `scripts/validate_output_contract.py` | Markdown 报告门禁 |
+| `scripts/validate_output_contract_json.py` | 结构化 JSON 输出合同门禁 |
+| `scripts/serenity_chan_scorecard.py` | 100 分评分与评级封顶 |
+| `scripts/build_falsification_dashboard.py` | 证伪条件 dashboard 生成与校验 |
+| `scripts/run_static_evals.py` | 静态回归用例 |
+| `scripts/run_real_data_smoke.py` | 联网真实取数 smoke |
 
 ### 安装
 
@@ -145,21 +204,14 @@ mkdir -p "$SKILL_DIR"
 cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
 ```
 
-### 使用示例
-
-```text
-请用 serenity-chan-stock-skill 分析 A 股国产算力链，目标是筛出 1-3 个长线高胜率对象。先输出 Data Fetch Plan，再做产业链卡点排序、公司筛选、财务和缠论买点判断。
-```
-
-### 本地门禁
+### 本地验证
 
 ```bash
 python scripts/validate_skill.py .
-python scripts/data_router.py resolve 688019
-python scripts/data_router.py plan AAPL
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
-python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
+python scripts/build_falsification_dashboard.py examples/falsification_dashboard_example.json --validate-only
 python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md
+python scripts/validate_output_contract_json.py evals/fixtures/pass_output_contract_json.json
 python scripts/run_static_evals.py
 ```
 
@@ -167,126 +219,117 @@ python scripts/run_static_evals.py
 
 ## English
 
-`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research. It converts a theme, ticker, or candidate pool into a verifiable, falsifiable, and trackable research conclusion instead of a trading instruction.
+### What It Is
 
-This skill provides a research framework, evidence chain, rating constraints, and risk boundaries. It does not provide personalized investment advice, promise returns, or execute trades.
+`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research.
 
-### Core Idea
+It helps an AI agent convert a theme, ticker, or candidate pool into a verifiable research output with source routing, data-quality gates, evidence levels, rating caps, and falsification triggers.
 
-The core rule is `No Data, No Guess`: when critical data is missing, the rating cap must be downgraded. The agent must not invent current prices, market caps, financials, customers, orders, valuations, or buy points.
+It does not produce personalized investment advice, promise returns, or execute trades.
 
-The full reasoning chain is:
+### Core Promise
 
-```text
-Market / policy / technology narrative
-→ Confirmed demand inflection
-→ Value-chain and supply-chain layers
-→ True capacity bottleneck
-→ Company mapping
-→ Evidence level
-→ Financial realization
-→ Intrinsic growth versus implied expectations
-→ Technical position and Chan buy-point discipline
-→ Position conditions and falsification triggers
+**No Data, No Guess.**
+
+If critical data is missing, the output must say so and downgrade the rating cap. The agent must not invent current prices, market caps, financials, customers, orders, valuations, or buy points.
+
+```mermaid
+flowchart LR
+  A["Input<br/>theme / ticker / candidates"] --> B["Market routing<br/>CN_A / US / HK"]
+  B --> C["Real data fetch<br/>quote / history / financials / filings"]
+  C --> D{"Data gate"}
+  D -->|OK| E["Serenity Lens<br/>bottleneck"]
+  D -->|missing or wrong source| F["Rating cap<br/>No Data, No Guess"]
+  E --> G["Fundamental Lens<br/>financial realization"]
+  G --> H["Chan Lens<br/>position discipline"]
+  H --> I["Output<br/>rating / action / falsification"]
+  F --> I
 ```
 
-The default output is not “buy now”. It classifies ideas as long-term core candidates, strong watchlist names, high-beta themes, crowded or overvalued names, and rejected or falsified candidates.
+### Why It Exists
 
-### Workflow
-
-1. Identify the request type: theme scan, single-company challenge, candidate comparison, or data audit.
-2. Resolve market and ticker first: A-share, US, and HK sources must not be mixed.
-3. Produce a `Data Fetch Plan`: list preferred sources, structured sources, fallback sources, forbidden sources, and downgrade rules for each critical dataset.
-4. Run a data preflight: current price, adjusted history, latest financials, filings, and supply-chain evidence must each have a status.
-5. Analyze only after preflight: separate bottleneck logic, company evidence, financial realization, valuation odds, and technical position.
-6. Deliver rating, action, falsification conditions, and follow-up triggers.
-
-### Data Quality Gate
-
-Any task involving current price, historical trend, valuation, financials, orders, customer relationships, filings, buy points, or ratings must start with a data preflight.
-
-The report must include:
-
-```markdown
-## Data Quality And Limits
-- Market and ticker resolution: OK / PARTIAL / FAILED
-- Current price: OK / PARTIAL / STALE / FAILED / PENDING
-- Adjusted history: OK / PARTIAL / STALE / FAILED / PENDING
-- Financial data: OK / PARTIAL / STALE / FAILED / PENDING
-- Filings: OK / PARTIAL / STALE / FAILED / PENDING
-- Supply-chain evidence: OK / PARTIAL / STALE / FAILED / PENDING
-- Unverified fields: ____
-- Rating cap from data limits: S/A/B/C/D/OBSERVE_ONLY
-```
-
-Hard rules:
-
-- If current price is unavailable, no current buy point is allowed and the rating is capped at B.
-- If adjusted historical data is unavailable, no Chan buy point is allowed and the technical rating is capped at C.
-- If latest financials are unavailable, S/A long-term conclusions are not allowed.
-- If primary filings are unavailable, customers, orders, and capacity can only be treated as leads, not strong evidence.
-- If cross-source price differences exceed 0.5%, disclose it; if they exceed 2%, pause valuation and technical conclusions.
-- Do not use US sources for A-share data, A-share F10 summaries for US financials, or mixed A/H tickers without separating code, currency, and share count.
+| AI research failure mode | Guardrail |
+|---|---|
+| Polished output without real data | Mandatory data preflight |
+| Mixed A-share, US, and HK sources | Market-specific disclosure routing |
+| Hot theme directly mapped to stocks | Layer-first bottleneck workflow |
+| Technical setup used as proof of quality | Chan Lens only judges position |
+| H4/H5 growth inferred from hype | High growth requires primary evidence |
+| Conclusions cannot be audited | Evidence ledger, rating cap, falsification triggers |
 
 ### Market Routing
 
-| Market | Examples | Primary disclosure sources | Price and financial priority | Key risks |
+| Market | Examples | Primary sources | Built-in coverage | Forbidden substitution |
 |---|---|---|---|---|
-| A-share | 688019.SH / 300750.SZ / 920593.BJ | CNINFO, SSE, SZSE, BSE | Wind/Choice/CSMAR/Tushare, then AKShare/BaoStock as auxiliary sources | Adjustment basis, F10 errors, weak investor-platform evidence |
-| US | AAPL / NVDA / MU | SEC EDGAR, company IR | Polygon/FactSet/Bloomberg/Tiingo/Yahoo/Stooq; SEC XBRL financials | Splits, ADRs, non-GAAP, SBC, ATM/S-3 |
-| HK | 0700.HK / 9988.HK | HKEXnews, company announcements | Wind/Choice/HKEX/financial data vendors | HKD, liquidity, placings, A/H differences |
+| A-share | `688019.SH`, `300750.SZ` | CNINFO, SSE, SZSE, BSE | Yahoo L2 quote/history, CNINFO announcement metadata | SEC filings as A-share evidence |
+| US | `NVDA`, `MU`, `AMD` | SEC EDGAR, Company IR | Yahoo L2 quote/history, SEC companyfacts/submissions | A-share F10 as US financial evidence |
+| HK | `0700.HK`, `9988.HK` | HKEXnews, company reports | Yahoo L2 quote/history | ADR or A/H data without separate currency/share basis |
 
-### Three Analytical Lenses
+### Data Quality Gate
 
-`Serenity Lens`: find the real supply-chain bottleneck instead of chasing hot narratives. Ask who is spending, where the money flows, which layer is narrowest, who controls that layer, whether the market is misclassifying it, and whether filings or financials can validate the thesis within 1-4 quarters.
+| Dataset | Statuses | If unavailable |
+|---|---|---|
+| Market resolution | `OK / PARTIAL / FAILED` | Observe only |
+| Current price | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED` | No current buy point, cap at B |
+| Adjusted history | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED` | No Chan buy point, technical cap at C |
+| Financials | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED` | No S/A long-term rating |
+| Filings | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED` | Customer/order/capacity evidence is only a lead |
+| Supply-chain evidence | `OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED` | Weak evidence cannot support high conviction |
 
-`Fundamental + Valuation Lens`: decide whether a candidate can become a long-term object. Check revenue quality, core-business mix, gross margin, net margin, operating cash flow, receivables, inventory, contract liabilities, capex, depreciation, dilution, customer concentration, implied growth, and bull/base/bear valuation scenarios.
+`NOT_APPLICABLE` and `NOT_REQUESTED` cannot bypass the gate. For rating tasks, they count as unavailable.
 
-`Chan Lens`: judge position only. It does not prove company quality. Separate “good sector”, “good company”, “good stock”, and “good current entry”. Do not use technical buy points to rescue a falsified fundamental thesis, and do not chase news-day breakouts without structure.
+### The Three Lenses
 
-### Scoring And Ratings
+| Lens | Main question | Boundary |
+|---|---|---|
+| Serenity Lens | Where is the true value-chain bottleneck? | Do not rank companies before ranking layers |
+| Fundamental + Valuation Lens | Can the thesis show up in revenue, margins, cash flow, and valuation odds? | Do not turn market hype into intrinsic growth |
+| Chan Lens | Is the stock in a disciplined position? | Do not use technicals to rescue falsified fundamentals |
 
-The scorecard is 100 points, but final ratings are constrained by data-quality caps.
+### Quick Start
 
-| Module | Weight |
-|---|---:|
-| Data quality and verifiability | 15 |
-| Serenity bottleneck strength | 20 |
-| Customer/order/supply-chain evidence | 15 |
-| Financial realization quality | 15 |
-| Valuation and intrinsic-growth odds | 15 |
-| Chan/technical position | 10 |
-| Risk, falsification, and governance | 10 |
+Resolve a ticker and build a source plan:
 
-Rating meanings:
+```bash
+python scripts/data_router.py resolve 688019
+python scripts/data_router.py plan NVDA
+```
 
-- S: long-term core candidate.
-- A: strong watchlist name.
-- B: promising, but with data, evidence, or valuation gaps.
-- C: thematic or trading-oriented, not a long-term core object.
-- D: rejected, falsified, or negative example.
-- OBSERVE_ONLY: observe only because market or critical data is unresolved.
+Fetch real data into an auditable bundle:
 
-### Output Contract
+```bash
+python scripts/data_router.py fetch NVDA \
+  --out-dir /tmp/serenity-chan-data/NVDA-smoke \
+  --sec-user-agent "Your Name your.email@example.com"
+```
 
-A standard report must include:
-
-1. Conclusion first: priority research, do not chase, observe only, and so on.
-2. Data quality and limits.
-3. One-sentence thesis.
-4. Value-chain position and bottleneck.
-5. Evidence levels: facts, inference, and missing proof.
-6. Financial realization and valuation.
-7. Chan and technical position.
-8. Catalysts and 1-4 quarter validation path.
-9. Falsification conditions.
-10. Action framework: observe, wait for buy point, small test position, core candidate, or reject.
-
-Before delivering a Markdown report, run:
+Validate outputs before delivery:
 
 ```bash
 python scripts/validate_output_contract.py <report.md>
+python scripts/validate_output_contract_json.py <contract.json>
 ```
+
+Run local regression gates:
+
+```bash
+python scripts/validate_skill.py .
+python scripts/run_static_evals.py
+python scripts/run_real_data_smoke.py --case-set all \
+  --out-root /tmp/serenity-chan-real-data-smoke \
+  --sec-user-agent "Your Name your.email@example.com"
+```
+
+### Key Files
+
+| Path | Purpose |
+|---|---|
+| `SKILL.md` | Runtime instructions loaded by compatible agents |
+| `references/` | Detailed data routing, Serenity, fundamentals, Chan, templates, and risk rules |
+| `scripts/data_router.py` | CLI for routing, validation, real fetches, and manifests |
+| `scripts/validate_output_contract.py` | Markdown report safety gate |
+| `scripts/validate_output_contract_json.py` | Structured JSON contract gate |
+| `evals/static_cases.json` | Regression cases for source routing, rating caps, and output rules |
 
 ### Install
 
@@ -304,22 +347,4 @@ Claude Code:
 SKILL_DIR="$HOME/.claude/skills/serenity-chan-stock-skill"
 mkdir -p "$SKILL_DIR"
 cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
-```
-
-### Example Prompt
-
-```text
-Use serenity-chan-stock-skill to analyze the A-share domestic AI compute supply chain. Find 1-3 long-term high-probability candidates. Start with a Data Fetch Plan, then rank value-chain bottlenecks, companies, financial evidence, and Chan buy-point discipline.
-```
-
-### Local Gates
-
-```bash
-python scripts/validate_skill.py .
-python scripts/data_router.py resolve 688019
-python scripts/data_router.py plan AAPL
-python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
-python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
-python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md
-python scripts/run_static_evals.py
 ```

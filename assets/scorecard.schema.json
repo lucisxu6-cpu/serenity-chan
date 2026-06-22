@@ -18,7 +18,7 @@
   "properties": {
     "ticker": {"type": "string", "minLength": 1},
     "company": {"type": "string"},
-    "market": {"type": "string", "enum": ["CN_A", "US", "HK", "OTHER"]},
+    "market": {"type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL", "OTHER", "UNKNOWN"]},
     "as_of_date": {"type": "string", "pattern": "^(\\d{4}-\\d{2}-\\d{2}|YYYY-MM-DD)$"},
     "data_quality": {"$ref": "#/$defs/module"},
     "serenity": {"$ref": "#/$defs/module"},
@@ -38,6 +38,8 @@
         "price_source_conflict_gt_2pct": {"type": "boolean"},
         "major_dilution_or_governance_red_flag": {"type": "boolean"},
         "technical_escape_overheat": {"type": "boolean"},
+        "h4_h5_without_strong_evidence": {"type": "boolean"},
+        "market_implied_growth_exceeds_evidence": {"type": "boolean"},
         "fundamental_falsified": {"type": "boolean"}
       },
       "additionalProperties": false

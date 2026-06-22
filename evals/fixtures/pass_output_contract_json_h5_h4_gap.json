@@ -1,0 +1,44 @@
+{
+  "market_route": {
+    "normalized_symbol": "NVDA",
+    "market": "US",
+    "currency": "USD",
+    "primary_disclosure_sources": ["SEC EDGAR", "Company IR"],
+    "forbidden_sources": ["CNINFO"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "PENDING",
+    "financials": "OK",
+    "filings": "OK",
+    "supply_chain_evidence": "PARTIAL"
+  },
+  "rating": "B",
+  "rating_cap": "B",
+  "evidence": [
+    {
+      "claim": "Primary filings support H4 growth but do not yet close the gap to market-implied H5.",
+      "source": "Company IR earnings release",
+      "source_level": "L1",
+      "confidence": "Strong",
+      "missing_proof": "repeat filing-cycle proof for H5 durability"
+    }
+  ],
+  "falsification": [
+    "If future filings do not close the H5 evidence gap, keep the rating capped."
+  ],
+  "growth_hypothesis": {
+    "market_implied": "H5",
+    "evidence_supported": "H4",
+    "h4_h5_evidence_bar_met": false,
+    "posterior_basis": "Strong current financial evidence, but market-implied growth still exceeds evidence-supported growth."
+  },
+  "action": "等待买点",
+  "uncertainty": {
+    "confirmed": "Primary filings support high growth.",
+    "inferred": "Market-implied growth is above evidence-supported growth.",
+    "missing": "Audited evidence that H5 durability is already met.",
+    "downgrade_trigger": "No continued filing-cycle proof for H5."
+  }
+}

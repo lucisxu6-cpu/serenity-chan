@@ -1,0 +1,49 @@
+{
+  "symbol": "688019.SH",
+  "company": "Example Co",
+  "market": "CN_A",
+  "currency": "CNY",
+  "as_of_date": "YYYY-MM-DD",
+  "rating": "B",
+  "rating_cap": "B",
+  "thesis": {
+    "summary": "Demand inflection may flow into a scarce upstream layer, but H4/H5 growth is not yet proven.",
+    "market_implied_growth": "H5",
+    "evidence_supported_growth": "H3",
+    "key_assumption": "Revenue acceleration must appear in filings, not only in theme heat.",
+    "missing_proof": "Customer/order and margin evidence still need primary-source confirmation."
+  },
+  "monitors": [
+    {
+      "id": "F01",
+      "category": "valuation",
+      "claim": "Market price implies H4/H5 growth while evidence currently supports H3.",
+      "falsification_trigger": "Next filing or official guidance does not show revenue, margin, or backlog acceleration consistent with H4/H5.",
+      "source_required": "Annual report, interim report, quarterly report, exchange announcement, or audited customer/order disclosure.",
+      "check_frequency": "Each quarterly filing and major contract announcement.",
+      "status": "WATCH",
+      "latest_check": "YYYY-MM-DD",
+      "action_if_triggered": "Keep rating cap at B or lower; do not upgrade to core candidate."
+    },
+    {
+      "id": "F02",
+      "category": "financials",
+      "claim": "Demand should convert into higher-quality revenue and cash flow.",
+      "falsification_trigger": "Revenue grows while receivables, inventory, or low-margin trade revenue grow faster than cash flow.",
+      "source_required": "Financial statements and segment disclosure.",
+      "check_frequency": "Quarterly.",
+      "status": "UNKNOWN",
+      "latest_check": "YYYY-MM-DD",
+      "action_if_triggered": "Downgrade the financial realization module and reassess thesis quality."
+    }
+  ],
+  "evidence_links": [
+    {
+      "claim": "H4/H5 growth is not proven by primary evidence yet.",
+      "source": "Data preflight and latest filing review",
+      "source_level": "L1",
+      "confidence": "Medium"
+    }
+  ],
+  "notes": "This example is intentionally conservative: high market-implied growth requires a valuation monitor."
+}

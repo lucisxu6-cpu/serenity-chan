@@ -1,0 +1,42 @@
+{
+  "market_route": {
+    "normalized_symbol": "688019.SH",
+    "market": "CN_A",
+    "currency": "CNY",
+    "primary_disclosure_sources": ["CNINFO", "SSE"],
+    "forbidden_sources": ["SEC EDGAR"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "OK",
+    "financials": "OK",
+    "filings": "OK",
+    "supply_chain_evidence": "PARTIAL"
+  },
+  "rating": "A",
+  "rating_cap": "A",
+  "evidence": [
+    {
+      "claim": "Theme heat implies H5 growth.",
+      "source": "concept summary",
+      "source_level": "L3",
+      "confidence": "Weak",
+      "missing_proof": "primary evidence"
+    }
+  ],
+  "falsification": ["No order proof"],
+  "growth_hypothesis": {
+    "market_implied": "H5",
+    "evidence_supported": "H3",
+    "h4_h5_evidence_bar_met": false,
+    "posterior_basis": "theme heat only"
+  },
+  "action": "核心候选",
+  "uncertainty": {
+    "confirmed": "theme heat",
+    "inferred": "growth",
+    "missing": "primary evidence",
+    "downgrade_trigger": "no filings support"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "market_route": {
+    "normalized_symbol": "NVDA",
+    "market": "US",
+    "currency": "USD",
+    "primary_disclosure_sources": ["SEC EDGAR", "Company IR"],
+    "forbidden_sources": ["CNINFO"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "OK",
+    "financials": "OK",
+    "filings": "OK",
+    "supply_chain_evidence": "PARTIAL"
+  },
+  "rating": "B",
+  "rating_cap": "B",
+  "evidence": [
+    {
+      "claim": "Primary filings support H4 growth but do not yet prove H5 durability.",
+      "source": "Company IR earnings release",
+      "source_level": "L1",
+      "confidence": "Strong"
+    }
+  ],
+  "falsification": [
+    "If future filings do not close the H5 evidence gap, keep the rating capped."
+  ],
+  "growth_hypothesis": {
+    "market_implied": "H5",
+    "evidence_supported": "H4",
+    "h4_h5_evidence_bar_met": false,
+    "posterior_basis": "Market-implied growth is one tier above evidence-supported growth."
+  },
+  "action": "核心候选",
+  "uncertainty": {
+    "confirmed": "Primary filings support high growth.",
+    "inferred": "Market-implied growth exceeds evidence-supported growth.",
+    "missing": "H5 proof.",
+    "downgrade_trigger": "No continued proof."
+  }
+}

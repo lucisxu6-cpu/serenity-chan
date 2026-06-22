@@ -1,0 +1,34 @@
+{
+  "market_route": {
+    "normalized_symbol": "NVDA",
+    "market": "US",
+    "currency": "USD",
+    "primary_disclosure_sources": ["SEC EDGAR"],
+    "forbidden_sources": ["CNINFO"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "OK",
+    "financials": "NOT_APPLICABLE",
+    "filings": "NOT_APPLICABLE"
+  },
+  "rating": "A",
+  "rating_cap": "A",
+  "evidence": [
+    {
+      "claim": "Growth is confirmed.",
+      "source": "SEC EDGAR 10-K",
+      "source_level": "L0",
+      "confidence": "Strong"
+    }
+  ],
+  "falsification": ["Future filing contradicts the claim."],
+  "action": "强观察",
+  "uncertainty": {
+    "confirmed": "Key datasets are unavailable.",
+    "inferred": "Still treated as A.",
+    "missing": "Financials and filings.",
+    "downgrade_trigger": "Data remains unavailable."
+  }
+}

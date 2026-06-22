@@ -11,9 +11,13 @@ from typing import Any, Optional, Sequence
 
 try:
     from validate_output_contract import validate_text
+    from validate_output_contract_json import validate_contract
+    from build_falsification_dashboard import build_from_output_contract
     from serenity_chan_scorecard import score
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
     from scripts.validate_output_contract import validate_text
+    from scripts.validate_output_contract_json import validate_contract
+    from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.serenity_chan_scorecard import score
 
 
@@ -44,6 +48,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             scorecard_path = root / case["scorecard"]
             try:
                 result_payload = score(json.loads(scorecard_path.read_text(encoding="utf-8")))
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "output_json":
+            contract_path = root / case["contract"]
+            try:
+                result_payload = validate_contract(json.loads(contract_path.read_text(encoding="utf-8")))
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "dashboard_from_output_json":
+            contract_path = root / case["contract"]
+            try:
+                dashboard = build_from_output_contract(json.loads(contract_path.read_text(encoding="utf-8")))
+                monitors = dashboard.get("monitors", [])
+                result_payload = {
+                    "ok": True,
+                    "has_valuation_monitor": any(
+                        isinstance(monitor, dict) and monitor.get("category") == "valuation"
+                        for monitor in monitors
+                    ),
+                }
                 actual_pass = True
             except Exception as exc:
                 actual_pass = False

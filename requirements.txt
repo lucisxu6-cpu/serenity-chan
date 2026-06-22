@@ -1,2 +1,4 @@
 # Core validation scripts use the Python standard library only.
+# Real-data fetch adapters also use the standard library; if certifi is
+# installed, HTTPS certificate validation uses it to fix local CA path issues.
 # Provider adapters may declare optional dependencies when they are added.

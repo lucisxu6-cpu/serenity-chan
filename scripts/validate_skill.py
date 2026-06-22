@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-ALLOWED_FRONTMATTER_KEYS = {"name", "description", "license", "metadata"}
+ALLOWED_FRONTMATTER_KEYS = {"name", "description"}
 REQUIRED_DIRS = ["references", "assets", "scripts", "evals", "agents", "examples"]
 REQUIRED_FILES = [
     "references/01_data_first_market_router.md",
@@ -17,14 +17,19 @@ REQUIRED_FILES = [
     "references/06_risk_compliance_no_guess.md",
     "assets/analysis_request.schema.json",
     "assets/evidence_ledger.schema.json",
+    "assets/falsification_dashboard.schema.json",
     "assets/scorecard_template.json",
     "assets/scorecard.schema.json",
     "assets/output_contract.schema.json",
-    "scripts/data_layer_v3.py",
+    "scripts/data_layer.py",
+    "scripts/market_source_policy.py",
     "scripts/data_router.py",
+    "scripts/build_falsification_dashboard.py",
     "scripts/serenity_chan_scorecard.py",
     "scripts/validate_output_contract.py",
+    "scripts/validate_output_contract_json.py",
     "scripts/run_static_evals.py",
+    "scripts/run_real_data_smoke.py",
 ]
 
 

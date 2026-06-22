@@ -1,4 +1,4 @@
 interface:
   display_name: "Serenity Chan Stock"
-  short_description: "Data-first stock research and entry discipline"
-  default_prompt: "Use $serenity-chan-stock-skill to analyze a stock or theme with data-quality caps, evidence labels, valuation, and Chan buy-point discipline."
+  short_description: "Data-first cross-market stock research with source-routing gates"
+  default_prompt: "Use $serenity-chan-stock-skill to analyze a stock or theme with market-specific data routing, layer-first bottleneck research, evidence-gated growth assumptions, valuation, and Chan buy-point discipline."

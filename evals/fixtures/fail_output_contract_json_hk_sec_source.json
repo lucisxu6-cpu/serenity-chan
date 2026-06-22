@@ -1,0 +1,34 @@
+{
+  "market_route": {
+    "normalized_symbol": "0700.HK",
+    "market": "HK",
+    "currency": "HKD",
+    "primary_disclosure_sources": ["SEC EDGAR"],
+    "forbidden_sources": ["SEC EDGAR unless ADR/dual-listed"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "OK",
+    "financials": "OK",
+    "filings": "OK"
+  },
+  "rating": "A",
+  "rating_cap": "A",
+  "evidence": [
+    {
+      "claim": "HK filing is confirmed.",
+      "source": "SEC EDGAR 20-F",
+      "source_level": "L0",
+      "confidence": "Strong"
+    }
+  ],
+  "falsification": ["HKEXnews contradicts the claim."],
+  "action": "强观察",
+  "uncertainty": {
+    "confirmed": "Wrong source was used.",
+    "inferred": "Still treated as strong evidence.",
+    "missing": "HKEXnews/company report.",
+    "downgrade_trigger": "HKEX mismatch remains unresolved."
+  }
+}

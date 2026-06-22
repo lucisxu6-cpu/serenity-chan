@@ -13,13 +13,18 @@
 
 ## 1. 数据质量与限制
 - 市场与代码解析：OK / PARTIAL / FAILED
-- 当前价格：OK / PARTIAL / STALE / FAILED
-- 历史复权行情：OK / PARTIAL / STALE / FAILED
-- 财报数据：OK / PARTIAL / STALE / FAILED
-- 公告/filing：OK / PARTIAL / STALE / FAILED
-- 供应链证据：OK / PARTIAL / STALE / FAILED
+- 标准代码/市场/货币：____
+- 主披露源：____
+- forbidden source：____
+- 当前价格：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
+- 历史复权行情：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
+- 财报数据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
+- 公告/filing：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
+- 供应链证据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
 - 无法验证字段：____
 - 因数据限制，本报告评级上限：____
+
+`NOT_APPLICABLE` 和 `NOT_REQUESTED` 只说明当前 scope 或适用性，不能支持高评级；正式评级任务中仍按关键数据不可用处理。
 
 ## 2. 一句话 Thesis
 这家公司控制/接近的瓶颈是：____。
@@ -68,6 +73,7 @@
 - 当前市值：____
 - 市场隐含增长：____
 - Bayesian H0-H5 posterior：____
+- H4/H5 证据门槛是否满足：是 / 否 / 不适用；理由____
 - Bull/Base/Bear 合理市值：____
 - 当前赔率：高 / 中 / 低 / 数据不足
 
@@ -112,6 +118,8 @@
 ## 1. 数据质量与限制
 - 扫描范围：____
 - 市场：A 股 / 美股 / 港股 / 全球
+- 市场源路径：____
+- forbidden source：____
 - Source count：____
 - 评级上限：____
 
@@ -140,6 +148,13 @@
 
 ## 6. Top Candidates
 对每家公司按单股模板简写。
+每个 top candidate 必须回答：
+
+- 它卡住哪一层；
+- 证据是 Strong / Medium / Weak；
+- 财务报表会在哪一项体现；
+- 当前市场是否已隐含 H4/H5；
+- 缺什么证据会导致降级。
 
 ## 7. 下一步验证
 - 查____公告；

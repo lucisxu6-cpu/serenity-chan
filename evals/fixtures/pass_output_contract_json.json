@@ -1,0 +1,51 @@
+{
+  "market_route": {
+    "normalized_symbol": "688019.SH",
+    "market": "CN_A",
+    "currency": "CNY",
+    "primary_disclosure_sources": ["CNINFO", "SSE"],
+    "forbidden_sources": ["SEC EDGAR"]
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "PENDING",
+    "adjusted_history": "PENDING",
+    "financials": "OK",
+    "filings": "OK",
+    "supply_chain_evidence": "PARTIAL"
+  },
+  "rating": "B",
+  "rating_cap": "B",
+  "evidence": [
+    {
+      "claim": "Official filings support only H2/H3 growth so far.",
+      "source": "CNINFO annual report",
+      "source_level": "L1",
+      "confidence": "Strong",
+      "missing_proof": "customer/order confirmation for H4/H5"
+    }
+  ],
+  "falsification": [
+    "If revenue, gross margin, and cash flow do not improve in the next filing cycle, downgrade the thesis."
+  ],
+  "value_chain_layer_rank": [
+    {
+      "layer": "high-speed interconnect",
+      "bottleneck_reason": "qualification cycle and capacity are tight",
+      "candidate_count": 5
+    }
+  ],
+  "growth_hypothesis": {
+    "market_implied": "H5",
+    "evidence_supported": "H3",
+    "h4_h5_evidence_bar_met": false,
+    "posterior_basis": "market expectation exceeds primary evidence"
+  },
+  "action": "观察",
+  "uncertainty": {
+    "confirmed": "filings exist",
+    "inferred": "growth may transmit through orders",
+    "missing": "customer/order proof",
+    "downgrade_trigger": "no financial realization"
+  }
+}

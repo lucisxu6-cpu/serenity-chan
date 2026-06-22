@@ -34,6 +34,7 @@ jobs:
         run: |
           python -m json.tool assets/scorecard.schema.json >/dev/null
           python -m json.tool assets/output_contract.schema.json >/dev/null
+          python -m json.tool assets/falsification_dashboard.schema.json >/dev/null
           python -m json.tool assets/scorecard_template.json >/dev/null
           python -m json.tool evals/static_cases.json >/dev/null
       - name: Smoke test routing
@@ -45,8 +46,13 @@ jobs:
         run: |
           python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --validate-only
           python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
+      - name: Smoke test falsification dashboard
+        run: |
+          python scripts/build_falsification_dashboard.py examples/falsification_dashboard_example.json --validate-only
+          python scripts/build_falsification_dashboard.py examples/falsification_dashboard_example.json --format md
       - name: Output contract and static evals
         run: |
           python scripts/validate_output_contract.py evals/fixtures/pass_no_network_buy_point.md
+          python scripts/validate_output_contract_json.py evals/fixtures/pass_output_contract_json.json
           python scripts/run_static_evals.py
           python -m scripts.run_static_evals

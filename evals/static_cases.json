@@ -10,6 +10,54 @@
     "expect_pass": true
   },
   {
+    "name": "theme-scan-layer-first-passes",
+    "report": "evals/fixtures/pass_theme_scan_layer_first.md",
+    "expect_pass": true
+  },
+  {
+    "name": "h5-market-implied-downgraded-passes",
+    "report": "evals/fixtures/pass_h5_market_implied_downgraded.md",
+    "expect_pass": true
+  },
+  {
+    "name": "cross-market-source-routing-passes",
+    "report": "evals/fixtures/pass_cross_market_source_routing.md",
+    "expect_pass": true
+  },
+  {
+    "name": "news-to-financial-alpha-passes",
+    "report": "evals/fixtures/pass_news_to_financial_alpha.md",
+    "expect_pass": true
+  },
+  {
+    "name": "output-contract-json-passes",
+    "kind": "output_json",
+    "contract": "evals/fixtures/pass_output_contract_json.json",
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true
+    }
+  },
+  {
+    "name": "h5-h4-output-contract-json-passes",
+    "kind": "output_json",
+    "contract": "evals/fixtures/pass_output_contract_json_h5_h4_gap.json",
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true
+    }
+  },
+  {
+    "name": "h5-h4-dashboard-adds-valuation-monitor",
+    "kind": "dashboard_from_output_json",
+    "contract": "evals/fixtures/pass_output_contract_json_h5_h4_gap.json",
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true,
+      "has_valuation_monitor": true
+    }
+  },
+  {
     "name": "missing-financials-high-rating-blocked",
     "report": "evals/fixtures/fail_missing_financials_high_rating.md",
     "expect_pass": false
@@ -17,6 +65,97 @@
   {
     "name": "weak-kol-high-rating-blocked",
     "report": "evals/fixtures/fail_weak_kol_high_rating.md",
+    "expect_pass": false
+  },
+  {
+    "name": "theme-scan-company-first-blocked",
+    "report": "evals/fixtures/fail_theme_scan_company_first.md",
+    "expect_pass": false
+  },
+  {
+    "name": "industry-research-company-first-blocked",
+    "report": "evals/fixtures/fail_industry_research_company_first.md",
+    "expect_pass": false
+  },
+  {
+    "name": "a-share-sec-source-blocked",
+    "report": "evals/fixtures/fail_a_share_sec_source.md",
+    "expect_pass": false
+  },
+  {
+    "name": "us-cninfo-source-blocked",
+    "report": "evals/fixtures/fail_us_cninfo_source.md",
+    "expect_pass": false
+  },
+  {
+    "name": "us-generic-ticker-cninfo-source-blocked",
+    "report": "evals/fixtures/fail_us_generic_ticker_cninfo_source.md",
+    "expect_pass": false
+  },
+  {
+    "name": "hk-sec-source-blocked",
+    "report": "evals/fixtures/fail_hk_sec_source.md",
+    "expect_pass": false
+  },
+  {
+    "name": "not-applicable-high-rating-blocked",
+    "report": "evals/fixtures/fail_not_applicable_high_rating.md",
+    "expect_pass": false
+  },
+  {
+    "name": "not-requested-high-rating-blocked",
+    "report": "evals/fixtures/fail_not_requested_high_rating.md",
+    "expect_pass": false
+  },
+  {
+    "name": "h5-growth-weak-evidence-blocked",
+    "report": "evals/fixtures/fail_h5_growth_weak_evidence.md",
+    "expect_pass": false
+  },
+  {
+    "name": "h5-l3-strong-label-blocked",
+    "report": "evals/fixtures/fail_h5_l3_strong_label.md",
+    "expect_pass": false
+  },
+  {
+    "name": "news-to-financial-missing-transmission-blocked",
+    "report": "evals/fixtures/fail_news_to_financial_missing_transmission.md",
+    "expect_pass": false
+  },
+  {
+    "name": "output-contract-json-h5-high-rating-blocked",
+    "kind": "output_json",
+    "contract": "evals/fixtures/fail_output_contract_json_h5_high_rating.json",
+    "expect_pass": false
+  },
+  {
+    "name": "output-contract-json-h5-h4-core-action-blocked",
+    "kind": "output_json",
+    "contract": "evals/fixtures/fail_output_contract_json_h5_h4_core_action.json",
+    "expect_pass": false
+  },
+  {
+    "name": "output-contract-json-us-cninfo-source-blocked",
+    "kind": "output_json",
+    "contract": "evals/fixtures/fail_output_contract_json_us_cninfo_source.json",
+    "expect_pass": false
+  },
+  {
+    "name": "output-contract-json-hk-sec-source-blocked",
+    "kind": "output_json",
+    "contract": "evals/fixtures/fail_output_contract_json_hk_sec_source.json",
+    "expect_pass": false
+  },
+  {
+    "name": "output-contract-json-not-applicable-high-rating-blocked",
+    "kind": "output_json",
+    "contract": "evals/fixtures/fail_output_contract_json_not_applicable_high_rating.json",
+    "expect_pass": false
+  },
+  {
+    "name": "output-contract-json-not-requested-high-rating-blocked",
+    "kind": "output_json",
+    "contract": "evals/fixtures/fail_output_contract_json_not_requested_high_rating.json",
     "expect_pass": false
   },
   {
@@ -47,9 +186,29 @@
     "expect_pass": false
   },
   {
+    "name": "h5-scorecard-capped-at-b",
+    "kind": "scorecard",
+    "scorecard": "evals/fixtures/pass_h5_scorecard_capped.json",
+    "expect_pass": true,
+    "expected_result": {
+      "rating_cap": "B",
+      "final_rating": "B"
+    }
+  },
+  {
     "name": "other-market-scorecard-observe-only",
     "kind": "scorecard",
     "scorecard": "evals/fixtures/pass_other_market_observe_scorecard.json",
+    "expect_pass": true,
+    "expected_result": {
+      "rating_cap": "OBSERVE_ONLY",
+      "final_rating": "OBSERVE_ONLY"
+    }
+  },
+  {
+    "name": "unknown-market-scorecard-observe-only",
+    "kind": "scorecard",
+    "scorecard": "evals/fixtures/pass_unknown_market_observe_scorecard.json",
     "expect_pass": true,
     "expected_result": {
       "rating_cap": "OBSERVE_ONLY",

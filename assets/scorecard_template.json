@@ -66,6 +66,8 @@
     "price_source_conflict_gt_2pct": false,
     "major_dilution_or_governance_red_flag": false,
     "technical_escape_overheat": false,
+    "h4_h5_without_strong_evidence": false,
+    "market_implied_growth_exceeds_evidence": false,
     "fundamental_falsified": false
   },
   "evidence_notes": [

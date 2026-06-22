@@ -3,6 +3,7 @@
   "title": "SerenityChanOutputContract",
   "type": "object",
   "required": [
+    "market_route",
     "data_quality",
     "rating",
     "rating_cap",
@@ -12,6 +13,23 @@
     "uncertainty"
   ],
   "properties": {
+    "market_route": {
+      "type": "object",
+      "required": ["market", "primary_disclosure_sources", "forbidden_sources"],
+      "properties": {
+        "normalized_symbol": {"type": "string"},
+        "market": {"type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL", "OTHER", "UNKNOWN"]},
+        "currency": {"type": "string"},
+        "primary_disclosure_sources": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "forbidden_sources": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
     "data_quality": {
       "type": "object",
       "required": ["market_resolution", "current_price", "adjusted_history", "financials", "filings"],
@@ -34,6 +52,28 @@
       "type": "array",
       "items": {"type": "string"}
     },
+    "value_chain_layer_rank": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["layer", "bottleneck_reason"],
+        "properties": {
+          "layer": {"type": "string"},
+          "bottleneck_reason": {"type": "string"},
+          "candidate_count": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "growth_hypothesis": {
+      "type": "object",
+      "required": ["market_implied", "evidence_supported"],
+      "properties": {
+        "market_implied": {"type": "string", "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"]},
+        "evidence_supported": {"type": "string", "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"]},
+        "h4_h5_evidence_bar_met": {"type": "boolean"},
+        "posterior_basis": {"type": "string"}
+      }
+    },
     "action": {
       "type": "string",
       "enum": ["观察", "等待买点", "等待二买", "等待三买", "小仓试错", "核心候选", "强观察", "剔除", "不参与", "数据不足"]
@@ -50,7 +90,7 @@
     }
   },
   "$defs": {
-    "status": {"type": "string", "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE"]},
+    "status": {"type": "string", "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]},
     "rating": {"type": "string", "enum": ["S", "A", "B", "C", "D", "OBSERVE_ONLY"]},
     "rating_cap": {"type": "string", "enum": ["S", "A", "B", "C", "D", "OBSERVE_ONLY"]},
     "evidence": {

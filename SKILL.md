@@ -5,15 +5,6 @@ description: Use when performing data-first equity research for A-share, US, HK,
 
 # Serenity + 缠论长线高胜率选股鉴股 Skill
 
-## Skill Metadata
-
-- Version: 3.1.0
-- Language: zh-CN-first
-- License: MIT
-- Compatibility: Codex / Claude Code / Agent Skills-compatible clients
-- Required tools for current analysis: web/search or filing/market-data tools
-- Optional local tools: `python3` for routing, validation, scorecards, and static evals
-
 ## 0. Core Promise
 
 把一个投资主题、股票代码或候选池，转化为一份**可核验、可证伪、可执行跟踪**的研究结论：
@@ -43,23 +34,41 @@ description: Use when performing data-first equity research for A-share, US, HK,
 
 先识别用户请求类型，再选择工作流。
 
-### 1.0 Mandatory Data Fetch Plan
+### 1.0 Mandatory Real Data Fetch And Plan
 
-任何涉及当前股价、财报、估值、市值、客户/订单、评级或买点的任务，必须先输出 `Data Fetch Plan`，再进入分析。
+任何涉及当前股价、财报、估值、市值、客户/订单、评级或买点的任务，必须先尝试真实取数，再输出 `Data Fetch Plan` 和数据状态，最后才进入分析。不能只给 plan 就假装数据已经可用。
 
 `Data Fetch Plan` 至少包含：
 
 - 解析后的市场、标准代码、交易所和货币。
 - 每类关键数据的首选源、结构化源、fallback 和 forbidden source。
-- 当前数据是否已经取到；没取到时先标记 `PENDING`，不能假装可用。
+- 当前数据是否已经取到；没取到时先标记 `PENDING`，本轮未请求时标记 `NOT_REQUESTED`，不能假装可用。
 - 缺失后的评级上限和禁止结论。
+
+同一分析任务在 A 股、美股和港股必须经过相同判断层级，但使用各自市场的主源路径。A 股不得用 SEC 替代巨潮/交易所公告，美股不得用 A 股 F10/摘要替代 SEC/IR，港股必须单独处理 HKEX、货币、股本和配售口径。
 
 优先使用：
 
 ```bash
+python scripts/data_router.py fetch <symbol>
 python scripts/data_router.py plan <symbol>
 python scripts/data_router.py resolve <symbol>
 ```
+
+美股 SEC 官方接口建议显式提供身份，避免被 SEC 拒绝：
+
+```bash
+python scripts/data_router.py fetch NVDA --sec-user-agent "Your Name your.email@example.com"
+```
+
+`fetch` 能自动抓取可用的 L2 行情/复权历史和美股 SEC L0 财报/filing，并生成带 `raw_hash` 的本地数据包。若网络、证书、SEC 身份、源限流或市场不支持导致 fetch 失败，必须把相应字段标记为 `FAILED` / `PENDING`；若 scoped fetch 未请求某数据，标记 `NOT_REQUESTED`。这些状态都不能支持高评级；不得改用猜测值。
+
+内置真实取数边界：
+
+- `Yahoo_Chart_L2`：US / HK / A 股辅助当前行情和日线历史，属于 L2 fallback。
+- `SEC_Companyfacts_L0`：美股 SEC companyfacts 和 submissions，属于 L0 官方源。
+- `CNINFO_Announcements_L0`：A 股巨潮公告元数据和 PDF 链接，属于 L0 官方公告源；不解析财务报表表格。
+- A 股结构化财务、港股 HKEXnews、Wind/Choice/Tushare 等官方或授权源未内置时，不能用错源替代，必须标记失败或等待接入。
 
 ### 1.1 Theme Scan / 主题扫描
 
@@ -72,6 +81,7 @@ python scripts/data_router.py resolve <symbol>
 3. 每个 top candidate 必须说明“卡住什么环节”。
 4. 至少给出一个热门但降级的方向，并说明为什么。
 5. 当前结论必须用最新数据源；没有数据时标记为 initial pass。
+6. 如果直接列股票而不输出产业链地图、瓶颈层级排序和候选池，视为不合格输出。
 
 ### 1.2 Single-Company Challenge / 单股鉴股
 
@@ -112,11 +122,11 @@ python scripts/data_router.py resolve <symbol>
 ```markdown
 ## 数据质量与限制
 - 市场与代码解析：OK / PARTIAL / FAILED
-- 当前价格：OK / PARTIAL / STALE / FAILED
-- 历史复权行情：OK / PARTIAL / STALE / FAILED
-- 财报数据：OK / PARTIAL / STALE / FAILED
-- 公告/filing：OK / PARTIAL / STALE / FAILED
-- 供应链证据：OK / PARTIAL / STALE / FAILED
+- 当前价格：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
+- 历史复权行情：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
+- 财报数据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
+- 公告/filing：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
+- 供应链证据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
 - 无法验证字段：____
 - 因数据限制，本报告评级上限：S/A/B/C/D/OBSERVE_ONLY
 ```
@@ -127,6 +137,7 @@ python scripts/data_router.py resolve <symbol>
 - 复权历史行情失败：不能输出缠论买点；技术评级最高 C。
 - 最新财报失败：不能给 S/A 长线结论。
 - 原始公告/filing 失败：客户、订单、产能只能算线索，不能算强证据。
+- `NOT_APPLICABLE` / `NOT_REQUESTED` 不能绕过关键数据门禁；正式评级任务中视为不可用并触发评级封顶。
 - 多源价格差异 > 0.5%：必须说明；> 2%：暂停估值和技术结论。
 - A 股数据不得默认用美股源；美股财报不得用 A 股 F10 代替；HK 与 A/H 双重上市必须区分代码、货币、股本。
 
@@ -156,6 +167,8 @@ python scripts/data_router.py resolve <symbol>
 Serenity 找到的是候选，基本面决定能否长线。
 
 必须检查：收入增速和核心业务占比、毛利率与定价权、净利率与经营杠杆、经营现金流/应收/存货/合同负债、capex/在建工程/折旧/融资稀释、客户集中与议价权、市场隐含增长 vs 真实内在增长、Bull/Base/Bear 三情景估值。
+
+H4/H5 高增长只能由原始披露、客户/订单、产能、财报兑现或多源强交叉验证支持。主题热度、FOMO、KOL、概念梳理只能提高“市场预期/估值风险”的判断，不能直接提高内在增长假设。
 
 参考 `references/03_fundamental_valuation_framework.md`。
 
@@ -239,7 +252,15 @@ Serenity 找到的是候选，基本面决定能否长线。
 python scripts/validate_output_contract.py <report.md>
 ```
 
+交付结构化 JSON 报告前必须运行：
+
+```bash
+python scripts/validate_output_contract_json.py <contract.json>
+```
+
 若该门禁失败，必须修正报告；在无法取得外部数据时，报告必须降级到门禁允许的评级和动作后再交付。
+
+长期跟踪、候选池或高估值争议对象必须把证伪条件落到 falsification dashboard，优先使用 `scripts/build_falsification_dashboard.py` 验证。
 
 ---
 
@@ -271,13 +292,19 @@ python scripts/validate_output_contract.py <report.md>
 - `assets/scorecard_template.json` — 综合评分模板。
 - `assets/scorecard.schema.json` — 评分输入 schema。
 - `assets/evidence_ledger.schema.json` — 证据台账 schema。
+- `assets/falsification_dashboard.schema.json` — 证伪看板 schema。
 - `assets/analysis_request.schema.json` — 分析请求 schema。
 - `assets/output_contract.schema.json` — 标准输出合同 schema。
 - `assets/prompt_pack.md` — 可复制提示词。
-- `scripts/data_router.py` — 市场识别、数据校验、质量报告脚手架。
+- `scripts/data_layer.py` — 市场路由和数据契约底层模块。
+- `scripts/market_source_policy.py` — Markdown/JSON 共享的市场源隔离规则。
+- `scripts/data_router.py` — 市场识别、真实数据预检、数据校验和质量报告脚手架。
+- `scripts/build_falsification_dashboard.py` — 证伪看板验证和渲染脚本。
 - `scripts/serenity_chan_scorecard.py` — 评分器。
 - `scripts/validate_output_contract.py` — Markdown 报告门禁，检查数据质量、评级上限、证据、证伪和禁用措辞。
+- `scripts/validate_output_contract_json.py` — 结构化 JSON 输出合同门禁。
 - `scripts/run_static_evals.py` — 本地静态 eval runner。
+- `scripts/run_real_data_smoke.py` — 可选联网真实数据 smoke runner，覆盖 NVDA、本体上游链路、A 股和港股当前数据。
 - `scripts/validate_skill.py` — Skill 结构校验。
 - `examples/` — A 股、美股、主题扫描输出样例。
 - `evals/test_cases.md` — 行为测试。

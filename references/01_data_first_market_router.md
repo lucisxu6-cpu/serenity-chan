@@ -168,9 +168,40 @@ currency = HKD unless ADR or dual-counter special case
 
 ---
 
-## 4. Required Data By Task Type
+## 4. Market Parity Contract
 
-### 4.1 单股长线分析
+同一类研究任务必须经过相同判断层级，但不同市场必须使用不同主源和风险清单。
+
+统一判断层级：
+
+```text
+代码解析
+→ 当前价格与复权历史
+→ 最新财报
+→ 原始披露
+→ 供应链证据
+→ 财务质量
+→ 市场隐含增长
+→ 技术位置
+→ 证伪条件
+→ 评级上限
+```
+
+市场源路径不能互相替代：
+
+| 分析对象 | 主披露源 | 禁止替代 |
+|---|---|---|
+| A 股 | 巨潮、上交所、深交所、北交所、公司 IR | SEC EDGAR、10-K/10-Q、东方财富/F10 摘要充当原文 |
+| 美股 | SEC EDGAR、10-K/10-Q/8-K、公司 IR | 巨潮、A 股 F10、东方财富国际摘要充当 SEC filing |
+| 港股 | HKEXnews、公司公告、年报/中报 | A 股或美股同名证券的价格、股本、货币直接套用 |
+
+如果输出中出现错源，并且不是作为 `forbidden source` 明确标记，必须视为数据路由失败，评级上限降到 `OBSERVE_ONLY` 或 `C`。
+
+---
+
+## 5. Required Data By Task Type
+
+### 5.1 单股长线分析
 
 必须数据：
 
@@ -188,7 +219,7 @@ customer/order/capacity evidence if thesis depends on it
 
 缺任意关键数据，评级上限下降。
 
-### 4.2 主题扫描
+### 5.2 主题扫描
 
 必须数据：
 
@@ -202,7 +233,7 @@ valuation/price freshness for final candidates
 
 深度扫描目标：20+ 候选、25+ sources；工具/时间不足时标记 initial pass。
 
-### 4.3 技术/缠论分析
+### 5.3 技术/缠论分析
 
 必须数据：
 
@@ -218,16 +249,16 @@ corporate actions adjusted consistently
 
 ---
 
-## 5. Price Data Validation
+## 6. Price Data Validation
 
-### 5.1 Required Columns
+### 6.1 Required Columns
 
 ```text
 date, open, high, low, close, volume
 optional: amount, adj_factor, pre_close, turnover
 ```
 
-### 5.2 Checks
+### 6.2 Checks
 
 - date 唯一且升序；
 - close > 0；
@@ -238,7 +269,7 @@ optional: amount, adj_factor, pre_close, turnover
 - 最新交易日不得过期；
 - 对 A 股，节假日/周末要结合交易日判断，不要机械使用自然日。
 
-### 5.3 Adjustment Rules
+### 6.3 Adjustment Rules
 
 | 价格口径 | 用途 |
 |---|---|
@@ -248,7 +279,7 @@ optional: amount, adj_factor, pre_close, turnover
 
 禁止：用后复权价格当当前成交价。
 
-### 5.4 Cross-Source Quote Check
+### 6.4 Cross-Source Quote Check
 
 若有多个源：
 
@@ -262,9 +293,9 @@ diff = abs(price_a - price_b) / median(price_a, price_b)
 
 ---
 
-## 6. Financial Data Validation
+## 7. Financial Data Validation
 
-### 6.1 Required Fields
+### 7.1 Required Fields
 
 ```text
 period, report_date, currency, unit
@@ -282,7 +313,7 @@ equity
 shares_outstanding
 ```
 
-### 6.2 Rules
+### 7.2 Rules
 
 - 利润表和现金流可以算 TTM；资产负债表不能算 TTM，只用期末数。
 - 元、万元、亿元必须统一。
@@ -294,7 +325,7 @@ shares_outstanding
 
 ---
 
-## 7. Data Failure Rating Caps
+## 8. Data Failure Rating Caps
 
 | 失败类型 | 评级上限 |
 |---|---|
@@ -307,10 +338,12 @@ shares_outstanding
 | 股本/市值无法确认 | 不能做市值错配；最高 B |
 | 多源价格差异 >2% | 最高 C，暂停估值与技术 |
 | 供应链证据只有社媒 | 最高 C |
+| 市场错源且未声明 forbidden | OBSERVE_ONLY 或最高 C |
+| H4/H5 增长只由主题热度支持 | 最高 B |
 
 ---
 
-## 8. Data Manifest
+## 9. Data Manifest
 
 每次正式分析应生成或隐式维护：
 
@@ -319,6 +352,8 @@ shares_outstanding
   "symbol": "688019.SH",
   "market": "CN_A",
   "retrieved_at": "2026-06-22T...Z",
+  "requested_datasets": ["current_quote", "price_history_adjusted", "filings_announcements"],
+  "full_research_required_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
   "datasets": [
     {
       "name": "latest_quote",
@@ -330,22 +365,33 @@ shares_outstanding
       "unit": "raw"
     }
   ],
-  "rating_cap": "A",
+  "requested_data_rating_cap": "S",
+  "full_research_rating_cap": "B",
+  "rating_cap": "B",
   "missing_fields": []
 }
 ```
 
+`NOT_REQUESTED` means the current scoped fetch did not ask for the dataset. It is not a successful data state. For formal rating tasks, any missing critical dataset still caps the full-research rating until it is fetched and validated.
+
 ---
 
-## 9. Implementation Hooks
+## 10. Implementation Hooks
 
 Use:
 
 ```bash
+python scripts/data_router.py fetch NVDA --sec-user-agent "Your Name your.email@example.com"
+python scripts/run_real_data_smoke.py --case-set all --sec-user-agent "Your Name your.email@example.com"
 python scripts/data_router.py resolve 688019
+python scripts/data_router.py plan 688019
 python scripts/data_router.py validate-price prices.csv --market CN_A --adjust qfq
 python scripts/data_router.py validate-financial financials.json
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
 ```
 
-Provider adapters can be added later without changing the research logic.
+`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, or SEC filings. It writes an auditable bundle with raw source payloads and hashes under `--out-dir` or `/tmp/serenity-chan-data/...`.
+
+For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. If network, TLS, identity, rate limit, or provider support fails, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
+
+Additional licensed CNINFO/Tushare/Wind/Choice/HKEX adapters can be added without changing the research logic.

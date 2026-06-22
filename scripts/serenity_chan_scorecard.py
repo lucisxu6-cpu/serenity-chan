@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Serenity + Chan scorecard for v3 skill.
+Serenity + Chan scorecard.
 
 Input: JSON scorecard matching assets/scorecard_template.json.
 All factor ratings are 0-5. Output JSON or Markdown.
@@ -42,7 +42,7 @@ MODULE_WEIGHTS = {
 }
 
 REQUIRED_TOP_LEVEL = set(MODULE_WEIGHTS) | {"ticker", "market", "as_of_date", "penalties"}
-ALLOWED_MARKETS = {"CN_A", "US", "HK", "OTHER"}
+ALLOWED_MARKETS = {"CN_A", "US", "HK", "GLOBAL", "OTHER", "UNKNOWN"}
 
 
 PENALTY_CAPS = {
@@ -54,6 +54,8 @@ PENALTY_CAPS = {
     "price_source_conflict_gt_2pct": Rating.C,
     "major_dilution_or_governance_red_flag": Rating.B,
     "technical_escape_overheat": Rating.A,
+    "h4_h5_without_strong_evidence": Rating.B,
+    "market_implied_growth_exceeds_evidence": Rating.B,
     "fundamental_falsified": Rating.D,
 }
 
@@ -121,7 +123,7 @@ def score(data: Dict[str, Any]) -> Dict[str, Any]:
             cap = _apply_cap(cap, new_cap)
             active_caps.append({"penalty": name, "cap": new_cap.value})
 
-    if data.get("market") == "OTHER":
+    if data.get("market") in {"OTHER", "UNKNOWN"}:
         cap = _apply_cap(cap, Rating.OBSERVE_ONLY)
         active_caps.append({"penalty": "market_unresolved", "cap": "OBSERVE_ONLY"})
     final_rating = _apply_cap(raw_rating, cap)

@@ -1,0 +1,86 @@
+{
+  "ticker": "688019.SH",
+  "company": "Example Co",
+  "market": "CN_A",
+  "as_of_date": "2026-06-22",
+  "data_quality": {
+    "symbol_resolution": 5,
+    "latest_quote": 5,
+    "price_history": 5,
+    "financials": 5,
+    "filings_announcements": 5,
+    "supply_chain_evidence": 5
+  },
+  "serenity": {
+    "demand_inflection": 5,
+    "revenue_transmission": 5,
+    "bottleneck_severity": 5,
+    "supplier_concentration": 5,
+    "qualification_difficulty": 5,
+    "capacity_constraint": 5,
+    "market_misclassification": 5,
+    "small_cap_elasticity": 5
+  },
+  "evidence": {
+    "customer_quality": 5,
+    "order_or_contract_quality": 5,
+    "cross_validation": 5,
+    "source_strength": 5,
+    "falsification_clarity": 5
+  },
+  "fundamentals": {
+    "revenue_growth_quality": 5,
+    "gross_margin_quality": 5,
+    "cash_flow_conversion": 5,
+    "working_capital_quality": 5,
+    "balance_sheet_strength": 5,
+    "dilution_control": 5
+  },
+  "valuation": {
+    "intrinsic_growth_vs_implied": 5,
+    "tam_runway": 5,
+    "quality_factor": 5,
+    "scenario_upside_downside": 5,
+    "valuation_crowding": 5
+  },
+  "technical": {
+    "monthly_trend": 5,
+    "weekly_structure": 5,
+    "daily_buy_point": 5,
+    "overheat_control": 5,
+    "risk_reward_position": 5
+  },
+  "risk": {
+    "competition_substitution": 5,
+    "customer_concentration_risk": 5,
+    "cycle_macro_risk": 5,
+    "governance_accounting_risk": 5,
+    "liquidity_event_risk": 5
+  },
+  "penalties": {
+    "only_weak_evidence": false,
+    "missing_latest_quote": false,
+    "missing_price_history": false,
+    "missing_latest_financials": false,
+    "unverified_customer_claim": false,
+    "price_source_conflict_gt_2pct": false,
+    "major_dilution_or_governance_red_flag": false,
+    "technical_escape_overheat": false,
+    "h4_h5_without_strong_evidence": true,
+    "market_implied_growth_exceeds_evidence": true,
+    "fundamental_falsified": false
+  },
+  "evidence_notes": [
+    {
+      "claim": "Market-implied growth is H5, but primary evidence only supports H3.",
+      "source": "Scenario valuation and filing review",
+      "source_level": "L1",
+      "supports": "rating cap",
+      "missing_proof": "No primary-source proof for H4/H5 yet.",
+      "confidence": "Medium"
+    }
+  ],
+  "falsification_points": [
+    "Do not upgrade above B until H4/H5 evidence bar is met."
+  ]
+}
