@@ -29,7 +29,7 @@
 | 创业板 | 300750 / 301xxx | SZSE ChiNext | 300750.SZ |
 | 北交所 | 43xxxx / 83xxxx / 87xxxx / 92xxxx | BSE | 920593.BJ |
 
-A 股内部统一用 `.SH/.SZ/.BJ`。若使用 Yahoo Finance 之类辅助源，需要另设 provider alias：`.SS/.SZ`，但不能改变内部标准代码。
+A 股内部统一用 `.SH/.SZ/.BJ`。A 股行情优先使用能覆盖 SH/SZ/BJ 的本土行情 provider，例如 Eastmoney / Tencent；若使用 Yahoo Finance 之类辅助源，需要另设 provider alias：`.SS/.SZ`，但不能改变内部标准代码。
 
 ### 2.2 美股
 
@@ -82,6 +82,7 @@ currency = HKD unless ADR or dual-counter special case
 - 北交所 BSE；
 - 公司官网投资者关系；
 - 招股书、定期报告、临时公告、问询函、监管函；
+- 内置 `CNINFO_FinancialReports_L0` 可下载 A 股官方定期报告 PDF，抽取核心财务行；银行、证券、保险等金融行业发行人还必须抽取专门 profile；
 - 招投标、中标、环评/能评、项目备案、专利、标准。
 
 用途：公司事实、客户、订单、产能、财报、风险、治理。
@@ -109,7 +110,7 @@ currency = HKD unless ADR or dual-counter special case
 #### L3 媒体/研报/F10
 
 - 东方财富/同花顺 F10 与网页摘要；
-- 内置 `Eastmoney_F10_Financials_L3` 可抓取 A 股 L3 结构化三表预检数据。
+- 内置 `Eastmoney_F10_Financials_L3` 可抓取 A 股 L3 结构化三表回退预检数据。
 
 用途：线索、上下文和快速索引。关键结论必须回 L0/L1 复核。
 
@@ -454,10 +455,12 @@ python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --forma
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
 ```
 
-`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, SEC filings, A-share CNINFO announcements, or A-share Eastmoney F10 L3 structured financial preflight. It writes an auditable bundle with raw source payloads, hashes, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
+`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 fallback preflight, HKEXnews announcements, or HKEX annual/interim report PDF evidence. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
 
 For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. Resolve CIK through the bundled bootstrap table first, then SEC ticker directories. Fetch filings through SEC submissions, fetch financials through SEC companyfacts, and continue through SEC companyconcepts if the larger companyfacts payload is unavailable. If network, TLS, identity, rate limit, or provider support fails after the available route is attempted, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
 
-Eastmoney F10 financials provide A-share L3 structured preflight evidence. Keep the final research rating cap at B until key conclusions are verified against CNINFO/exchange report PDFs or L1 databases. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
+If deterministic validation caps a dataset while the dataset status remains `OK`, emit a structured gap instead of leaving the cap reason only in warnings. Use `EVIDENCE_DEPTH_LIMIT` for insufficient adjusted-history bars or evidence-window depth, and `ADJUSTMENT_BASIS_UNVERIFIED` when the adjusted-history basis is unknown or unconfirmed.
 
-Additional official or licensed CNINFO/Tushare/Wind/Choice/HKEX adapters can be added without changing the research logic.
+CNINFO financial reports provide A-share L0 official PDF evidence and extract core financial statement lines when readable. The latest period must contain revenue, net income, operating cash flow, assets, liabilities, and equity before `financials=OK` can support S/A research work; a single complete period can support only limited trend analysis. Financial-sector issuers must include an industry profile before S/A ratings are allowed: banks need net interest, deposit, loan, asset-quality, provision, and capital metrics; securities firms need net capital and risk-control ratios; insurers need insurance service revenue, insurance contract liabilities, and solvency metrics. Eastmoney F10 financials are a fallback L3 structured preflight and create research debt when used without L0/L1 line-item verification. HKEX financial reports provide L0 official annual/interim report PDF evidence for HK issuers. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
+
+Additional official or licensed CNINFO/Tushare/Wind/Choice adapters can be added without changing the research logic.

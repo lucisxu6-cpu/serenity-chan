@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import gzip
+import html
 import http.client
 from hashlib import sha256
 from pathlib import Path
@@ -28,7 +29,9 @@ import json
 import math
 import os
 import re
+import subprocess
 import ssl
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -154,6 +157,27 @@ def save_raw_json(obj: Any, raw_dir: str | Path, name: str) -> Tuple[str, str]:
     return str(path), file_sha256(path)
 
 
+def save_raw_bytes(data: bytes, raw_dir: str | Path, name: str) -> Tuple[str, str]:
+    raw_dir = Path(raw_dir)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    path = raw_dir / name
+    path.write_bytes(data)
+    return str(path), file_sha256(path)
+
+
+def save_raw_text(text: str, raw_dir: str | Path, name: str) -> Tuple[str, str]:
+    raw_dir = Path(raw_dir)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    path = raw_dir / name
+    path.write_text(text, encoding="utf-8")
+    return str(path), file_sha256(path)
+
+
+def _safe_artifact_name(value: str, *, max_length: int = 120) -> str:
+    cleaned = re.sub(r"[^0-9A-Za-z._-]+", "_", value).strip("._-")
+    return (cleaned or "artifact")[:max_length]
+
+
 def https_json(
     url: str,
     *,
@@ -251,6 +275,59 @@ def https_text(
     if last_error:
         raise last_error
     raise RuntimeError("HTTPS text fetch failed without a captured exception")
+
+
+def https_bytes(
+    url: str,
+    *,
+    user_agent: str,
+    timeout: int = 30,
+    headers: Optional[Mapping[str, str]] = None,
+    retries: int = 2,
+    max_bytes: int = 80 * 1024 * 1024,
+) -> bytes:
+    """Fetch binary source artifacts with TLS verification and a size guard."""
+    merged_headers = {
+        "User-Agent": user_agent,
+        "Accept": "application/pdf,*/*",
+        "Accept-Encoding": "gzip",
+    }
+    if headers:
+        merged_headers.update(headers)
+
+    try:
+        import certifi  # type: ignore
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        context = ssl.create_default_context()
+
+    last_error: Optional[BaseException] = None
+    for attempt in range(retries + 1):
+        request = urllib.request.Request(url, headers=merged_headers)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > max_bytes:
+                    raise RuntimeError(f"artifact is too large: {content_length} bytes > {max_bytes}")
+                raw = response.read(max_bytes + 1)
+                if len(raw) > max_bytes:
+                    raise RuntimeError(f"artifact exceeds max_bytes={max_bytes}")
+                if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                    raw = gzip.decompress(raw)
+                return raw
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code != 429 or attempt >= retries:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionResetError, http.client.IncompleteRead, http.client.RemoteDisconnected) as exc:
+            last_error = exc
+            if attempt >= retries:
+                raise
+        time.sleep(0.75 * (attempt + 1))
+    if last_error:
+        raise last_error
+    raise RuntimeError("HTTPS binary fetch failed without a captured exception")
 
 
 def form_json(
@@ -394,9 +471,9 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
         policies: Dict[Dataset, SourcePolicy] = {
             Dataset.FILINGS: SourcePolicy(market, dataset, ["CNINFO", "SSE", "SZSE", "BSE"], ["Wind", "Choice", "CSMAR"], ["Eastmoney/F10"], ["SEC EDGAR"], "Official PDFs/HTML are required for S/A evidence."),
             Dataset.FINANCIALS: SourcePolicy(market, dataset, ["Annual/Quarterly Report PDF"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["AKShare", "BaoStock", "Eastmoney F10 L3 structured preflight"], ["SEC EDGAR"], "Units must be normalized."),
-            Dataset.CURRENT_QUOTE: SourcePolicy(market, dataset, ["Exchange/vendor"], ["Wind", "Choice", "Tushare Pro"], ["AKShare", "Eastmoney", "Sina"], ["SEC EDGAR"], "Latest A-share trading day required."),
-            Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["AKShare"], ["SEC EDGAR"], "Use qfq/front-adjusted for technical."),
-            Dataset.PRICE_HISTORY_RAW: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["AKShare"], ["SEC EDGAR"], "Use raw for actual current/reference price."),
+            Dataset.CURRENT_QUOTE: SourcePolicy(market, dataset, ["Exchange/vendor"], ["Wind", "Choice", "Tushare Pro"], ["Eastmoney", "Tencent", "AKShare", "Sina"], ["SEC EDGAR"], "Latest A-share trading day required."),
+            Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["Eastmoney", "Tencent", "AKShare"], ["SEC EDGAR"], "Use qfq/front-adjusted for technical."),
+            Dataset.PRICE_HISTORY_RAW: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["Eastmoney", "Tencent", "AKShare"], ["SEC EDGAR"], "Use raw for actual current/reference price."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["CNINFO/SSE/SZSE/BSE as applicable"], ["Wind/Choice/CSMAR/Tushare"], ["AKShare/Eastmoney"], ["SEC EDGAR"]))
 
@@ -794,6 +871,76 @@ def _yahoo_symbol(symbol: SymbolInfo) -> str:
     return symbol.symbol
 
 
+def _eastmoney_secid(symbol: SymbolInfo) -> Optional[str]:
+    if symbol.market != Market.CN_A:
+        return None
+    code, _, suffix = symbol.symbol.partition(".")
+    if not re.fullmatch(r"\d{6}", code):
+        return None
+    if suffix == "SH":
+        return f"1.{code}"
+    if suffix in {"SZ", "BJ"}:
+        return f"0.{code}"
+    return None
+
+
+def _eastmoney_price(value: Any) -> Optional[float]:
+    number = _safe_float(value)
+    if number is None or number <= 0:
+        return None
+    return round(number / 100, 4)
+
+
+def _eastmoney_history_begin(chart_range: str) -> str:
+    token = chart_range.strip().lower()
+    today = dt.datetime.now().date()
+    if token in {"max", "all"}:
+        return "19900101"
+    if token == "ytd":
+        return f"{today.year}0101"
+    match = re.fullmatch(r"(\d+)(d|mo|y)", token)
+    if not match:
+        return "19900101"
+    amount = int(match.group(1))
+    unit = match.group(2)
+    if unit == "d":
+        days = amount
+    elif unit == "mo":
+        days = amount * 31
+    else:
+        days = amount * 366
+    return (today - dt.timedelta(days=days)).strftime("%Y%m%d")
+
+
+def _tencent_quote_alias(symbol: SymbolInfo) -> Optional[str]:
+    if symbol.market != Market.CN_A:
+        return None
+    code, _, suffix = symbol.symbol.partition(".")
+    if not re.fullmatch(r"\d{6}", code):
+        return None
+    if suffix == "SH":
+        return f"sh{code}"
+    if suffix == "SZ":
+        return f"sz{code}"
+    if suffix == "BJ":
+        return f"bj{code}"
+    return None
+
+
+def _tencent_kline_alias(symbol: SymbolInfo) -> Optional[str]:
+    quote_alias = _tencent_quote_alias(symbol)
+    if quote_alias and quote_alias.startswith("bj"):
+        return "nq" + quote_alias[2:]
+    return quote_alias
+
+
+def _tencent_timestamp_to_date(value: Any) -> Optional[str]:
+    token = str(value or "")
+    if not re.fullmatch(r"\d{14}", token):
+        return None
+    return f"{token[:4]}-{token[4:6]}-{token[6:8]}"
+
+
 def _epoch_to_date(timestamp: int, gmtoffset: int = 0) -> str:
     shifted = dt.datetime.fromtimestamp(timestamp + gmtoffset, dt.timezone.utc)
     return shifted.date().isoformat()
@@ -943,6 +1090,423 @@ class YahooChartProvider:
         return rows
 
 
+class TencentQuoteKlineProvider:
+    """Tencent L2 quote/K-line adapter for A-share market data.
+
+    BJ current quotes use the BJ alias while BJ daily history uses Tencent's NQ
+    alias. The alias mapping stays inside the provider so the rest of the skill
+    continues to use the canonical .SH/.SZ/.BJ symbol format.
+    """
+
+    name = "Tencent_Quote_Kline_L2"
+    level = SourceLevel.L2
+    markets = [Market.CN_A]
+    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_ADJUSTED]
+    user_agent = "Mozilla/5.0"
+    quote_url = "https://qt.gtimg.cn/q="
+    kline_url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if dataset == Dataset.CURRENT_QUOTE:
+            alias = _tencent_quote_alias(symbol)
+            if not alias:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
+            return self._fetch_quote(symbol, dataset, alias, raw_dir=kwargs.get("raw_dir"))
+        if dataset == Dataset.PRICE_HISTORY_ADJUSTED:
+            alias = _tencent_kline_alias(symbol)
+            if not alias:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
+            return self._fetch_kline(
+                symbol,
+                dataset,
+                alias,
+                chart_range=str(kwargs.get("range", "2y")),
+                interval=str(kwargs.get("interval", "1d")),
+                raw_dir=kwargs.get("raw_dir"),
+            )
+        return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+
+    def _read_bytes(self, url: str, *, retries: int = 2, timeout: int = 30) -> bytes:
+        try:
+            import certifi  # type: ignore
+
+            context = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            context = ssl.create_default_context()
+
+        last_error: Optional[BaseException] = None
+        for attempt in range(retries + 1):
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": self.user_agent,
+                    "Referer": "https://gu.qq.com/",
+                    "Accept": "*/*",
+                },
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+                    return response.read()
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code != 429 or attempt >= retries:
+                    raise
+            except (urllib.error.URLError, TimeoutError, ConnectionResetError, http.client.IncompleteRead, http.client.RemoteDisconnected) as exc:
+                last_error = exc
+                if attempt >= retries:
+                    raise
+            time.sleep(0.75 * (attempt + 1))
+        if last_error:
+            raise last_error
+        raise RuntimeError("Tencent fetch failed without a captured exception")
+
+    def _fetch_quote(self, symbol: SymbolInfo, dataset: Dataset, alias: str, *, raw_dir: Optional[str | Path]) -> DataResult:
+        url = self.quote_url + urllib.parse.quote(alias)
+        try:
+            raw = self._read_bytes(url)
+            text = raw.decode("gb18030", errors="replace")
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
+
+        match = re.search(rf"v_{re.escape(alias)}=\"([^\"]*)\"", text)
+        if not match:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote returned no matching symbol data")
+        fields = match.group(1).split("~")
+        if len(fields) < 35:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"Tencent quote returned too few fields: {len(fields)}")
+        price = _safe_float(fields[3])
+        if price is None or price <= 0:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote missing regular market price")
+
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json({"alias": alias, "raw_text": text}, raw_dir, f"{symbol.symbol}_{dataset.value}_tencent_quote_raw.json")
+
+        market_time = fields[30] if len(fields) > 30 else ""
+        data = {
+            "symbol": fields[2] if len(fields) > 2 else symbol.symbol.partition(".")[0],
+            "name": fields[1] if len(fields) > 1 else symbol.name,
+            "currency": symbol.currency or "CNY",
+            "exchange": symbol.exchange,
+            "regular_market_price": price,
+            "regular_market_time": market_time,
+            "regular_market_open": _safe_float(fields[5] if len(fields) > 5 else None),
+            "regular_market_day_high": _safe_float(fields[33] if len(fields) > 33 else None),
+            "regular_market_day_low": _safe_float(fields[34] if len(fields) > 34 else None),
+            "regular_market_volume": _safe_int(fields[6] if len(fields) > 6 else None),
+            "regular_market_turnover": _safe_float(fields[37] if len(fields) > 37 else None),
+            "previous_close": _safe_float(fields[4] if len(fields) > 4 else None),
+            "alias": alias,
+        }
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=_tencent_timestamp_to_date(market_time),
+            data=data,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=data["currency"],
+        )
+
+    def _fetch_kline(
+        self,
+        symbol: SymbolInfo,
+        dataset: Dataset,
+        alias: str,
+        *,
+        chart_range: str,
+        interval: str,
+        raw_dir: Optional[str | Path],
+    ) -> DataResult:
+        if interval.strip().lower() not in {"1d", "day", "daily"}:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported Tencent interval {interval}")
+        limit = self._history_limit(chart_range)
+        params = urllib.parse.urlencode({"param": f"{alias},day,,,{limit},qfq"})
+        url = f"{self.kline_url}?{params}"
+        try:
+            raw = self._read_bytes(url)
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
+        data = payload.get("data") if isinstance(payload, Mapping) else None
+        stock_payload = data.get(alias) if isinstance(data, Mapping) else None
+        if not isinstance(stock_payload, Mapping):
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent kline returned no matching symbol data")
+
+        qfq_rows = stock_payload.get("qfqday")
+        day_rows = stock_payload.get("day")
+        rows_source = qfq_rows if isinstance(qfq_rows, list) and qfq_rows else day_rows
+        adjust = "qfq" if isinstance(qfq_rows, list) and qfq_rows else "unknown"
+        rows = self._kline_rows(rows_source if isinstance(rows_source, list) else [])
+        if not rows:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent kline returned no usable OHLCV rows")
+
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_tencent_kline_raw.json")
+        warnings: List[str] = []
+        if adjust == "unknown":
+            warnings.append("Tencent returned daily history without a separate qfqday array; adjustment basis is unconfirmed.")
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=rows[-1]["trade_date"],
+            data=rows,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=symbol.currency or "CNY",
+            adjust=adjust,
+            warnings=warnings,
+        )
+
+    @staticmethod
+    def _history_limit(chart_range: str) -> int:
+        token = chart_range.strip().lower()
+        if token in {"max", "all"}:
+            return 10000
+        match = re.fullmatch(r"(\d+)(d|mo|y)", token)
+        if not match:
+            return 800
+        amount = int(match.group(1))
+        unit = match.group(2)
+        if unit == "d":
+            return max(amount, 1)
+        if unit == "mo":
+            return max(amount * 23, 1)
+        return max(amount * 260, 1)
+
+    @staticmethod
+    def _kline_rows(raw_rows: Sequence[Any]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for item in raw_rows:
+            if not isinstance(item, Sequence) or isinstance(item, (str, bytes)) or len(item) < 6:
+                continue
+            trade_date = str(item[0])
+            open_ = _safe_float(item[1])
+            close = _safe_float(item[2])
+            high = _safe_float(item[3])
+            low = _safe_float(item[4])
+            volume = _safe_int(float(item[5])) if _safe_float(item[5]) is not None else None
+            if not trade_date or open_ is None or high is None or low is None or close is None or volume is None:
+                continue
+            rows.append({
+                "trade_date": trade_date,
+                "open": round(open_, 6),
+                "high": round(high, 6),
+                "low": round(low, 6),
+                "close": round(close, 6),
+                "volume": volume,
+                "adj_close": round(close, 6),
+                "raw_close": round(close, 6),
+            })
+        return rows
+
+
+class EastmoneyQuoteKlineProvider:
+    """Eastmoney L2 quote/K-line adapter for A-share SH/SZ/BJ market data."""
+
+    name = "Eastmoney_Quote_Kline_L2"
+    level = SourceLevel.L2
+    markets = [Market.CN_A]
+    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED]
+    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    quote_url = "https://push2.eastmoney.com/api/qt/stock/get"
+    kline_url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        secid = _eastmoney_secid(symbol)
+        if not secid:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
+        if dataset == Dataset.CURRENT_QUOTE:
+            return self._fetch_quote(symbol, dataset, secid, raw_dir=kwargs.get("raw_dir"))
+        if dataset in {Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED}:
+            return self._fetch_kline(
+                symbol,
+                dataset,
+                secid,
+                chart_range=str(kwargs.get("range", "2y")),
+                interval=str(kwargs.get("interval", "1d")),
+                raw_dir=kwargs.get("raw_dir"),
+            )
+        return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "Referer": "https://quote.eastmoney.com/",
+            "Origin": "https://quote.eastmoney.com",
+        }
+
+    def _fetch_quote(self, symbol: SymbolInfo, dataset: Dataset, secid: str, *, raw_dir: Optional[str | Path]) -> DataResult:
+        fields = ",".join([
+            "f43",  # latest price, scaled by 100
+            "f44",  # day high, scaled by 100
+            "f45",  # day low, scaled by 100
+            "f46",  # open, scaled by 100
+            "f47",  # volume
+            "f48",  # turnover amount
+            "f57",  # code
+            "f58",  # name
+            "f60",  # previous close, scaled by 100
+            "f86",  # market timestamp
+            "f107",  # market id
+        ])
+        params = urllib.parse.urlencode({"secid": secid, "fields": fields})
+        url = f"{self.quote_url}?{params}"
+        try:
+            payload = https_json(url, user_agent=self.user_agent, headers=self._headers())
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
+        data = payload.get("data") if isinstance(payload, Mapping) else None
+        if not isinstance(data, Mapping):
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney quote returned no data")
+
+        market_price = _eastmoney_price(data.get("f43"))
+        if market_price is None:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney quote missing regular market price")
+        market_time = _safe_int(data.get("f86"))
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_eastmoney_quote_raw.json")
+
+        quote = {
+            "symbol": str(data.get("f57") or symbol.symbol.partition(".")[0]),
+            "name": data.get("f58") or symbol.name,
+            "currency": symbol.currency or "CNY",
+            "exchange": symbol.exchange,
+            "regular_market_price": market_price,
+            "regular_market_time": market_time,
+            "regular_market_day_high": _eastmoney_price(data.get("f44")),
+            "regular_market_day_low": _eastmoney_price(data.get("f45")),
+            "regular_market_open": _eastmoney_price(data.get("f46")),
+            "regular_market_volume": _safe_int(data.get("f47")),
+            "regular_market_turnover": _safe_float(data.get("f48")),
+            "previous_close": _eastmoney_price(data.get("f60")),
+            "market_id": _safe_int(data.get("f107")),
+            "secid": secid,
+        }
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=_epoch_to_date(market_time) if market_time else None,
+            data=quote,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=quote["currency"],
+        )
+
+    def _fetch_kline(
+        self,
+        symbol: SymbolInfo,
+        dataset: Dataset,
+        secid: str,
+        *,
+        chart_range: str,
+        interval: str,
+        raw_dir: Optional[str | Path],
+    ) -> DataResult:
+        klt = self._kline_interval(interval)
+        if not klt:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported Eastmoney interval {interval}")
+        params = urllib.parse.urlencode({
+            "secid": secid,
+            "fields1": "f1,f2,f3,f4,f5,f6",
+            "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+            "klt": klt,
+            "fqt": "1" if dataset == Dataset.PRICE_HISTORY_ADJUSTED else "0",
+            "beg": _eastmoney_history_begin(chart_range),
+            "end": dt.datetime.now().date().strftime("%Y%m%d"),
+        })
+        url = f"{self.kline_url}?{params}"
+        try:
+            payload = https_json(url, user_agent=self.user_agent, headers=self._headers())
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
+        data = payload.get("data") if isinstance(payload, Mapping) else None
+        if not isinstance(data, Mapping):
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney kline returned no data")
+        rows = self._kline_rows(data.get("klines") or [])
+        if not rows:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney kline returned no usable OHLCV rows")
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_eastmoney_kline_raw.json")
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=rows[-1]["trade_date"],
+            data=rows,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=symbol.currency or "CNY",
+            adjust="qfq" if dataset == Dataset.PRICE_HISTORY_ADJUSTED else "none",
+        )
+
+    @staticmethod
+    def _kline_interval(interval: str) -> Optional[str]:
+        normalized = interval.strip().lower()
+        mapping = {
+            "1d": "101",
+            "day": "101",
+            "daily": "101",
+            "1wk": "102",
+            "1w": "102",
+            "week": "102",
+            "weekly": "102",
+            "1mo": "103",
+            "1m": "103",
+            "month": "103",
+            "monthly": "103",
+        }
+        return mapping.get(normalized)
+
+    @staticmethod
+    def _kline_rows(klines: Sequence[Any]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for item in klines:
+            if not isinstance(item, str):
+                continue
+            parts = item.split(",")
+            if len(parts) < 6:
+                continue
+            trade_date = parts[0]
+            open_ = _safe_float(parts[1])
+            close = _safe_float(parts[2])
+            high = _safe_float(parts[3])
+            low = _safe_float(parts[4])
+            volume = _safe_int(parts[5])
+            amount = _safe_float(parts[6]) if len(parts) > 6 else None
+            if not trade_date or open_ is None or high is None or low is None or close is None or volume is None:
+                continue
+            rows.append({
+                "trade_date": trade_date,
+                "open": round(open_, 6),
+                "high": round(high, 6),
+                "low": round(low, 6),
+                "close": round(close, 6),
+                "volume": volume,
+                "amount": amount,
+                "adj_close": round(close, 6),
+                "raw_close": round(close, 6),
+            })
+        return rows
+
+
 class CninfoAnnouncementsProvider:
     """Official CNINFO announcement metadata adapter for A-share filings.
 
@@ -1065,6 +1629,379 @@ class CninfoAnnouncementsProvider:
         }
 
 
+class PdfTextExtractionMixin:
+    """Shared PDF text extraction utilities for official report adapters."""
+
+    @staticmethod
+    def _pdf_python_candidates() -> List[str]:
+        candidates: List[str] = []
+        env_python = os.getenv("SERENITY_PDF_PYTHON")
+        if env_python:
+            candidates.append(env_python)
+        candidates.append(sys.executable)
+        runtime_python = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+        candidates.append(str(runtime_python))
+        output: List[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            if Path(candidate).exists():
+                output.append(candidate)
+        return output
+
+    @staticmethod
+    def _pdfplumber_extract_script() -> str:
+        return r'''
+import json
+import sys
+
+import pdfplumber
+
+path = sys.argv[1]
+max_pages = int(sys.argv[2])
+pages = []
+with pdfplumber.open(path) as pdf:
+    total_pages = len(pdf.pages)
+    for index, page in enumerate(pdf.pages[:max_pages], start=1):
+        text = page.extract_text() or ""
+        if text.strip():
+            pages.append({"page_number": index, "text": text})
+print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pages}, ensure_ascii=False))
+'''
+
+    def _extract_pdf_pages(self, pdf_path: str | Path, *, max_pages: int = 220, timeout: int = 60) -> Dict[str, Any]:
+        path = Path(pdf_path)
+        errors: List[str] = []
+
+        try:
+            import pdfplumber  # type: ignore
+
+            pages: List[Dict[str, Any]] = []
+            with pdfplumber.open(str(path)) as pdf:
+                total_pages = len(pdf.pages)
+                for index, page in enumerate(pdf.pages[:max_pages], start=1):
+                    text = page.extract_text() or ""
+                    if text.strip():
+                        pages.append({"page_number": index, "text": text})
+            return {"ok": True, "parser": "pdfplumber", "page_count": total_pages, "pages": pages, "errors": []}
+        except Exception as exc:
+            errors.append(f"in-process pdfplumber unavailable: {type(exc).__name__}: {exc}")
+
+        script = self._pdfplumber_extract_script()
+        for python_exe in self._pdf_python_candidates():
+            try:
+                completed = subprocess.run(
+                    [python_exe, "-", str(path), str(max_pages)],
+                    input=script.encode("utf-8"),
+                    capture_output=True,
+                    timeout=timeout,
+                    check=True,
+                )
+                payload = json.loads(completed.stdout.decode("utf-8"))
+                payload["ok"] = True
+                payload["python"] = python_exe
+                payload.setdefault("errors", [])
+                return payload
+            except Exception as exc:
+                stderr = ""
+                if isinstance(exc, subprocess.CalledProcessError):
+                    stderr = exc.stderr.decode("utf-8", errors="replace")[:500]
+                errors.append(f"{python_exe}: {type(exc).__name__}: {exc} {stderr}".strip())
+
+        return {"ok": False, "parser": "none", "page_count": 0, "pages": [], "errors": errors}
+
+    @staticmethod
+    def _normalize_pdf_line(line: str) -> str:
+        line = line.replace("\u2019", "'").replace("\u2013", "-").replace("\u2014", "-")
+        return re.sub(r"\s+", " ", line).strip()
+
+    @classmethod
+    def _pdf_number_tokens(cls, line: str) -> List[str]:
+        normalized = cls._normalize_pdf_line(line)
+        return re.findall(r"\(?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?|\(?-?\d+(?:\.\d+)?\)?|(?<!\w)[-–](?!\w)", normalized)
+
+    @staticmethod
+    def _parse_pdf_number(token: str) -> Optional[float]:
+        text = token.strip()
+        if text in {"-", "–", ""}:
+            return None
+        negative = text.startswith("(") and text.endswith(")")
+        text = text.strip("()").replace(",", "")
+        try:
+            value = float(text)
+        except Exception:
+            return None
+        return -value if negative else value
+
+    @classmethod
+    def _line_values(cls, line: str, *, expected_columns: int) -> List[Optional[float]]:
+        tokens = cls._pdf_number_tokens(line)
+        while len(tokens) > expected_columns:
+            first = tokens[0].strip("()")
+            if "," not in first and "." not in first and first.lstrip("-").isdigit() and abs(int(first)) <= 80:
+                tokens.pop(0)
+                continue
+            break
+        if len(tokens) > expected_columns:
+            tokens = tokens[-expected_columns:]
+        return [cls._parse_pdf_number(token) for token in tokens]
+
+    @staticmethod
+    def _page_texts_containing(pages: Sequence[Mapping[str, Any]], *needles: str) -> List[Mapping[str, Any]]:
+        lower_needles = [needle.lower() for needle in needles]
+        output: List[Mapping[str, Any]] = []
+        for page in pages:
+            text = str(page.get("text") or "")
+            lower_text = text.lower()
+            if all(needle in lower_text for needle in lower_needles):
+                output.append(page)
+        return output
+
+    @classmethod
+    def _extract_label_value(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        labels: Sequence[str],
+        *,
+        expected_columns: int,
+        value_index: int,
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        lower_labels = [label.lower() for label in labels]
+        for page in pages:
+            text = str(page.get("text") or "")
+            for line in text.splitlines():
+                clean = cls._normalize_pdf_line(line)
+                clean_lower = clean.lower()
+                if not any(clean_lower.startswith(label) or label in clean_lower for label in lower_labels):
+                    continue
+                values = cls._line_values(clean, expected_columns=expected_columns)
+                if len(values) <= value_index or values[value_index] is None:
+                    continue
+                return values[value_index], {
+                    "page_number": page.get("page_number"),
+                    "line": clean,
+                    "value_index": value_index,
+                }
+        return None, None
+
+    @classmethod
+    def _extract_revenue_value(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        *,
+        expected_columns: int,
+        value_index: int,
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        for page in pages:
+            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            for index, line in enumerate(lines):
+                if line.lower() != "revenues":
+                    continue
+                for candidate in lines[index + 1:index + 10]:
+                    if candidate.lower().startswith("cost of revenues"):
+                        break
+                    if re.match(r"^\d+[A-Za-z()]?\s+", candidate):
+                        values = cls._line_values(candidate, expected_columns=expected_columns)
+                        if len(values) > value_index and values[value_index] is not None:
+                            return values[value_index], {
+                                "page_number": page.get("page_number"),
+                                "line": candidate,
+                                "value_index": value_index,
+                            }
+                break
+        return None, None
+
+
+class CninfoFinancialReportBase:
+    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+
+    def _locate_official_report_evidence(
+        self,
+        symbol: SymbolInfo,
+        *,
+        raw_dir: Optional[str | Path] = None,
+        download_limit: int = 2,
+    ) -> Dict[str, Any]:
+        code, _, suffix = symbol.symbol.partition(".")
+        evidence: Dict[str, Any] = {
+            "status": "FAILED",
+            "source": "CNINFO_Announcements_L0",
+            "source_level": SourceLevel.L0.value,
+            "reports": [],
+            "downloaded_reports": [],
+            "errors": [],
+        }
+        try:
+            cninfo = CninfoAnnouncementsProvider()
+            listing = cninfo._lookup_listing(code)
+            if not listing:
+                evidence["errors"].append(f"could not resolve CNINFO orgId for {symbol.symbol}")
+                return evidence
+            announcements: List[Any] = []
+            queried_pages = 0
+            seen_report_keys: set[str] = set()
+            reports: List[Dict[str, Any]] = []
+            for page_num in range(1, 7):
+                payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
+                page_announcements = payload.get("announcements") or []
+                if not isinstance(page_announcements, list) or not page_announcements:
+                    break
+                queried_pages += 1
+                announcements.extend(page_announcements)
+                for item in page_announcements:
+                    if not isinstance(item, Mapping):
+                        continue
+                    record = cninfo._normalize_announcement(item)
+                    title = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
+                    if not self._is_periodic_report_title(title):
+                        continue
+                    record["title"] = title
+                    record["report_kind"] = self._report_kind(title)
+                    report_key = str(record.get("announcement_id") or record.get("pdf_url") or title)
+                    if report_key in seen_report_keys:
+                        continue
+                    seen_report_keys.add(report_key)
+                    reports.append(record)
+                    if len(reports) >= 8:
+                        break
+                if len(reports) >= 8:
+                    break
+            if raw_dir and reports and download_limit > 0:
+                self._attach_official_report_downloads(
+                    reports,
+                    raw_dir=Path(raw_dir) / "official_reports",
+                    symbol=symbol.symbol,
+                    limit=download_limit,
+                    errors=evidence["errors"],
+                )
+
+            selected_reports = self._select_reports_for_download(reports, download_limit) if reports and download_limit > 0 else []
+            downloaded_reports = [
+                report for report in reports
+                if report.get("download_status") == "OK" and report.get("pdf_path")
+            ]
+            if not reports:
+                evidence_status = "PARTIAL"
+            elif raw_dir and selected_reports and len(downloaded_reports) < len(selected_reports):
+                evidence_status = "PARTIAL"
+            else:
+                evidence_status = "OK"
+            evidence.update({
+                "status": evidence_status,
+                "code": code,
+                "org_id": listing.get("orgId"),
+                "name": listing.get("zwjc"),
+                "queried_announcements": len(announcements) if isinstance(announcements, list) else 0,
+                "queried_pages": queried_pages,
+                "selected_report_count": len(selected_reports),
+                "downloaded_report_count": len(downloaded_reports),
+                "reports": reports,
+                "downloaded_reports": [
+                    {
+                        "report_kind": report.get("report_kind"),
+                        "title": report.get("title"),
+                        "announcement_date": report.get("announcement_date"),
+                        "pdf_path": report.get("pdf_path"),
+                        "pdf_hash": report.get("pdf_hash"),
+                        "pdf_size_bytes": report.get("pdf_size_bytes"),
+                        "line_extraction": report.get("line_extraction"),
+                    }
+                    for report in downloaded_reports
+                ],
+            })
+            if not reports:
+                evidence["errors"].append("CNINFO announcement query succeeded but no recent periodic report PDF was found in the scanned pages")
+            return evidence
+        except Exception as exc:
+            evidence["errors"].append(f"CNINFO report evidence lookup failed: {type(exc).__name__}: {exc}")
+            return evidence
+
+    @staticmethod
+    def _clean_title(title: str) -> str:
+        return re.sub(r"<[^>]+>", "", title).replace("&nbsp;", " ").strip()
+
+    @staticmethod
+    def _is_periodic_report_title(title: str) -> bool:
+        if not title or "摘要" in title:
+            return False
+        excluded = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
+        if any(token in title for token in excluded):
+            return False
+        return bool(re.search(r"(年度报告|半年度报告|第一季度报告|第三季度报告|一季度报告|三季度报告|季度报告)", title))
+
+    @staticmethod
+    def _report_kind(title: str) -> str:
+        if "半年度报告" in title:
+            return "semiannual"
+        if "年度报告" in title:
+            return "annual"
+        if "第一季度报告" in title or "一季度报告" in title:
+            return "q1"
+        if "第三季度报告" in title or "三季度报告" in title:
+            return "q3"
+        if "季度报告" in title:
+            return "quarterly"
+        return "periodic"
+
+    @classmethod
+    def _select_reports_for_download(cls, reports: Sequence[Mapping[str, Any]], limit: int) -> List[Mapping[str, Any]]:
+        selected: List[Mapping[str, Any]] = []
+        preferred_order = ["annual", "q1", "semiannual", "q3", "quarterly", "periodic"]
+        for kind in preferred_order:
+            candidates = [
+                report for report in reports
+                if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
+            ]
+            candidates.sort(key=lambda report: str(report.get("announcement_date") or ""), reverse=True)
+            for report in candidates:
+                if report not in selected:
+                    selected.append(report)
+                if len(selected) >= limit:
+                    return selected
+        return selected
+
+    def _attach_official_report_downloads(
+        self,
+        reports: List[Dict[str, Any]],
+        *,
+        raw_dir: Path,
+        symbol: str,
+        limit: int,
+        errors: List[str],
+    ) -> None:
+        selected = self._select_reports_for_download(reports, limit)
+        for report in reports:
+            if report not in selected:
+                report["download_status"] = "NOT_SELECTED"
+        for report in selected:
+            url = str(report.get("pdf_url") or "")
+            report_kind = str(report.get("report_kind") or "periodic")
+            announcement_date = str(report.get("announcement_date") or "")
+            title = str(report.get("title") or report_kind)
+            filename = _safe_artifact_name(f"{symbol}_{announcement_date}_{report_kind}_{title}") + ".pdf"
+            try:
+                payload = https_bytes(
+                    url,
+                    user_agent=self.user_agent,
+                    headers={"Referer": "https://www.cninfo.com.cn/"},
+                    timeout=45,
+                    max_bytes=90 * 1024 * 1024,
+                )
+                if not payload.startswith(b"%PDF"):
+                    raise RuntimeError("downloaded artifact does not start with a PDF header")
+                pdf_path, pdf_hash = save_raw_bytes(payload, raw_dir, filename)
+                report["download_status"] = "OK"
+                report["pdf_path"] = pdf_path
+                report["pdf_hash"] = pdf_hash
+                report["pdf_size_bytes"] = len(payload)
+            except Exception as exc:
+                report["download_status"] = "FAILED"
+                report["download_error"] = f"{type(exc).__name__}: {exc}"
+                errors.append(f"official report PDF download failed for {title}: {type(exc).__name__}: {exc}")
+
+
 def _first_non_empty(row: Mapping[str, Any], keys: Sequence[str]) -> Any:
     for key in keys:
         value = row.get(key)
@@ -1096,7 +2033,975 @@ def _put_number(target: Dict[str, Any], key: str, value: Any) -> None:
         target[key] = number
 
 
-class EastmoneyF10FinancialsProvider:
+class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractionMixin):
+    """Official CNINFO periodic-report PDF line-item adapter for A-share financials."""
+
+    name = "CNINFO_FinancialReports_L0"
+    level = SourceLevel.L0
+    markets = [Market.CN_A]
+    datasets = [Dataset.FINANCIALS]
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.CN_A:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "CNINFO financial reports only support A-share symbols")
+        if dataset != Dataset.FINANCIALS:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        raw_dir = kwargs.get("raw_dir")
+        try:
+            download_limit = int(kwargs.get("official_report_download_limit", 2) or 2)
+            evidence = self._locate_official_report_evidence(symbol, raw_dir=raw_dir, download_limit=download_limit)
+            reports = evidence.get("reports", []) if isinstance(evidence.get("reports"), list) else []
+            if not reports:
+                return DataResult(
+                    False,
+                    dataset,
+                    symbol.symbol,
+                    self.name,
+                    self.level,
+                    utc_now(),
+                    data={"official_report_evidence": evidence},
+                    currency=symbol.currency or "CNY",
+                    errors=["CNINFO returned no periodic report PDFs for financial extraction."],
+                )
+
+            extracted_periods: List[Dict[str, Any]] = []
+            extraction_errors: List[str] = []
+            extraction_warnings: List[str] = []
+            extraction_raw_dir = Path(raw_dir) / "official_reports" if raw_dir else None
+            for report in reports:
+                if report.get("download_status") != "OK" or not report.get("pdf_path"):
+                    continue
+                extraction = self._extract_cninfo_report_period(report, raw_dir=extraction_raw_dir)
+                report["line_extraction"] = {
+                    key: value
+                    for key, value in extraction.items()
+                    if key != "period"
+                }
+                if extraction.get("status") in {"OK", "PARTIAL"} and isinstance(extraction.get("period"), Mapping):
+                    extracted_periods.append(dict(extraction["period"]))
+                if extraction.get("status") != "OK":
+                    extraction_errors.extend(str(error) for error in extraction.get("errors", []) or [])
+                    extraction_warnings.append(
+                        f"{report.get('report_kind')} {report.get('announcement_date')} extraction status={extraction.get('status')} missing={extraction.get('missing_fields')}"
+                    )
+
+            core_statement_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+            extracted_periods.sort(key=lambda row: str(row.get("period") or ""))
+            ok_periods = [
+                row for row in extracted_periods
+                if all(row.get(field) is not None for field in core_statement_fields)
+            ]
+            latest_extracted_period = extracted_periods[-1] if extracted_periods else None
+            latest_period = str(latest_extracted_period.get("period") or "") if latest_extracted_period else None
+            latest_core_statement_missing_fields = [
+                field for field in core_statement_fields
+                if not latest_extracted_period or latest_extracted_period.get(field) is None
+            ]
+            latest_core_statement_complete = bool(latest_extracted_period) and not latest_core_statement_missing_fields
+            latest_core_complete_period = max((str(row.get("period") or "") for row in ok_periods), default=None)
+            if latest_extracted_period and latest_core_statement_missing_fields:
+                extraction_warnings.append(
+                    f"latest period {latest_period} missing core statement fields={latest_core_statement_missing_fields}"
+                )
+            downloaded_reports = [
+                report for report in reports
+                if report.get("download_status") == "OK" and report.get("pdf_path")
+            ]
+            financial_sector_profile_required = self._requires_financial_sector_profile(evidence, reports)
+            financial_sector_profile_status = self._financial_sector_profile_status(
+                extracted_periods,
+                required=financial_sector_profile_required,
+            )
+            evidence.update({
+                "source": self.name,
+                "source_level": self.level.value,
+                "line_extraction_status": "OK" if latest_core_statement_complete and len(ok_periods) == len(extracted_periods) else ("PARTIAL" if extracted_periods else "FAILED"),
+                "extracted_period_count": len(extracted_periods),
+                "core_complete_period_count": len(ok_periods),
+                "core_statement_fields": core_statement_fields,
+                "latest_period": latest_period,
+                "latest_core_statement_complete": latest_core_statement_complete,
+                "latest_core_statement_missing_fields": latest_core_statement_missing_fields,
+                "latest_core_complete_period": latest_core_complete_period,
+                "financial_sector_profile_required": financial_sector_profile_required,
+                "financial_sector_profile_status": financial_sector_profile_status,
+                "downloaded_reports": [
+                    {
+                        "report_kind": report.get("report_kind"),
+                        "title": report.get("title"),
+                        "announcement_date": report.get("announcement_date"),
+                        "pdf_path": report.get("pdf_path"),
+                        "pdf_hash": report.get("pdf_hash"),
+                        "pdf_size_bytes": report.get("pdf_size_bytes"),
+                        "line_extraction": report.get("line_extraction"),
+                    }
+                    for report in downloaded_reports
+                ],
+                "errors": list(evidence.get("errors", []) or []) + extraction_errors,
+            })
+
+            raw_path = raw_hash = None
+            if raw_dir:
+                raw_path, raw_hash = save_raw_json(
+                    {"official_report_evidence": evidence},
+                    raw_dir,
+                    f"{symbol.symbol}_cninfo_financial_reports_raw.json",
+                )
+
+            if not extracted_periods:
+                return DataResult(
+                    False,
+                    dataset,
+                    symbol.symbol,
+                    self.name,
+                    self.level,
+                    utc_now(),
+                    data={"official_report_evidence": evidence, "periods": []},
+                    raw_path=raw_path,
+                    raw_hash=raw_hash,
+                    currency=symbol.currency or "CNY",
+                    errors=["CNINFO official PDFs were downloaded, but no core financial statement lines could be extracted."],
+                )
+
+            output_unit = self._period_unit(extracted_periods)
+            return DataResult(
+                True,
+                dataset,
+                symbol.symbol,
+                self.name,
+                self.level,
+                utc_now(),
+                as_of_date=latest_period,
+                data={
+                    "symbol": symbol.symbol,
+                    "source": self.name,
+                    "source_level": self.level.value,
+                    "currency": symbol.currency or "CNY",
+                    "unit": output_unit,
+                    "period_basis": "CNINFO official report PDF line extraction; income and cash-flow rows are reported cumulative periods, and balance-sheet rows are period-end.",
+                    "latest_period": latest_period,
+                    "official_report_evidence": evidence,
+                    "periods": extracted_periods,
+                    "source_usage": {
+                        "preferred_source": "CNINFO/SSE/SZSE/BSE periodic report PDFs",
+                        "preferred_source_status": evidence.get("status"),
+                        "preferred_source_records": len(reports),
+                        "report_pdf_evidence_used": True,
+                        "report_line_items_extracted": latest_core_statement_complete,
+                        "extracted_period_count": len(extracted_periods),
+                        "core_complete_period_count": len(ok_periods),
+                        "core_statement_fields": core_statement_fields,
+                        "latest_core_statement_complete": latest_core_statement_complete,
+                        "latest_core_statement_missing_fields": latest_core_statement_missing_fields,
+                        "latest_core_complete_period": latest_core_complete_period,
+                        "financial_sector_profile_required": financial_sector_profile_required,
+                        "financial_sector_profile_status": financial_sector_profile_status,
+                        "source_role": "L0_OFFICIAL_REPORT_LINE_ITEMS",
+                        "required_ai_action": "Review CNINFO PDF line evidence, reporting period basis, unit, industry reporting fit, and missing fields before assigning S/A.",
+                    },
+                },
+                raw_path=raw_path,
+                raw_hash=raw_hash,
+                unit=output_unit,
+                currency=symbol.currency or "CNY",
+                warnings=[
+                    "CNINFO official financial report PDFs were parsed into core financial lines where machine-readable page text was available.",
+                    "Use consolidated statements; do not mix parent-company statements with consolidated revenue, cash flow, assets, liabilities, or equity.",
+                ] + (
+                    [f"Financial-sector issuer detected; industry profile status={financial_sector_profile_status}."]
+                    if financial_sector_profile_required else []
+                ) + extraction_warnings,
+            )
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"CNINFO financial report fetch failed: {type(exc).__name__}: {exc}")
+
+    def _extract_cninfo_report_period(self, report: Mapping[str, Any], *, raw_dir: Optional[Path] = None) -> Dict[str, Any]:
+        pdf_path = str(report.get("pdf_path") or "")
+        report_kind = str(report.get("report_kind") or "periodic")
+        title = str(report.get("title") or "")
+        if not pdf_path:
+            return {"status": "FAILED", "errors": ["report has no downloaded pdf_path"]}
+
+        page_bundle = self._extract_pdf_pages(pdf_path, max_pages=260, timeout=90)
+        if not page_bundle.get("ok"):
+            return {"status": "FAILED", "errors": page_bundle.get("errors", ["PDF text extraction failed"])}
+        pages = page_bundle.get("pages", [])
+        if not isinstance(pages, list) or not pages:
+            return {"status": "FAILED", "errors": ["PDF text extraction returned no text pages"]}
+
+        if raw_dir:
+            text_name = _safe_artifact_name(f"{Path(pdf_path).stem}_pdf_text") + ".txt"
+            combined_text = "\n\n".join(
+                f"--- page {page.get('page_number')} ---\n{page.get('text') or ''}"
+                for page in pages
+            )
+            text_path, text_hash = save_raw_text(combined_text, raw_dir / "extracted_text", text_name)
+        else:
+            text_path = text_hash = None
+
+        balance_pages = self._cn_statement_pages(
+            pages,
+            "合并资产负债表",
+            stop_titles=["母公司资产负债表", "公司资产负债表", "合并利润表", "母公司利润表", "合并现金流量表"],
+            signals=["资产总计", "资产合计", "负债合计", "所有者权益", "股东权益"],
+        )
+        income_pages = self._cn_statement_pages(
+            pages,
+            "合并利润表",
+            stop_titles=["母公司利润表", "公司利润表", "合并现金流量表", "母公司现金流量表"],
+            signals=["营业总收入", "营业收入", "归属于母公司"],
+        )
+        cashflow_pages = self._cn_statement_pages(
+            pages,
+            "合并现金流量表",
+            stop_titles=["母公司现金流量表", "公司现金流量表", "所有者权益变动表", "合并所有者权益变动表"],
+            signals=["经营活动产生的现金流量净额", "经营活动产生的现金流"],
+        )
+        unit = self._cn_unit_from_pages(balance_pages + income_pages + cashflow_pages)
+
+        fields: Dict[str, Any] = {}
+        evidence: Dict[str, Any] = {}
+
+        def put(field: str, value: Optional[float], source: Optional[Dict[str, Any]]) -> None:
+            if value is None:
+                return
+            fields[field] = value
+            if source:
+                evidence[field] = source
+
+        value, source = self._extract_cn_value(balance_pages, [["资产总计"]], exclude_groups=[["负债", "权益"]])
+        if value is None:
+            value, source = self._extract_cn_value(
+                balance_pages,
+                [["资产合计"], ["资产总额"]],
+                exclude_groups=[["流动资产合计"], ["非流动资产合计"], ["负债", "权益"]],
+            )
+        put("assets", value, source)
+        value, source = self._extract_cn_value(balance_pages, [["负债合计"]], exclude_groups=[["流动负债合计"], ["非流动负债合计"]])
+        put("liabilities", value, source)
+        value, source = self._extract_cn_value(
+            balance_pages,
+            [["所有者权益", "计"], ["股东权益", "计"]],
+            exclude_groups=[["归属于母公司"], ["少数股东"], ["负债", "所有者权益"]],
+        )
+        put("equity", value, source)
+        value, source = self._extract_cn_value(balance_pages, [["归属于母公司", "权益", "合计"]])
+        put("parent_equity", value, source)
+        value, source = self._extract_cn_value(balance_pages, [["货币资金"]])
+        put("cash", value, source)
+
+        value, source = self._extract_cn_value(income_pages, [["其中", "营业收入"], ["营业收入"]], exclude_groups=[["营业总收入"], ["营业成本"], ["增长率"], ["比重"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["营业总收入"]])
+        put("revenue", value, source)
+        value, source = self._extract_cn_value(income_pages, [["营业利润"]], exclude_groups=[["二、营业总成本"]])
+        put("operating_income", value, source)
+        value, source = self._extract_cn_value(income_pages, [["利润总额"]])
+        put("profit_before_tax", value, source)
+        value, source = self._extract_cn_value(income_pages, [["五", "净利润"], ["净利润"]], exclude_groups=[["归属于母公司"], ["少数股东"], ["综合收益"]])
+        put("total_net_profit", value, source)
+        value, source = self._extract_cn_value(income_pages, [["归属于母公司", "净利润"], ["归属于母公司股东", "净利润"]], exclude_groups=[["综合收益"]])
+        if value is None:
+            value, source = fields.get("total_net_profit"), evidence.get("total_net_profit")
+        put("net_income", value, source)
+
+        value, source = self._extract_cn_value(cashflow_pages, [["经营活动产生的现金流量净额"], ["经营活动产生的现金流", "量净额"], ["经营活动产生的现金流量净"]])
+        put("operating_cash_flow", value, source)
+        value, source = self._extract_cn_value(cashflow_pages, [["投资活动产生的现金流量净额"], ["投资活动产生的现金流", "量净额"], ["投资活动产生的现金流量净"]])
+        put("investing_cash_flow", value, source)
+        value, source = self._extract_cn_value(cashflow_pages, [["筹资活动产生的现金流量净额"], ["筹资活动产生的现金流", "量净额"], ["筹资活动产生的现金流量净"]])
+        put("financing_cash_flow", value, source)
+
+        financial_sector_profile = self._extract_financial_sector_profile(pages, unit=unit)
+        period = self._cn_period_from_report(report, balance_pages + income_pages + cashflow_pages)
+        required = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+        missing = [field for field in required if fields.get(field) is None]
+        status = "OK" if not missing else ("PARTIAL" if fields else "FAILED")
+        section_pages = {
+            "balance": [page.get("page_number") for page in balance_pages],
+            "income": [page.get("page_number") for page in income_pages],
+            "cashflow": [page.get("page_number") for page in cashflow_pages],
+        }
+        period_row = {
+            "period": period,
+            "period_type": report_kind,
+            "source": self.name,
+            "source_level": self.level.value,
+            "source_report_kind": report_kind,
+            "source_title": title,
+            "source_announcement_date": report.get("announcement_date"),
+            "currency": "CNY",
+            "unit": unit,
+            **fields,
+            "field_evidence": evidence,
+            "section_pages": section_pages,
+        }
+        if financial_sector_profile:
+            period_row["financial_sector_profile"] = financial_sector_profile
+        return {
+            "status": status,
+            "period": period_row if fields else None,
+            "missing_fields": missing,
+            "section_pages": section_pages,
+            "parser": page_bundle.get("parser"),
+            "parser_python": page_bundle.get("python"),
+            "page_count": page_bundle.get("page_count"),
+            "text_path": text_path,
+            "text_hash": text_hash,
+            "warnings": page_bundle.get("warnings", []),
+            "errors": [] if fields else ["No consolidated core financial fields could be extracted from PDF text."],
+        }
+
+    @classmethod
+    def _cn_statement_pages(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        title: str,
+        *,
+        stop_titles: Sequence[str],
+        signals: Sequence[str],
+        max_section_pages: int = 8,
+    ) -> List[Dict[str, Any]]:
+        start_index = cls._cn_statement_start_index(pages, title, signals)
+        if start_index is None:
+            return []
+        title_compact = cls._compact_cn(title)
+        stop_compacts = [cls._compact_cn(stop) for stop in stop_titles]
+        output: List[Dict[str, Any]] = []
+        for page in pages[start_index:start_index + max_section_pages]:
+            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            if not lines:
+                continue
+            start_line = 0
+            for idx, line in enumerate(lines):
+                if title_compact in cls._compact_cn(line):
+                    start_line = idx
+                    break
+            kept: List[str] = []
+            for idx, line in enumerate(lines[start_line:], start=start_line):
+                compact = cls._compact_cn(line)
+                if idx > start_line and any(stop in compact for stop in stop_compacts):
+                    break
+                kept.append(line)
+            if kept:
+                output.append({"page_number": page.get("page_number"), "text": "\n".join(kept)})
+            if len(kept) < len(lines[start_line:]):
+                break
+        return output
+
+    @classmethod
+    def _cn_statement_start_index(cls, pages: Sequence[Mapping[str, Any]], title: str, signals: Sequence[str]) -> Optional[int]:
+        title_compact = cls._compact_cn(title)
+        signal_compacts = [cls._compact_cn(signal) for signal in signals]
+        scored: List[Tuple[int, int, int]] = []
+        for idx, page in enumerate(pages):
+            text = str(page.get("text") or "")
+            compact_text = cls._compact_cn(text)
+            if title_compact not in compact_text:
+                continue
+            lines = [cls._normalize_pdf_line(line) for line in text.splitlines()]
+            score = 0
+            for line_index, line in enumerate(lines):
+                compact_line = cls._compact_cn(line)
+                if title_compact not in compact_line:
+                    continue
+                score += 8
+                is_continuation_page = "续" in compact_line[:len(title_compact) + 8]
+                if is_continuation_page:
+                    score -= 10
+                else:
+                    score += 10
+                if len(compact_line) <= len(title_compact) + 6:
+                    score += 6
+                nearby = cls._compact_cn("".join(lines[line_index:line_index + 8]))
+                if "项目" in nearby:
+                    score += 3
+                if "单位" in nearby:
+                    score += 2
+                break
+            signal_hits = sum(1 for signal in signal_compacts if signal in compact_text)
+            score += signal_hits * 2
+            if "财务报表附注" in text or "附注" in text and score < 14:
+                score -= 4
+            scored.append((score, idx, signal_hits))
+        if not scored:
+            return None
+        candidate_pool = [item for item in scored if item[2] > 0] or scored
+        best_score = max(score for score, _, _ in candidate_pool)
+        high_confidence = [
+            (score, idx)
+            for score, idx, _ in candidate_pool
+            if score >= max(20, best_score - 4)
+        ]
+        if high_confidence:
+            return min(idx for _, idx in high_confidence)
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return scored[0][1]
+
+    @classmethod
+    def _extract_cn_value(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        label_groups: Sequence[Sequence[str]],
+        *,
+        expected_columns: int = 2,
+        value_index: int = 0,
+        exclude_groups: Sequence[Sequence[str]] = (),
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        compact_groups = [[cls._compact_cn(label) for label in group] for group in label_groups]
+        compact_excludes = [[cls._compact_cn(label) for label in group] for group in exclude_groups]
+        for page in pages:
+            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            for idx in range(len(lines)):
+                for width in range(1, 5):
+                    window = lines[idx:idx + width]
+                    if not window:
+                        continue
+                    joined = " ".join(window)
+                    compact = cls._compact_cn(joined)
+                    first_line = cls._compact_cn(window[0])
+                    if not any(
+                        group
+                        and group[0] in first_line
+                        and all(label in compact for label in group)
+                        for group in compact_groups
+                    ):
+                        continue
+                    if any(all(label in compact for label in group) for group in compact_excludes):
+                        continue
+                    values = cls._cn_line_values(joined, expected_columns=expected_columns)
+                    if len(values) <= value_index or values[value_index] is None:
+                        continue
+                    return values[value_index], {
+                        "page_number": page.get("page_number"),
+                        "line": joined,
+                        "value_index": value_index,
+                    }
+        return None, None
+
+    @classmethod
+    def _cn_line_values(cls, line: str, *, expected_columns: int) -> List[Optional[float]]:
+        values: List[float] = []
+        for token in cls._pdf_number_tokens(line):
+            value = cls._parse_pdf_number(token)
+            if value is None:
+                continue
+            token_text = token.strip("()")
+            is_small_index = (
+                "," not in token_text
+                and "." not in token_text
+                and token_text.lstrip("-").isdigit()
+                and abs(value) <= 100
+            )
+            if is_small_index:
+                continue
+            values.append(value)
+        if len(values) > expected_columns:
+            values = values[-expected_columns:]
+        return values
+
+    @classmethod
+    def _extract_financial_sector_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
+        sector = cls._financial_sector_kind_from_pages(pages)
+        extractors = {
+            "insurance": cls._extract_insurance_profile,
+            "securities": cls._extract_securities_profile,
+            "bank": cls._extract_bank_profile,
+        }
+        ordered = [sector] if sector else []
+        ordered.extend(name for name in ["insurance", "securities", "bank"] if name not in ordered)
+        for name in ordered:
+            extractor = extractors.get(name)
+            if extractor is None:
+                continue
+            profile = extractor(pages, unit=unit)
+            if profile:
+                return profile
+        return None
+
+    @classmethod
+    def _financial_sector_kind_from_pages(cls, pages: Sequence[Mapping[str, Any]]) -> Optional[str]:
+        text = cls._compact_cn(" ".join(str(page.get("text") or "") for page in pages[:80]))
+        if any(token in text for token in ["保险合同负债", "偿付能力", "保险服务收入", "内含价值", "合同服务边际"]):
+            return "insurance"
+        if any(token in text for token in ["净资本", "风险覆盖率", "代理买卖证券款", "证券及其衍生品/净资本", "证券及证券衍生品净资本"]):
+            return "securities"
+        if any(token in text for token in ["不良贷款率", "拨备覆盖率", "客户存款总额", "贷款和垫款总额"]):
+            return "bank"
+        return None
+
+    @classmethod
+    def _extract_bank_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
+        amount_specs = {
+            "net_interest_income": [["净利息收入"]],
+            "non_interest_income": [["非利息净收入总额"], ["非利息净收入"]],
+            "loans_and_advances": [["贷款和垫款总额"]],
+            "customer_deposits": [["客户存款总额"], ["客户存款"]],
+        }
+        percent_specs = {
+            "net_interest_margin_pct": [["净利息收益率"], ["净息差"]],
+            "non_performing_loan_ratio_pct": [["不良贷款率"]],
+            "provision_coverage_ratio_pct": [["拨备覆盖率"]],
+            "capital_adequacy_ratio_pct": [["资本充足率"]],
+            "tier1_capital_adequacy_ratio_pct": [["一级资本充足率"]],
+            "core_tier1_capital_adequacy_ratio_pct": [["核心一级资本充足率"]],
+        }
+        metrics: Dict[str, Any] = {}
+        evidence: Dict[str, Any] = {}
+        for field, groups in amount_specs.items():
+            value, source = cls._extract_bank_amount(pages, groups)
+            if value is None:
+                continue
+            metrics[field] = value
+            if source:
+                evidence[field] = source
+        for field, groups in percent_specs.items():
+            value, source = cls._extract_bank_percent(pages, groups)
+            if value is None:
+                continue
+            metrics[field] = value
+            if source:
+                evidence[field] = source
+
+        required = [
+            "net_interest_income",
+            "net_interest_margin_pct",
+            "non_performing_loan_ratio_pct",
+            "provision_coverage_ratio_pct",
+            "capital_adequacy_ratio_pct",
+            "core_tier1_capital_adequacy_ratio_pct",
+            "customer_deposits",
+            "loans_and_advances",
+        ]
+        if not any(field in metrics for field in required):
+            return None
+        sanity_warnings = cls._bank_profile_sanity_warnings(metrics)
+        missing = [field for field in required if field not in metrics]
+        return {
+            "sector": "bank",
+            "status": "OK" if not missing and not sanity_warnings else "PARTIAL",
+            "unit": unit,
+            "metrics": metrics,
+            "missing_metrics": missing,
+            "sanity_warnings": sanity_warnings,
+            "field_evidence": evidence,
+        }
+
+    @classmethod
+    def _extract_securities_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
+        amount_specs = {
+            "net_capital": [["净资本"]],
+            "net_assets_parent": [["净资产"]],
+            "customer_fund_deposits": [["客户资金存款"]],
+            "agency_securities_liabilities": [["代理买卖证券款"]],
+            "net_fee_and_commission_income": [["手续费及佣金净收入"]],
+            "investment_income": [["投资收益"]],
+            "net_interest_income": [["利息净收入"]],
+        }
+        percent_specs = {
+            "risk_coverage_ratio_pct": [["风险覆盖率"]],
+            "capital_leverage_ratio_pct": [["资本杠杆率"]],
+            "liquidity_coverage_ratio_pct": [["流动性覆盖率"]],
+            "net_stable_funding_ratio_pct": [["净稳定资金率"]],
+            "net_capital_to_net_assets_pct": [["净资本", "净资产"]],
+            "net_capital_to_liabilities_pct": [["净资本", "负债"]],
+            "proprietary_equity_to_net_capital_pct": [["自营权益类证券", "净资本"]],
+            "proprietary_non_equity_to_net_capital_pct": [["自营非权益类证券", "净资本"]],
+        }
+        metrics, evidence = cls._extract_profile_metrics(pages, amount_specs, percent_specs)
+        required = [
+            "net_capital",
+            "risk_coverage_ratio_pct",
+            "capital_leverage_ratio_pct",
+            "liquidity_coverage_ratio_pct",
+            "net_stable_funding_ratio_pct",
+        ]
+        if not any(field in metrics for field in required):
+            return None
+        sanity_warnings = cls._profile_sanity_warnings(
+            metrics,
+            amount_fields=["net_capital", "net_assets_parent", "customer_fund_deposits", "agency_securities_liabilities"],
+            ratio_bounds={
+                "risk_coverage_ratio_pct": (50.0, 1000.0),
+                "capital_leverage_ratio_pct": (1.0, 100.0),
+                "liquidity_coverage_ratio_pct": (50.0, 1000.0),
+                "net_stable_funding_ratio_pct": (50.0, 1000.0),
+                "net_capital_to_net_assets_pct": (1.0, 100.0),
+                "net_capital_to_liabilities_pct": (1.0, 100.0),
+                "proprietary_equity_to_net_capital_pct": (0.0, 1000.0),
+                "proprietary_non_equity_to_net_capital_pct": (0.0, 1000.0),
+            },
+        )
+        missing = [field for field in required if field not in metrics]
+        return {
+            "sector": "securities",
+            "status": "OK" if not missing and not sanity_warnings else "PARTIAL",
+            "unit": unit,
+            "metrics": metrics,
+            "missing_metrics": missing,
+            "sanity_warnings": sanity_warnings,
+            "field_evidence": evidence,
+        }
+
+    @classmethod
+    def _extract_insurance_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
+        amount_specs = {
+            "insurance_service_revenue": [["保险服务收入"]],
+            "insurance_contract_liabilities": [["保险合同负债"]],
+            "operating_profit_parent": [["归属于母公司股东", "营运利润"]],
+            "embedded_value": [["内含价值"]],
+            "new_business_value": [["新业务价值"]],
+            "contract_service_margin": [["合同服务边际余额"], ["合同服务边际"]],
+        }
+        percent_specs = {
+            "core_solvency_ratio_pct": [["核心偿付能力充足率"]],
+            "comprehensive_solvency_ratio_pct": [["综合偿付能力充足率"]],
+            "combined_ratio_pct": [["综合成本率"]],
+            "operating_roe_pct": [["营运ROE"]],
+            "net_investment_yield_pct": [["净投资收益率"]],
+            "comprehensive_investment_yield_pct": [["综合投资收益率"]],
+        }
+        metrics, evidence = cls._extract_profile_metrics(
+            pages,
+            amount_specs,
+            percent_specs,
+            amount_selects={"insurance_service_revenue": "max_abs"},
+        )
+        required = [
+            "insurance_service_revenue",
+            "insurance_contract_liabilities",
+            "core_solvency_ratio_pct",
+            "comprehensive_solvency_ratio_pct",
+        ]
+        if not any(field in metrics for field in required):
+            return None
+        sanity_warnings = cls._profile_sanity_warnings(
+            metrics,
+            amount_fields=[
+                "insurance_service_revenue",
+                "insurance_contract_liabilities",
+                "operating_profit_parent",
+                "embedded_value",
+                "new_business_value",
+                "contract_service_margin",
+            ],
+            ratio_bounds={
+                "core_solvency_ratio_pct": (50.0, 500.0),
+                "comprehensive_solvency_ratio_pct": (80.0, 600.0),
+                "combined_ratio_pct": (0.0, 150.0),
+                "operating_roe_pct": (-100.0, 100.0),
+                "net_investment_yield_pct": (-50.0, 50.0),
+                "comprehensive_investment_yield_pct": (-50.0, 50.0),
+            },
+        )
+        missing = [field for field in required if field not in metrics]
+        return {
+            "sector": "insurance",
+            "status": "OK" if not missing and not sanity_warnings else "PARTIAL",
+            "unit": unit,
+            "metrics": metrics,
+            "missing_metrics": missing,
+            "sanity_warnings": sanity_warnings,
+            "field_evidence": evidence,
+        }
+
+    @classmethod
+    def _extract_profile_metrics(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        amount_specs: Mapping[str, Sequence[Sequence[str]]],
+        percent_specs: Mapping[str, Sequence[Sequence[str]]],
+        *,
+        amount_selects: Optional[Mapping[str, str]] = None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        metrics: Dict[str, Any] = {}
+        evidence: Dict[str, Any] = {}
+        for field, groups in amount_specs.items():
+            value, source = cls._extract_bank_amount(
+                pages,
+                groups,
+                select=str((amount_selects or {}).get(field) or "first"),
+            )
+            if value is None:
+                continue
+            metrics[field] = value
+            if source:
+                evidence[field] = source
+        for field, groups in percent_specs.items():
+            value, source = cls._extract_bank_percent(pages, groups)
+            if value is None:
+                continue
+            metrics[field] = value
+            if source:
+                evidence[field] = source
+        return metrics, evidence
+
+    @classmethod
+    def _extract_bank_amount(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        label_groups: Sequence[Sequence[str]],
+        *,
+        exclude_groups: Sequence[Sequence[str]] = (),
+        select: str = "first",
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        excluded = list(exclude_groups) + [["占营业收入百分比"], ["占比"], ["比例"], ["平均余额"], ["日均余额"], ["利息支出"], ["亿元"]]
+        return cls._extract_bank_metric(
+            pages,
+            label_groups,
+            value_kind="amount",
+            exclude_groups=excluded,
+            select=select,
+        )
+
+    @classmethod
+    def _extract_bank_percent(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        label_groups: Sequence[Sequence[str]],
+        *,
+        exclude_groups: Sequence[Sequence[str]] = (),
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        return cls._extract_bank_metric(
+            pages,
+            label_groups,
+            value_kind="percent",
+            exclude_groups=exclude_groups,
+            select="first",
+        )
+
+    @classmethod
+    def _extract_bank_metric(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        label_groups: Sequence[Sequence[str]],
+        *,
+        value_kind: str,
+        exclude_groups: Sequence[Sequence[str]] = (),
+        select: str = "first",
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        compact_groups = [[cls._compact_cn(label) for label in group] for group in label_groups]
+        compact_excludes = [[cls._compact_cn(label) for label in group] for group in exclude_groups]
+        matches: List[Tuple[float, Dict[str, Any]]] = []
+        for page in pages:
+            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            for line in lines:
+                compact = cls._compact_cn(line)
+                leading = cls._leading_metric_compact(compact)
+                matched_group = next(
+                    (
+                        group
+                        for group in compact_groups
+                        if group
+                        and leading.startswith(group[0])
+                        and all(label in compact for label in group)
+                    ),
+                    None,
+                )
+                if not matched_group:
+                    continue
+                if any(all(label in compact for label in group) for group in compact_excludes):
+                    continue
+                tokens = cls._bank_metric_values(line, value_kind=value_kind)
+                if not tokens:
+                    continue
+                source = {
+                    "page_number": page.get("page_number"),
+                    "line": line,
+                    "value_index": 0,
+                    "value_kind": value_kind,
+                    "label_group": matched_group,
+                }
+                if select == "max_abs":
+                    matches.append((tokens[0], source))
+                    continue
+                return tokens[0], source
+        if select == "max_abs" and matches:
+            return max(matches, key=lambda item: abs(item[0]))
+        return None, None
+
+    @classmethod
+    def _bank_metric_values(cls, line: str, *, value_kind: str) -> List[float]:
+        values: List[float] = []
+        for token in cls._pdf_number_tokens(line):
+            value = cls._parse_pdf_number(token)
+            if value is None:
+                continue
+            token_text = token.strip("()")
+            is_small_index = (
+                "," not in token_text
+                and "." not in token_text
+                and token_text.lstrip("-").isdigit()
+                and abs(value) <= 100
+            )
+            if is_small_index:
+                continue
+            if value_kind == "amount":
+                if "," not in token_text and abs(value) < 1000:
+                    continue
+            elif value_kind == "percent":
+                if "," in token_text or abs(value) > 1000:
+                    continue
+            values.append(value)
+        return values
+
+    @staticmethod
+    def _leading_metric_compact(compact_line: str) -> str:
+        return compact_line.lstrip("-－—–·•*")
+
+    @staticmethod
+    def _bank_profile_sanity_warnings(metrics: Mapping[str, Any]) -> List[str]:
+        warnings: List[str] = []
+
+        def number(key: str) -> Optional[float]:
+            value = metrics.get(key)
+            if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                return float(value)
+            return None
+
+        for key in ["net_interest_income", "non_interest_income", "loans_and_advances", "customer_deposits"]:
+            value = number(key)
+            if value is not None and abs(value) < 1000:
+                warnings.append(f"{key} is too small for a reported bank amount: {value}")
+
+        bounded_specs = {
+            "net_interest_margin_pct": (0.0, 10.0),
+            "non_performing_loan_ratio_pct": (0.0, 20.0),
+            "provision_coverage_ratio_pct": (20.0, 1000.0),
+            "capital_adequacy_ratio_pct": (5.0, 40.0),
+            "tier1_capital_adequacy_ratio_pct": (5.0, 40.0),
+            "core_tier1_capital_adequacy_ratio_pct": (5.0, 40.0),
+        }
+        for key, (lower, upper) in bounded_specs.items():
+            value = number(key)
+            if value is not None and not (lower <= value <= upper):
+                warnings.append(f"{key} is outside the expected bank ratio range {lower}-{upper}: {value}")
+
+        core = number("core_tier1_capital_adequacy_ratio_pct")
+        tier1 = number("tier1_capital_adequacy_ratio_pct")
+        total = number("capital_adequacy_ratio_pct")
+        if core is not None and tier1 is not None and tier1 + 1e-9 < core:
+            warnings.append("tier1_capital_adequacy_ratio_pct is below core_tier1_capital_adequacy_ratio_pct")
+        if tier1 is not None and total is not None and total + 1e-9 < tier1:
+            warnings.append("capital_adequacy_ratio_pct is below tier1_capital_adequacy_ratio_pct")
+        if core is not None and total is not None and total + 1e-9 < core:
+            warnings.append("capital_adequacy_ratio_pct is below core_tier1_capital_adequacy_ratio_pct")
+
+        return warnings
+
+    @staticmethod
+    def _profile_sanity_warnings(
+        metrics: Mapping[str, Any],
+        *,
+        amount_fields: Sequence[str],
+        ratio_bounds: Mapping[str, Tuple[float, float]],
+    ) -> List[str]:
+        warnings: List[str] = []
+
+        def number(key: str) -> Optional[float]:
+            value = metrics.get(key)
+            if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                return float(value)
+            return None
+
+        for key in amount_fields:
+            value = number(key)
+            if value is not None and abs(value) < 1000:
+                warnings.append(f"{key} is too small for a reported financial-sector amount: {value}")
+
+        for key, (lower, upper) in ratio_bounds.items():
+            value = number(key)
+            if value is not None and not (lower <= value <= upper):
+                warnings.append(f"{key} is outside the expected financial-sector ratio range {lower}-{upper}: {value}")
+
+        return warnings
+
+    @staticmethod
+    def _financial_sector_profile_status(periods: Sequence[Mapping[str, Any]], *, required: bool) -> str:
+        if not required:
+            return "not_applicable"
+        sorted_periods = sorted(periods, key=lambda row: str(row.get("period") or ""))
+        profiles = []
+        for period in sorted_periods:
+            profile = period.get("financial_sector_profile")
+            if isinstance(profile, Mapping):
+                profiles.append(profile)
+        latest_period = sorted_periods[-1] if sorted_periods else None
+        latest_profile = (
+            latest_period.get("financial_sector_profile")
+            if isinstance(latest_period, Mapping) and isinstance(latest_period.get("financial_sector_profile"), Mapping)
+            else None
+        )
+        if latest_profile and latest_profile.get("status") == "OK":
+            return "OK"
+        if profiles:
+            return "PARTIAL"
+        return "FAILED"
+
+    @classmethod
+    def _cn_period_from_report(cls, report: Mapping[str, Any], section_pages: Sequence[Mapping[str, Any]]) -> str:
+        text = " ".join([str(report.get("title") or "")] + [str(page.get("text") or "") for page in section_pages[:3]])
+        match = re.search(r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日", text)
+        if match:
+            year, month, day = match.groups()
+            return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+        title = str(report.get("title") or "")
+        year_match = re.search(r"(\d{4})年", title)
+        year = int(year_match.group(1)) if year_match else dt.datetime.now().year
+        report_kind = str(report.get("report_kind") or "")
+        if report_kind == "q1":
+            return f"{year:04d}-03-31"
+        if report_kind == "semiannual":
+            return f"{year:04d}-06-30"
+        if report_kind == "q3":
+            return f"{year:04d}-09-30"
+        return f"{year:04d}-12-31"
+
+    @classmethod
+    def _cn_unit_from_pages(cls, pages: Sequence[Mapping[str, Any]]) -> str:
+        text = cls._compact_cn(" ".join(str(page.get("text") or "") for page in pages[:3]))
+        if "人民币百万元" in text or "单位:百万元" in text or "单位:人民币百万元" in text:
+            return "million_yuan"
+        if "人民币千元" in text or "单位:千元" in text or "单位:人民币千元" in text:
+            return "thousand_yuan"
+        if "人民币万元" in text or "单位:万元" in text or "单位:人民币万元" in text:
+            return "ten_thousand_yuan"
+        return "yuan"
+
+    @staticmethod
+    def _period_unit(periods: Sequence[Mapping[str, Any]]) -> str:
+        units = {str(period.get("unit") or "") for period in periods if period.get("unit")}
+        if len(units) == 1:
+            return next(iter(units))
+        if units:
+            return "mixed"
+        return "yuan"
+
+    @classmethod
+    def _requires_financial_sector_profile(
+        cls,
+        evidence: Mapping[str, Any],
+        reports: Sequence[Mapping[str, Any]],
+    ) -> bool:
+        text_parts = [str(evidence.get("name") or "")]
+        text_parts.extend(str(report.get("title") or "") for report in reports)
+        compact = cls._compact_cn(" ".join(text_parts))
+        return any(token in compact for token in ["银行", "保险", "证券", "信托", "期货", "券商"])
+
+    @staticmethod
+    def _compact_cn(text: str) -> str:
+        normalized = (
+            text.replace("：", ":")
+            .replace("（", "(")
+            .replace("）", ")")
+            .replace("－", "-")
+            .replace("—", "-")
+            .replace(" ", "")
+        )
+        return re.sub(r"\s+", "", normalized)
+
+
+class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
     """Eastmoney F10 L3 structured preflight for A-share financial statements.
 
     The adapter records official periodic-report evidence when available and
@@ -1123,7 +3028,11 @@ class EastmoneyF10FinancialsProvider:
         if dataset != Dataset.FINANCIALS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
 
-        official_report_evidence = self._locate_official_report_evidence(symbol)
+        official_report_evidence = self._locate_official_report_evidence(
+            symbol,
+            raw_dir=kwargs.get("raw_dir"),
+            download_limit=int(kwargs.get("official_report_download_limit", 2) or 2),
+        )
         page_size = int(kwargs.get("page_size", 16) or 16)
         raw_payloads: Dict[str, Any] = {"official_report_evidence": official_report_evidence}
         table_rows: Dict[str, List[Mapping[str, Any]]] = {}
@@ -1205,93 +3114,6 @@ class EastmoneyF10FinancialsProvider:
             currency=symbol.currency or "CNY",
             warnings=warnings,
         )
-
-    def _locate_official_report_evidence(self, symbol: SymbolInfo) -> Dict[str, Any]:
-        code, _, suffix = symbol.symbol.partition(".")
-        evidence: Dict[str, Any] = {
-            "status": "FAILED",
-            "source": "CNINFO_Announcements_L0",
-            "source_level": SourceLevel.L0.value,
-            "reports": [],
-            "errors": [],
-        }
-        try:
-            cninfo = CninfoAnnouncementsProvider()
-            listing = cninfo._lookup_listing(code)
-            if not listing:
-                evidence["errors"].append(f"could not resolve CNINFO orgId for {symbol.symbol}")
-                return evidence
-            announcements: List[Any] = []
-            queried_pages = 0
-            seen_report_keys: set[str] = set()
-            reports: List[Dict[str, Any]] = []
-            for page_num in range(1, 7):
-                payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
-                page_announcements = payload.get("announcements") or []
-                if not isinstance(page_announcements, list) or not page_announcements:
-                    break
-                queried_pages += 1
-                announcements.extend(page_announcements)
-                for item in page_announcements:
-                    if not isinstance(item, Mapping):
-                        continue
-                    record = cninfo._normalize_announcement(item)
-                    title = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
-                    if not self._is_periodic_report_title(title):
-                        continue
-                    record["title"] = title
-                    record["report_kind"] = self._report_kind(title)
-                    report_key = str(record.get("announcement_id") or record.get("pdf_url") or title)
-                    if report_key in seen_report_keys:
-                        continue
-                    seen_report_keys.add(report_key)
-                    reports.append(record)
-                    if len(reports) >= 8:
-                        break
-                if len(reports) >= 8:
-                    break
-            evidence.update({
-                "status": "OK" if reports else "PARTIAL",
-                "code": code,
-                "org_id": listing.get("orgId"),
-                "name": listing.get("zwjc"),
-                "queried_announcements": len(announcements) if isinstance(announcements, list) else 0,
-                "queried_pages": queried_pages,
-                "reports": reports,
-            })
-            if not reports:
-                evidence["errors"].append("CNINFO announcement query succeeded but no recent periodic report PDF was found in the scanned pages")
-            return evidence
-        except Exception as exc:
-            evidence["errors"].append(f"CNINFO report evidence lookup failed: {type(exc).__name__}: {exc}")
-            return evidence
-
-    @staticmethod
-    def _clean_title(title: str) -> str:
-        return re.sub(r"<[^>]+>", "", title).replace("&nbsp;", " ").strip()
-
-    @staticmethod
-    def _is_periodic_report_title(title: str) -> bool:
-        if not title or "摘要" in title:
-            return False
-        excluded = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
-        if any(token in title for token in excluded):
-            return False
-        return bool(re.search(r"(年度报告|半年度报告|第一季度报告|第三季度报告|季度报告)", title))
-
-    @staticmethod
-    def _report_kind(title: str) -> str:
-        if "半年度报告" in title:
-            return "semiannual"
-        if "年度报告" in title:
-            return "annual"
-        if "第一季度报告" in title or "一季度报告" in title:
-            return "q1"
-        if "第三季度报告" in title or "三季度报告" in title:
-            return "q3"
-        if "季度报告" in title:
-            return "quarterly"
-        return "periodic"
 
     def _fetch_table(self, secucode: str, report_name: str, *, page_size: int) -> Mapping[str, Any]:
         params = urllib.parse.urlencode({
@@ -1414,6 +3236,1116 @@ class EastmoneyF10FinancialsProvider:
             if output_key.endswith("_date"):
                 value = _date10(value)
             target.setdefault(output_key, value)
+
+
+class HkexNewsBase:
+    level = SourceLevel.L0
+    markets = [Market.HK]
+    user_agent = "Mozilla/5.0"
+    base_url = "https://www1.hkexnews.hk"
+    active_stock_url = "https://www1.hkexnews.hk/ncms/script/eds/activestock_sehk_e.json"
+    title_search_url = "https://www1.hkexnews.hk/search/titleSearchServlet.do"
+    referer = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en"
+
+    def _headers(self, *, accept: str = "application/json, text/javascript, */*; q=0.01") -> Dict[str, str]:
+        return {
+            "User-Agent": self.user_agent,
+            "Referer": self.referer,
+            "Accept": accept,
+            "X-Requested-With": "XMLHttpRequest",
+        }
+
+    def _fetch_bytes(
+        self,
+        url: str,
+        *,
+        accept: str = "application/json, text/javascript, */*; q=0.01",
+        timeout: int = 30,
+        curl_retries: int = 1,
+        fallback_to_urllib: bool = True,
+    ) -> bytes:
+        headers = self._headers(accept=accept)
+        curl_error: Optional[BaseException] = None
+        bounded_timeout = max(5, int(timeout))
+        connect_timeout = min(10, max(3, bounded_timeout // 2))
+        cmd = [
+            "curl",
+            "-L",
+            "--http1.1",
+            "--connect-timeout",
+            str(connect_timeout),
+            "--max-time",
+            str(bounded_timeout),
+            "--retry",
+            str(max(0, int(curl_retries))),
+            "--retry-delay",
+            "1",
+            "-sS",
+            url,
+        ]
+        for key, value in headers.items():
+            cmd.extend(["-H", f"{key}: {value}"])
+        try:
+            completed = subprocess.run(cmd, check=True, capture_output=True, timeout=bounded_timeout + 5)
+            if completed.stdout:
+                return completed.stdout
+            curl_error = RuntimeError("curl returned an empty response body")
+        except subprocess.TimeoutExpired as exc:
+            curl_error = TimeoutError(f"curl exceeded hard timeout after {bounded_timeout + 5}s for {url}")
+        except Exception as exc:
+            curl_error = exc
+
+        if not fallback_to_urllib:
+            raise RuntimeError(f"HKEX fetch failed: curl={type(curl_error).__name__}: {curl_error}") from curl_error
+
+        try:
+            return https_bytes(
+                url,
+                user_agent=headers["User-Agent"],
+                headers={k: v for k, v in headers.items() if k != "User-Agent"},
+                timeout=bounded_timeout,
+                max_bytes=120 * 1024 * 1024,
+            )
+        except Exception as urllib_error:
+            if curl_error:
+                raise RuntimeError(f"HKEX fetch failed: curl={type(curl_error).__name__}: {curl_error}; urllib={type(urllib_error).__name__}: {urllib_error}") from urllib_error
+            raise
+
+    def _fetch_json(self, url: str, *, timeout: int = 30, attempts: int = 2) -> Any:
+        errors: List[str] = []
+        max_attempts = max(1, int(attempts))
+        for attempt in range(1, max_attempts + 1):
+            payload = self._fetch_bytes(url, timeout=timeout)
+            try:
+                return json.loads(payload.decode("utf-8-sig"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                errors.append(self._json_error_detail(payload, exc, attempt=attempt))
+                if attempt < max_attempts:
+                    time.sleep(min(1.0, 0.25 * attempt))
+                    continue
+                raise RuntimeError(f"HKEX JSON parse failed after {max_attempts} attempts: " + " | ".join(errors)) from exc
+
+    @staticmethod
+    def _json_error_detail(payload: bytes, exc: BaseException, *, attempt: int) -> str:
+        text = payload.decode("utf-8-sig", errors="replace")
+        pos = int(getattr(exc, "pos", 0) or 0)
+        start = max(0, pos - 120)
+        end = min(len(text), pos + 120)
+        snippet = re.sub(r"\s+", " ", text[start:end])[:260]
+        return (
+            f"attempt={attempt} {type(exc).__name__} at char={pos} "
+            f"bytes={len(payload)} sha256={sha256(payload).hexdigest()} near={snippet!r}"
+        )
+
+    def _lookup_listing(self, code: str) -> Optional[Dict[str, Any]]:
+        data = self._fetch_json(self.active_stock_url, timeout=25, attempts=3)
+        if not isinstance(data, list):
+            return None
+        normalized = code.zfill(5)
+        for item in data:
+            if isinstance(item, Mapping) and str(item.get("c") or "").zfill(5) == normalized:
+                return {
+                    "stock_id": str(item.get("i") or ""),
+                    "stock_code": str(item.get("c") or normalized).zfill(5),
+                    "stock_name": item.get("n"),
+                    "security_id": item.get("s"),
+                }
+        return None
+
+    def _query_title_search(
+        self,
+        *,
+        stock_id: str,
+        from_date: str,
+        to_date: str,
+        title: str = "",
+        row_range: int = 100,
+    ) -> Dict[str, Any]:
+        params = urllib.parse.urlencode({
+            "sortDir": "0",
+            "sortByOptions": "DateTime",
+            "category": "0",
+            "market": "SEHK",
+            "stockId": stock_id,
+            "documentType": "",
+            "fromDate": from_date,
+            "toDate": to_date,
+            "title": title,
+            "searchType": "",
+            "t1code": "",
+            "t2Gcode": "",
+            "t2code": "",
+            "rowRange": str(row_range),
+            "lang": "en",
+        })
+        payload = self._fetch_json(f"{self.title_search_url}?{params}", timeout=25, attempts=3)
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("HKEX title search response is not a JSON object")
+        return dict(payload)
+
+    def _date_window(self, *, years: int = 2) -> Tuple[str, str]:
+        today = dt.datetime.now().date()
+        start = today - dt.timedelta(days=years * 366)
+        return start.strftime("%Y%m%d"), today.strftime("%Y%m%d")
+
+    def _records_from_payload(self, payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        raw_result = payload.get("result") or "[]"
+        try:
+            records = json.loads(str(raw_result))
+        except Exception:
+            return []
+        if not isinstance(records, list):
+            return []
+        return [self._normalize_record(record) for record in records if isinstance(record, Mapping)]
+
+    def _normalize_record(self, record: Mapping[str, Any]) -> Dict[str, Any]:
+        file_link = str(record.get("FILE_LINK") or "")
+        pdf_url = urllib.parse.urljoin(self.base_url, file_link)
+        date_time = self._parse_hkex_datetime(record.get("DATE_TIME"))
+        return {
+            "news_id": str(record.get("NEWS_ID") or ""),
+            "announcement_datetime": date_time,
+            "announcement_date": date_time[:10] if date_time else None,
+            "stock_code": self._clean_text(record.get("STOCK_CODE")),
+            "stock_name": self._clean_text(record.get("STOCK_NAME")),
+            "title": self._clean_text(record.get("TITLE")),
+            "category": self._clean_text(record.get("LONG_TEXT") or record.get("SHORT_TEXT")),
+            "file_type": str(record.get("FILE_TYPE") or ""),
+            "file_info": str(record.get("FILE_INFO") or ""),
+            "file_link": file_link,
+            "pdf_url": pdf_url if file_link else "",
+            "dod_web_path": str(record.get("DOD_WEB_PATH") or ""),
+        }
+
+    @staticmethod
+    def _clean_text(value: Any) -> str:
+        text = html.unescape(str(value or ""))
+        text = re.sub(r"<br\s*/?>", " / ", text, flags=re.I)
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    @staticmethod
+    def _parse_hkex_datetime(value: Any) -> Optional[str]:
+        text = str(value or "").strip()
+        try:
+            return dt.datetime.strptime(text, "%d/%m/%Y %H:%M").isoformat()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _pdf_python_candidates() -> List[str]:
+        candidates: List[str] = []
+        env_python = os.getenv("SERENITY_PDF_PYTHON")
+        if env_python:
+            candidates.append(env_python)
+        candidates.append(sys.executable)
+        runtime_python = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+        candidates.append(str(runtime_python))
+        output: List[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            if Path(candidate).exists():
+                output.append(candidate)
+        return output
+
+    @staticmethod
+    def _pdfplumber_extract_script() -> str:
+        return r'''
+import json
+import sys
+
+import pdfplumber
+
+path = sys.argv[1]
+max_pages = int(sys.argv[2])
+pages = []
+with pdfplumber.open(path) as pdf:
+    total_pages = len(pdf.pages)
+    for index, page in enumerate(pdf.pages[:max_pages], start=1):
+        text = page.extract_text() or ""
+        if text.strip():
+            pages.append({"page_number": index, "text": text})
+print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pages}, ensure_ascii=False))
+'''
+
+    def _extract_pdf_pages(self, pdf_path: str | Path, *, max_pages: int = 220, timeout: int = 60) -> Dict[str, Any]:
+        path = Path(pdf_path)
+        errors: List[str] = []
+
+        try:
+            import pdfplumber  # type: ignore
+
+            pages: List[Dict[str, Any]] = []
+            with pdfplumber.open(str(path)) as pdf:
+                total_pages = len(pdf.pages)
+                for index, page in enumerate(pdf.pages[:max_pages], start=1):
+                    text = page.extract_text() or ""
+                    if text.strip():
+                        pages.append({"page_number": index, "text": text})
+            return {"ok": True, "parser": "pdfplumber", "page_count": total_pages, "pages": pages, "errors": []}
+        except Exception as exc:
+            errors.append(f"in-process pdfplumber unavailable: {type(exc).__name__}: {exc}")
+
+        script = self._pdfplumber_extract_script()
+        for python_exe in self._pdf_python_candidates():
+            try:
+                completed = subprocess.run(
+                    [python_exe, "-", str(path), str(max_pages)],
+                    input=script.encode("utf-8"),
+                    capture_output=True,
+                    timeout=timeout,
+                    check=True,
+                )
+                payload = json.loads(completed.stdout.decode("utf-8"))
+                payload["ok"] = True
+                payload["python"] = python_exe
+                payload.setdefault("errors", [])
+                return payload
+            except Exception as exc:
+                stderr = ""
+                if isinstance(exc, subprocess.CalledProcessError):
+                    stderr = exc.stderr.decode("utf-8", errors="replace")[:500]
+                errors.append(f"{python_exe}: {type(exc).__name__}: {exc} {stderr}".strip())
+
+        return {"ok": False, "parser": "none", "page_count": 0, "pages": [], "errors": errors}
+
+    @staticmethod
+    def _normalize_pdf_line(line: str) -> str:
+        line = line.replace("\u2019", "'").replace("\u2013", "-").replace("\u2014", "-")
+        return re.sub(r"\s+", " ", line).strip()
+
+    @classmethod
+    def _pdf_number_tokens(cls, line: str) -> List[str]:
+        normalized = cls._normalize_pdf_line(line)
+        return re.findall(r"\(?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?|\(?-?\d+(?:\.\d+)?\)?|(?<!\w)[-–](?!\w)", normalized)
+
+    @staticmethod
+    def _parse_pdf_number(token: str) -> Optional[float]:
+        text = token.strip()
+        if text in {"-", "–", ""}:
+            return None
+        negative = text.startswith("(") and text.endswith(")")
+        text = text.strip("()").replace(",", "")
+        try:
+            value = float(text)
+        except Exception:
+            return None
+        return -value if negative else value
+
+    @classmethod
+    def _line_values(cls, line: str, *, expected_columns: int) -> List[Optional[float]]:
+        tokens = cls._pdf_number_tokens(line)
+        while len(tokens) > expected_columns:
+            first = tokens[0].strip("()")
+            if "," not in first and "." not in first and first.lstrip("-").isdigit() and abs(int(first)) <= 80:
+                tokens.pop(0)
+                continue
+            break
+        if len(tokens) > expected_columns:
+            tokens = tokens[-expected_columns:]
+        return [cls._parse_pdf_number(token) for token in tokens]
+
+    @staticmethod
+    def _month_number(name: str) -> str:
+        months = {
+            "january": "01",
+            "february": "02",
+            "march": "03",
+            "april": "04",
+            "may": "05",
+            "june": "06",
+            "july": "07",
+            "august": "08",
+            "september": "09",
+            "october": "10",
+            "november": "11",
+            "december": "12",
+        }
+        return months.get(name.lower(), "01")
+
+    @classmethod
+    def _period_from_report_text(cls, text: str) -> Optional[str]:
+        match = re.search(r"(?:ended|at)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", text, flags=re.I)
+        if not match:
+            return None
+        day, month, year = match.groups()
+        return f"{year}-{cls._month_number(month)}-{int(day):02d}"
+
+    @staticmethod
+    def _page_texts_containing(pages: Sequence[Mapping[str, Any]], *needles: str) -> List[Mapping[str, Any]]:
+        lower_needles = [needle.lower() for needle in needles]
+        output: List[Mapping[str, Any]] = []
+        for page in pages:
+            text = str(page.get("text") or "")
+            lower_text = text.lower()
+            if all(needle in lower_text for needle in lower_needles):
+                output.append(page)
+        return output
+
+    @classmethod
+    def _extract_label_value(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        labels: Sequence[str],
+        *,
+        expected_columns: int,
+        value_index: int,
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        lower_labels = [label.lower() for label in labels]
+        for page in pages:
+            text = str(page.get("text") or "")
+            for line in text.splitlines():
+                clean = cls._normalize_pdf_line(line)
+                clean_lower = clean.lower()
+                if not any(clean_lower.startswith(label) or label in clean_lower for label in lower_labels):
+                    continue
+                values = cls._line_values(clean, expected_columns=expected_columns)
+                if len(values) <= value_index or values[value_index] is None:
+                    continue
+                return values[value_index], {
+                    "page_number": page.get("page_number"),
+                    "line": clean,
+                    "value_index": value_index,
+                }
+        return None, None
+
+    @classmethod
+    def _extract_revenue_value(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+        *,
+        expected_columns: int,
+        value_index: int,
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        for page in pages:
+            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            for index, line in enumerate(lines):
+                if line.lower() != "revenues":
+                    continue
+                for candidate in lines[index + 1:index + 10]:
+                    if candidate.lower().startswith("cost of revenues"):
+                        break
+                    if re.match(r"^\d+[A-Za-z()]?\s+", candidate):
+                        values = cls._line_values(candidate, expected_columns=expected_columns)
+                        if len(values) > value_index and values[value_index] is not None:
+                            return values[value_index], {
+                                "page_number": page.get("page_number"),
+                                "line": candidate,
+                                "value_index": value_index,
+                            }
+                break
+        return None, None
+
+    def _extract_hkex_report_period(self, report: Mapping[str, Any], *, raw_dir: Optional[Path] = None) -> Dict[str, Any]:
+        pdf_path = str(report.get("pdf_path") or "")
+        title = str(report.get("title") or "")
+        report_kind = str(report.get("report_kind") or "periodic")
+        if not pdf_path:
+            return {"status": "FAILED", "errors": ["report has no downloaded pdf_path"]}
+
+        page_bundle = self._extract_pdf_pages(pdf_path, max_pages=220, timeout=70)
+        if not page_bundle.get("ok"):
+            return {"status": "FAILED", "errors": page_bundle.get("errors", ["PDF text extraction failed"])}
+
+        pages = page_bundle.get("pages", [])
+        if not isinstance(pages, list) or not pages:
+            return {"status": "FAILED", "errors": ["PDF text extraction returned no text pages"]}
+
+        if raw_dir:
+            text_name = _safe_artifact_name(f"{Path(pdf_path).stem}_pdf_text") + ".txt"
+            combined_text = "\n\n".join(
+                f"--- page {page.get('page_number')} ---\n{page.get('text') or ''}"
+                for page in pages
+            )
+            text_path, text_hash = save_raw_text(combined_text, raw_dir / "extracted_text", text_name)
+        else:
+            text_path = text_hash = None
+
+        income_pages = self._page_texts_containing(pages, "income statement")
+        income_pages = [page for page in income_pages if "comprehensive income" not in str(page.get("text") or "").lower()]
+        position_pages = self._page_texts_containing(pages, "statement of financial position")
+        cashflow_pages = self._page_texts_containing(pages, "statement of cash flows")
+
+        income_text = "\n".join(str(page.get("text") or "") for page in income_pages)
+        position_text = "\n".join(str(page.get("text") or "") for page in position_pages)
+        cashflow_text = "\n".join(str(page.get("text") or "") for page in cashflow_pages)
+        period = self._period_from_report_text(income_text) or self._period_from_report_text(position_text) or str(report.get("announcement_date") or "")
+        period_type = "annual" if report_kind == "annual" else "interim"
+        income_columns = 4 if "six months ended" in income_text.lower() else 2
+        income_index = 2 if income_columns == 4 else 0
+
+        fields: Dict[str, Any] = {}
+        evidence: Dict[str, Any] = {}
+
+        def put(field: str, value: Optional[float], source: Optional[Dict[str, Any]]) -> None:
+            if value is None:
+                return
+            fields[field] = value
+            if source:
+                evidence[field] = source
+
+        value, source = self._extract_revenue_value(income_pages, expected_columns=income_columns, value_index=income_index)
+        put("revenue", value, source)
+        for field, labels in {
+            "gross_profit": ["gross profit"],
+            "operating_profit": ["operating profit"],
+            "profit_before_tax": ["profit before income tax"],
+            "total_net_profit": ["profit for the year", "profit for the period"],
+            "profit_attributable_to_equity_holders": ["equity holders of the company"],
+        }.items():
+            value, source = self._extract_label_value(income_pages, labels, expected_columns=income_columns, value_index=income_index)
+            put(field, value, source)
+        fields["net_income"] = fields.get("profit_attributable_to_equity_holders") or fields.get("total_net_profit")
+        if "net_income" in fields and "net_income" not in evidence:
+            evidence["net_income"] = evidence.get("profit_attributable_to_equity_holders") or evidence.get("total_net_profit")
+
+        for field, labels in {
+            "assets": ["total assets"],
+            "equity": ["total equity"],
+            "liabilities": ["total liabilities"],
+            "cash": ["cash and cash equivalents"],
+        }.items():
+            value, source = self._extract_label_value(position_pages, labels, expected_columns=2, value_index=0)
+            put(field, value, source)
+
+        for field, labels in {
+            "operating_cash_flow": ["net cash flows generated from operating activities"],
+            "cash_generated_from_operations": ["cash generated from operations"],
+        }.items():
+            value, source = self._extract_label_value(cashflow_pages, labels, expected_columns=2, value_index=0)
+            put(field, value, source)
+
+        required = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+        missing = [field for field in required if fields.get(field) is None]
+        status = "OK" if not missing else ("PARTIAL" if fields else "FAILED")
+        period_row = {
+            "period": period,
+            "period_type": period_type,
+            "source": self.name,
+            "source_level": self.level.value,
+            "source_report_kind": report_kind,
+            "source_title": title,
+            "source_announcement_date": report.get("announcement_date"),
+            "currency": "RMB",
+            "unit": "million",
+            **fields,
+            "field_evidence": evidence,
+        }
+        return {
+            "status": status,
+            "period": period_row if fields else None,
+            "missing_fields": missing,
+            "parser": page_bundle.get("parser"),
+            "parser_python": page_bundle.get("python"),
+            "page_count": page_bundle.get("page_count"),
+            "text_path": text_path,
+            "text_hash": text_hash,
+            "warnings": page_bundle.get("warnings", []),
+            "errors": [] if fields else ["No core financial fields could be extracted from PDF text."],
+        }
+
+    @classmethod
+    def _report_kind(cls, record: Mapping[str, Any]) -> str:
+        text = f"{record.get('title') or ''} {record.get('category') or ''}".lower()
+        if "annual report" in text:
+            return "annual"
+        if "interim" in text or "half-year" in text or "half year" in text:
+            return "interim"
+        if "quarterly report" in text:
+            return "quarterly"
+        if "annual results" in text or "final results" in text:
+            return "final_results"
+        if "quarterly results" in text:
+            return "quarterly_results"
+        if "results" in text:
+            return "results"
+        return "periodic"
+
+    @classmethod
+    def _select_reports_for_download(cls, reports: Sequence[Mapping[str, Any]], limit: int) -> List[Mapping[str, Any]]:
+        selected: List[Mapping[str, Any]] = []
+        preferred_order = ["annual", "interim", "quarterly", "final_results", "quarterly_results", "results", "periodic"]
+        for kind in preferred_order:
+            candidates = [
+                report for report in reports
+                if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
+            ]
+            candidates.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
+            if candidates and candidates[0] not in selected:
+                selected.append(candidates[0])
+            if len(selected) >= limit:
+                return selected
+        for kind in preferred_order:
+            candidates = [
+                report for report in reports
+                if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
+            ]
+            candidates.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
+            for report in candidates:
+                if report not in selected:
+                    selected.append(report)
+                if len(selected) >= limit:
+                    return selected
+        return selected
+
+    def _attach_report_downloads(
+        self,
+        reports: List[Dict[str, Any]],
+        *,
+        raw_dir: Path,
+        symbol: str,
+        limit: int,
+        errors: List[str],
+    ) -> None:
+        selected = self._select_reports_for_download(reports, limit)
+        for report in reports:
+            if report not in selected:
+                report["download_status"] = "NOT_SELECTED"
+        for report in selected:
+            url = str(report.get("pdf_url") or "")
+            title = str(report.get("title") or "hkex_report")
+            report_kind = str(report.get("report_kind") or "periodic")
+            announcement_date = str(report.get("announcement_date") or "")
+            filename = _safe_artifact_name(f"{symbol}_{announcement_date}_{report_kind}_{title}") + ".pdf"
+            try:
+                payload = self._fetch_bytes(url, accept="application/pdf,*/*", timeout=30, curl_retries=0)
+                if not payload.startswith(b"%PDF"):
+                    raise RuntimeError("downloaded artifact does not start with a PDF header")
+                pdf_path, pdf_hash = save_raw_bytes(payload, raw_dir, filename)
+                report["download_status"] = "OK"
+                report["pdf_path"] = pdf_path
+                report["pdf_hash"] = pdf_hash
+                report["pdf_size_bytes"] = len(payload)
+            except Exception as exc:
+                report["download_status"] = "FAILED"
+                report["download_error"] = f"{type(exc).__name__}: {exc}"
+                errors.append(f"HKEX report PDF download failed for {title}: {type(exc).__name__}: {exc}")
+
+
+class HkexAnnouncementsProvider(HkexNewsBase):
+    """Official HKEXnews announcement metadata adapter for HK-listed securities."""
+
+    name = "HKEXnews_Announcements_L0"
+    datasets = [Dataset.FILINGS]
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.HK:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEXnews announcements only support HK symbols")
+        if dataset != Dataset.FILINGS:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        code = symbol.symbol.partition(".")[0].zfill(5)
+        try:
+            listing = self._lookup_listing(code)
+            if not listing:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve HKEX stock id for {symbol.symbol}")
+            from_date, to_date = self._date_window(years=int(kwargs.get("years", 2) or 2))
+            payload = self._query_title_search(
+                stock_id=str(listing["stock_id"]),
+                from_date=from_date,
+                to_date=to_date,
+                row_range=int(kwargs.get("row_range", 100) or 100),
+            )
+            announcements = self._records_from_payload(payload)
+            if not announcements:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEXnews returned no announcements")
+            raw_path = raw_hash = None
+            raw_dir = kwargs.get("raw_dir")
+            if raw_dir:
+                raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_hkex_announcements_raw.json")
+            return DataResult(
+                True,
+                dataset,
+                symbol.symbol,
+                self.name,
+                self.level,
+                utc_now(),
+                as_of_date=announcements[0].get("announcement_date"),
+                data={
+                    "source": self.name,
+                    "source_level": self.level.value,
+                    "stock": listing,
+                    "record_count": _safe_int(payload.get("recordCnt")),
+                    "loaded_record_count": len(announcements),
+                    "announcements": announcements,
+                },
+                raw_path=raw_path,
+                raw_hash=raw_hash,
+                currency=symbol.currency or "HKD",
+                warnings=["HKEXnews metadata/PDF links fetched; document contents are not parsed by this adapter."],
+            )
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"HKEXnews fetch failed: {type(exc).__name__}: {exc}")
+
+
+class HkexFinancialReportsProvider(HkexNewsBase):
+    """Official HKEX annual/interim report PDF evidence adapter for HK financials."""
+
+    name = "HKEXnews_FinancialReports_L0"
+    datasets = [Dataset.FINANCIALS]
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.HK:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEX financial reports only support HK symbols")
+        if dataset != Dataset.FINANCIALS:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        code = symbol.symbol.partition(".")[0].zfill(5)
+        try:
+            listing = self._lookup_listing(code)
+            if not listing:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve HKEX stock id for {symbol.symbol}")
+            from_date, to_date = self._date_window(years=int(kwargs.get("years", 3) or 3))
+            payloads: Dict[str, Any] = {}
+            reports: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            errors: List[str] = []
+            for title in ["Annual Report", "Interim Report", "Quarterly Report"]:
+                try:
+                    payload = self._query_title_search(
+                        stock_id=str(listing["stock_id"]),
+                        from_date=from_date,
+                        to_date=to_date,
+                        title=title,
+                        row_range=20,
+                    )
+                    payloads[title] = payload
+                    for record in self._records_from_payload(payload):
+                        key = str(record.get("news_id") or record.get("file_link") or "")
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        record["report_kind"] = self._report_kind(record)
+                        reports.append(record)
+                except Exception as exc:
+                    errors.append(f"HKEX title search failed for {title}: {type(exc).__name__}: {exc}")
+            if not {"annual", "interim"}.issubset({str(report.get("report_kind") or "") for report in reports}):
+                try:
+                    payload = self._query_title_search(
+                        stock_id=str(listing["stock_id"]),
+                        from_date=from_date,
+                        to_date=to_date,
+                        row_range=200,
+                    )
+                    payloads["all_announcements_report_scan"] = payload
+                    for record in self._records_from_payload(payload):
+                        report_kind = self._report_kind(record)
+                        if report_kind not in {"annual", "interim", "quarterly"}:
+                            continue
+                        key = str(record.get("news_id") or record.get("file_link") or "")
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        record["report_kind"] = report_kind
+                        reports.append(record)
+                except Exception as exc:
+                    errors.append(f"HKEX broad announcement report scan failed: {type(exc).__name__}: {exc}")
+            reports.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
+            raw_dir = kwargs.get("raw_dir")
+            download_limit = int(kwargs.get("official_report_download_limit", 2) or 2)
+            if raw_dir and reports and download_limit > 0:
+                self._attach_report_downloads(
+                    reports,
+                    raw_dir=Path(raw_dir) / "official_reports",
+                    symbol=symbol.symbol,
+                    limit=download_limit,
+                    errors=errors,
+                )
+            selected_reports = self._select_reports_for_download(reports, download_limit) if reports and download_limit > 0 else []
+            extracted_periods: List[Dict[str, Any]] = []
+            extraction_errors: List[str] = []
+            extraction_warnings: List[str] = []
+            extraction_raw_dir = Path(raw_dir) / "official_reports" if raw_dir else None
+            for report in reports:
+                if report.get("download_status") != "OK" or not report.get("pdf_path"):
+                    continue
+                extraction = self._extract_hkex_report_period(report, raw_dir=extraction_raw_dir)
+                report["line_extraction"] = {
+                    key: value
+                    for key, value in extraction.items()
+                    if key != "period"
+                }
+                if extraction.get("status") in {"OK", "PARTIAL"} and isinstance(extraction.get("period"), Mapping):
+                    extracted_periods.append(dict(extraction["period"]))
+                if extraction.get("status") != "OK":
+                    extraction_errors.extend(str(error) for error in extraction.get("errors", []) or [])
+                    extraction_warnings.append(
+                        f"{report.get('report_kind')} {report.get('announcement_date')} extraction status={extraction.get('status')} missing={extraction.get('missing_fields')}"
+                    )
+            extracted_periods.sort(key=lambda row: str(row.get("period") or ""))
+            downloaded_reports = [
+                report for report in reports
+                if report.get("download_status") == "OK" and report.get("pdf_path")
+            ]
+            if not reports:
+                evidence_status = "FAILED"
+            elif raw_dir and selected_reports and len(downloaded_reports) < len(selected_reports):
+                evidence_status = "PARTIAL"
+            else:
+                evidence_status = "OK"
+            evidence = {
+                "status": evidence_status,
+                "source": self.name,
+                "source_level": self.level.value,
+                "stock": listing,
+                "selected_report_count": len(selected_reports),
+                "downloaded_report_count": len(downloaded_reports),
+                "line_extraction_status": "OK" if extracted_periods and not extraction_warnings else ("PARTIAL" if extracted_periods else "FAILED"),
+                "extracted_period_count": len(extracted_periods),
+                "reports": reports,
+                "downloaded_reports": [
+                    {
+                        "report_kind": report.get("report_kind"),
+                        "title": report.get("title"),
+                        "announcement_date": report.get("announcement_date"),
+                        "pdf_path": report.get("pdf_path"),
+                        "pdf_hash": report.get("pdf_hash"),
+                        "pdf_size_bytes": report.get("pdf_size_bytes"),
+                        "line_extraction": report.get("line_extraction"),
+                    }
+                    for report in downloaded_reports
+                ],
+                "errors": errors + extraction_errors,
+            }
+            raw_path = raw_hash = None
+            if raw_dir:
+                raw_path, raw_hash = save_raw_json(
+                    {"payloads": payloads, "errors": errors},
+                    raw_dir,
+                    f"{symbol.symbol}_{dataset.value}_hkex_financial_reports_raw.json",
+                )
+            if not reports:
+                reason = "HKEXnews returned no annual/interim report PDFs"
+                if errors:
+                    reason += ": " + " | ".join(errors)
+                return DataResult(
+                    False,
+                    dataset,
+                    symbol.symbol,
+                    self.name,
+                    self.level,
+                    utc_now(),
+                    data={"official_report_evidence": evidence},
+                    raw_path=raw_path,
+                    raw_hash=raw_hash,
+                    currency=symbol.currency or "HKD",
+                    errors=[reason],
+                )
+            return DataResult(
+                True,
+                dataset,
+                symbol.symbol,
+                self.name,
+                self.level,
+                utc_now(),
+                as_of_date=reports[0].get("announcement_date"),
+                data={
+                    "source": self.name,
+                    "source_level": self.level.value,
+                    "official_report_evidence": evidence,
+                    "periods": extracted_periods,
+                    "period_basis": "HKEX official report PDF line extraction; annual rows are full-year and interim rows are six-month cumulative periods.",
+                    "currency": "RMB" if extracted_periods else (symbol.currency or "HKD"),
+                    "unit": "million" if extracted_periods else None,
+                    "reports": reports,
+                    "source_usage": {
+                        "preferred_source": "HKEX annual/interim report PDFs",
+                        "preferred_source_status": evidence_status,
+                        "preferred_source_records": len(reports),
+                        "report_pdf_evidence_used": True,
+                        "report_line_items_extracted": bool(extracted_periods),
+                        "extracted_period_count": len(extracted_periods),
+                        "source_role": "L0_OFFICIAL_REPORT_EVIDENCE",
+                        "required_ai_action": "Review extracted HKEX PDF line evidence, period basis, and missing fields before assigning S/A.",
+                    },
+                },
+                raw_path=raw_path,
+                raw_hash=raw_hash,
+                currency=symbol.currency or "HKD",
+                warnings=[
+                    "HKEX official financial report PDFs were parsed into core financial lines where machine-readable page text was available.",
+                    "Keep HKD/listing currency, RMB/reporting currency, share-count basis, and connected-transaction context explicit.",
+                ] + extraction_warnings,
+            )
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"HKEX financial report fetch failed: {type(exc).__name__}: {exc}")
+
+
+class CninfoTencentAdjustedKlineProvider:
+    """Build A-share qfq history from Tencent daily rows plus CNINFO corporate actions.
+
+    This provider closes the BJ boundary where Tencent exposes daily rows but not
+    a separate qfqday array. It uses CNINFO official distribution announcements
+    to construct a forward-adjusted series instead of treating unknown raw rows
+    as adjusted.
+    """
+
+    name = "CNINFO_Tencent_Adjusted_Kline_L0L2"
+    level = SourceLevel.L2
+    markets = [Market.CN_A]
+    datasets = [Dataset.PRICE_HISTORY_ADJUSTED]
+    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.CN_A:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "CNINFO/Tencent adjusted history only supports A-share symbols")
+        if dataset != Dataset.PRICE_HISTORY_ADJUSTED:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+
+        raw_dir = Path(kwargs["raw_dir"]) if kwargs.get("raw_dir") else None
+        tencent = TencentQuoteKlineProvider()
+        base = tencent.fetch(
+            symbol,
+            dataset,
+            range=str(kwargs.get("range", "2y")),
+            interval=str(kwargs.get("interval", "1d")),
+            raw_dir=raw_dir,
+        )
+        if not base.ok or not isinstance(base.data, list) or not base.data:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent daily rows unavailable for official adjustment: " + "; ".join(base.errors))
+        if base.adjust == "qfq":
+            base.source_name = self.name
+            return base
+
+        rows = [dict(row) for row in base.data]
+        start_date = str(rows[0].get("trade_date") or "")
+        end_date = str(rows[-1].get("trade_date") or "")
+        actions, action_errors = self._load_distribution_actions(symbol, raw_dir=raw_dir, start_date=start_date, end_date=end_date)
+        if action_errors:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Official corporate-action lookup failed: " + " | ".join(action_errors))
+        applicable = [action for action in actions if start_date <= str(action.get("ex_date") or "") <= end_date]
+        if not applicable:
+            raw_path = raw_hash = None
+            if raw_dir:
+                raw_path, raw_hash = save_raw_json(
+                    {"base_source": base.source_name, "base_raw_path": base.raw_path, "official_actions": actions, "adjustment": "no official distribution event inside fetched window"},
+                    raw_dir,
+                    f"{symbol.symbol}_{dataset.value}_cninfo_tencent_adjustment_raw.json",
+                )
+            return DataResult(
+                True,
+                dataset,
+                symbol.symbol,
+                self.name,
+                self.level,
+                utc_now(),
+                as_of_date=rows[-1]["trade_date"],
+                data=rows,
+                raw_path=raw_path,
+                raw_hash=raw_hash,
+                currency=symbol.currency or "CNY",
+                adjust="qfq_no_official_distribution_in_window",
+                warnings=["Tencent daily rows were accepted as qfq-equivalent because CNINFO official announcements show no distribution event inside the fetched window."],
+            )
+
+        adjustment_events = self._apply_forward_adjustments(rows, applicable)
+        if not adjustment_events:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Official distribution events were found but no prior trading-day factor could be computed")
+
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json(
+                {
+                    "base_source": base.source_name,
+                    "base_raw_path": base.raw_path,
+                    "official_actions": actions,
+                    "applied_adjustment_events": adjustment_events,
+                },
+                raw_dir,
+                f"{symbol.symbol}_{dataset.value}_cninfo_tencent_adjustment_raw.json",
+            )
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=rows[-1]["trade_date"],
+            data=rows,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=symbol.currency or "CNY",
+            adjust="qfq_by_cninfo_distribution",
+            warnings=[
+                "Tencent daily rows were forward-adjusted using CNINFO official equity-distribution announcements.",
+                *[
+                    f"{event['ex_date']}: factor={event['factor']:.8f}, cash_per_share={event['cash_per_share']}, share_ratio={event['share_ratio']}"
+                    for event in adjustment_events
+                ],
+            ],
+        )
+
+    def _load_distribution_actions(
+        self,
+        symbol: SymbolInfo,
+        *,
+        raw_dir: Optional[Path],
+        start_date: str,
+        end_date: str,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        code, _, suffix = symbol.symbol.partition(".")
+        cninfo = CninfoAnnouncementsProvider()
+        errors: List[str] = []
+        actions: List[Dict[str, Any]] = []
+        try:
+            listing = cninfo._lookup_listing(code)
+        except Exception as exc:
+            return [], [f"CNINFO listing lookup failed: {type(exc).__name__}: {exc}"]
+        if not listing:
+            return [], [f"could not resolve CNINFO orgId for {symbol.symbol}"]
+
+        seen: set[str] = set()
+        for page_num in range(1, 9):
+            try:
+                payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
+            except Exception as exc:
+                errors.append(f"page {page_num}: {type(exc).__name__}: {exc}")
+                continue
+            page_announcements = payload.get("announcements") if isinstance(payload, Mapping) else None
+            if not isinstance(page_announcements, list) or not page_announcements:
+                break
+            for item in page_announcements:
+                if not isinstance(item, Mapping):
+                    continue
+                record = cninfo._normalize_announcement(item)
+                title = str(record.get("title") or "")
+                if "权益分派实施公告" not in title:
+                    continue
+                key = str(record.get("announcement_id") or record.get("pdf_url") or title)
+                if key in seen:
+                    continue
+                seen.add(key)
+                action = self._parse_distribution_announcement(record, raw_dir=raw_dir)
+                if action:
+                    actions.append(action)
+        actions.sort(key=lambda action: str(action.get("ex_date") or ""))
+        if raw_dir:
+            save_raw_json(
+                {
+                    "symbol": symbol.symbol,
+                    "scan_window": {"start_date": start_date, "end_date": end_date},
+                    "actions": actions,
+                    "errors": errors,
+                },
+                raw_dir,
+                f"{symbol.symbol}_cninfo_distribution_actions_raw.json",
+            )
+        return actions, errors
+
+    def _parse_distribution_announcement(self, record: Mapping[str, Any], *, raw_dir: Optional[Path]) -> Optional[Dict[str, Any]]:
+        pdf_url = str(record.get("pdf_url") or "")
+        if not pdf_url:
+            return None
+        try:
+            payload = https_bytes(
+                pdf_url,
+                user_agent=self.user_agent,
+                headers={"Referer": "https://www.cninfo.com.cn/"},
+                timeout=30,
+                max_bytes=20 * 1024 * 1024,
+            )
+            pdf_path = pdf_hash = None
+            if raw_dir:
+                pdf_path, pdf_hash = save_raw_bytes(
+                    payload,
+                    raw_dir / "corporate_actions",
+                    _safe_artifact_name(f"{record.get('sec_code')}_{record.get('announcement_date')}_{record.get('title')}") + ".pdf",
+                )
+                page_bundle = HkexNewsBase()._extract_pdf_pages(pdf_path, max_pages=20, timeout=30)
+            else:
+                temp_dir = Path(os.getenv("SERENITY_TMP_DIR", "/tmp/serenity-chan-corporate-actions"))
+                pdf_path, pdf_hash = save_raw_bytes(payload, temp_dir, _safe_artifact_name(str(record.get("announcement_id") or "distribution")) + ".pdf")
+                page_bundle = HkexNewsBase()._extract_pdf_pages(pdf_path, max_pages=20, timeout=30)
+            if not page_bundle.get("ok"):
+                return None
+            text = "\n".join(str(page.get("text") or "") for page in page_bundle.get("pages", []) if isinstance(page, Mapping))
+            compact = re.sub(r"\s+", "", text)
+            ex_date = self._parse_cn_date(compact, r"除权除息日为[:：]?(\d{4})年(\d{1,2})月(\d{1,2})日")
+            record_date = self._parse_cn_date(compact, r"权益登记日为[:：]?(\d{4})年(\d{1,2})月(\d{1,2})日")
+            cash_match = re.search(r"每10股派([0-9.]+)元", compact)
+            transfer_match = re.search(r"每10股转增([0-9.]+)股", compact)
+            bonus_match = re.search(r"每10股送(?:红股)?([0-9.]+)股", compact)
+            cash_per_share = float(cash_match.group(1)) / 10.0 if cash_match else 0.0
+            transfer_ratio = float(transfer_match.group(1)) / 10.0 if transfer_match else 0.0
+            bonus_ratio = float(bonus_match.group(1)) / 10.0 if bonus_match else 0.0
+            if not ex_date:
+                return None
+            text_path = text_hash = None
+            if raw_dir:
+                text_path, text_hash = save_raw_text(
+                    text,
+                    raw_dir / "corporate_actions" / "extracted_text",
+                    _safe_artifact_name(f"{record.get('sec_code')}_{record.get('announcement_date')}_{record.get('title')}_text") + ".txt",
+                )
+            return {
+                "action_type": "equity_distribution",
+                "title": record.get("title"),
+                "announcement_id": record.get("announcement_id"),
+                "announcement_date": record.get("announcement_date"),
+                "record_date": record_date,
+                "ex_date": ex_date,
+                "cash_per_share": cash_per_share,
+                "transfer_ratio": transfer_ratio,
+                "bonus_ratio": bonus_ratio,
+                "share_ratio": transfer_ratio + bonus_ratio,
+                "pdf_url": pdf_url,
+                "pdf_path": pdf_path,
+                "pdf_hash": pdf_hash,
+                "text_path": text_path,
+                "text_hash": text_hash,
+            }
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_cn_date(text: str, pattern: str) -> Optional[str]:
+        match = re.search(pattern, text)
+        if not match:
+            return None
+        year, month, day = match.groups()
+        return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+
+    @staticmethod
+    def _apply_forward_adjustments(rows: List[Dict[str, Any]], actions: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+        events: List[Dict[str, Any]] = []
+        for action in sorted(actions, key=lambda item: str(item.get("ex_date") or "")):
+            ex_date = str(action.get("ex_date") or "")
+            prior_indexes = [idx for idx, row in enumerate(rows) if str(row.get("trade_date") or "") < ex_date]
+            if not prior_indexes:
+                continue
+            previous_index = prior_indexes[-1]
+            previous_close = _safe_float(rows[previous_index].get("raw_close") or rows[previous_index].get("close"))
+            if previous_close is None or previous_close <= 0:
+                continue
+            cash_per_share = _safe_float(action.get("cash_per_share")) or 0.0
+            share_ratio = (_safe_float(action.get("share_ratio")) or 0.0)
+            ex_right_reference = (previous_close - cash_per_share) / (1.0 + share_ratio)
+            if ex_right_reference <= 0:
+                continue
+            factor = ex_right_reference / previous_close
+            for idx in prior_indexes:
+                row = rows[idx]
+                for field in ("open", "high", "low", "close", "adj_close"):
+                    value = _safe_float(row.get(field))
+                    if value is not None:
+                        row[field] = round(value * factor, 6)
+                raw_close = _safe_float(row.get("raw_close"))
+                if raw_close is not None:
+                    row["raw_close"] = round(raw_close, 6)
+            events.append({
+                "ex_date": ex_date,
+                "record_date": action.get("record_date"),
+                "cash_per_share": cash_per_share,
+                "share_ratio": share_ratio,
+                "previous_close": previous_close,
+                "ex_right_reference": round(ex_right_reference, 6),
+                "factor": factor,
+                "source_title": action.get("title"),
+                "pdf_hash": action.get("pdf_hash"),
+            })
+        return events
 
 
 def _sec_user_agent() -> Tuple[str, List[str]]:
@@ -2049,11 +4981,19 @@ class SecEdgarProvider:
 
 def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProvider]:
     providers: List[DataProvider] = []
+    if symbol is None or symbol.market == Market.CN_A:
+        providers.append(EastmoneyQuoteKlineProvider())
+        providers.append(CninfoTencentAdjustedKlineProvider())
+        providers.append(TencentQuoteKlineProvider())
     if symbol is None or symbol.market in {Market.US, Market.HK, Market.CN_A}:
         providers.append(YahooChartProvider())
         providers.append(YahooChartProvider(name="Yahoo_Chart_Query2_L2", host="query2.finance.yahoo.com"))
+    if symbol is None or symbol.market == Market.HK:
+        providers.append(HkexAnnouncementsProvider())
+        providers.append(HkexFinancialReportsProvider())
     if symbol is None or symbol.market == Market.CN_A:
         providers.append(CninfoAnnouncementsProvider())
+        providers.append(CninfoFinancialReportsProvider())
         providers.append(EastmoneyF10FinancialsProvider())
     if symbol is None or symbol.market == Market.US:
         providers.append(SecCompanyFactsProvider())
@@ -2063,7 +5003,7 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
     return providers
 
 
-# Real Tushare/Wind/Choice/AKShare/HKEX adapters should implement DataProvider.
+# Real Tushare/Wind/Choice/AKShare adapters should implement DataProvider.
 # Keep credentialed adapters separate so credentials, rate limits, and legal usage
 # are explicit. The free adapters above are preflight/auxiliary sources, not a substitute
 # for official filings or licensed structured financial-data sources.

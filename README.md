@@ -26,9 +26,9 @@ flowchart LR
   C --> D["取数账本<br/>attempt_ledger"]
   D --> E["数据缺口<br/>data_gaps"]
   E --> F["研究债务<br/>research_debt"]
-  F --> G["三镜头研究<br/>Serenity / Fundamentals / Chan"]
-  G --> H["决策矩阵<br/>Thesis / Evidence / Payoff / Timing"]
-  H --> I["候选排序<br/>priority / bucket / action"]
+  F --> G["特征矩阵<br/>财务 / 技术 / 资本动作"]
+  G --> H["三镜头研究<br/>Serenity / Fundamentals / Chan"]
+  H --> I["候选对比<br/>priority / debt / action"]
 ```
 
 ### 它解决什么问题
@@ -38,7 +38,7 @@ flowchart LR
 | 报告很完整，真实数据没有取到 | 每个数据集都有取数尝试、状态、缺口类型和下一步补数任务 |
 | A 股、美股、港股源混用 | 先解析市场，再走市场专属披露源、行情源和禁用源规则 |
 | 热点题材直接映射股票 | 先排产业链层级和瓶颈，再排公司候选 |
-| 财务数据来自 F10 却给高评级 | L3 结构化预检会生成财报验证债务，研究评级封顶到 B |
+| 财务数据来源强度不够 | A 股优先抽取 CNINFO L0 官方报告 PDF 核心财务行；仅 F10 预检会生成财报验证债务并封顶到 B |
 | 平均分掩盖关键证据缺口 | 决策矩阵用非线性门控压低优先级和行动状态 |
 | 结论无法复盘 | 输出证据等级、研究债务、证伪条件和候选排序 |
 
@@ -49,17 +49,18 @@ flowchart LR
 | 合同层 | 统一市场、数据状态、缺口类型、评级上限、取数记录 | `scripts/data_contracts.py` |
 | 取数层 | 供应商适配、原始数据保存、基础校验 | `scripts/data_layer.py` |
 | 路由层 | 生成 manifest、attempt ledger、data gaps、research debt、manual tasks | `scripts/data_router.py` |
+| 特征层 | 技术健康、A 股资本动作、财务质量、预检级市值/PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py` |
 | 决策层 | Thesis Quality、Evidence Confidence、Market Payoff、Action Readiness | `scripts/serenity_chan_scorecard.py` |
-| 排序层 | 多候选相对优先级和同簇判断 | `scripts/candidate_ranker.py` |
+| 对比层 | 多候选研究债务、层级、财务、增长、技术、资本动作和优先级 | `scripts/build_comparison_report.py` |
 | 门禁层 | Markdown/JSON 输出合同、静态 eval、真实数据 smoke | `scripts/validate_output_contract*.py`, `scripts/run_*` |
 
 ### 市场路由
 
 | 市场 | 代码例子 | 主披露源 | 内置能力 | 禁止替代 |
 |---|---|---|---|---|
-| A 股 | `688019.SH`, `300750.SZ`, `920593.BJ` | CNINFO、SSE、SZSE、BSE、公司 IR | Yahoo L2 行情/历史、CNINFO 公告元数据、Eastmoney F10 L3 财务预检 | 用 SEC 替代 A 股公告；把 F10 当官方原文 |
+| A 股 | `688019.SH`, `300750.SZ`, `920593.BJ` | CNINFO、SSE、SZSE、BSE、公司 IR | Eastmoney + Tencent L2 行情/前复权 K 线、CNINFO 权益分派复权构造、Yahoo L2 辅助兜底、CNINFO 公告元数据、CNINFO L0 官方报告 PDF 核心财务行抽取、银行/证券/保险专门 profile、Eastmoney F10 L3 回退预检 | 用 SEC 替代 A 股公告；把 F10 当官方原文；把金融企业当普通经营企业 |
 | 美股 | `NVDA`, `MU`, `AMD` | SEC EDGAR、Company IR | Yahoo query1/query2 L2 行情/历史、SEC submissions/companyfacts/companyconcepts、CIK bootstrap | 用 A 股 F10 或摘要替代 SEC |
-| 港股 | `0700.HK`, `9988.HK` | HKEXnews、公司公告 | Yahoo L2 行情/历史 | 直接套用 ADR、A/H 价格、股本或货币 |
+| 港股 | `0700.HK`, `9988.HK` | HKEXnews、公司公告 | Yahoo L2 行情/历史、HKEXnews 公告元数据、官方年报/中报 PDF 下载与核心财务行抽取 | 直接套用 ADR、A/H 价格、股本或货币 |
 
 ### 数据获取合同
 
@@ -77,7 +78,7 @@ flowchart LR
 
 关键缺口类型：
 
-`ACCESS_FAILURE`, `SCOPE_NOT_REQUESTED`, `SOURCE_NOT_IMPLEMENTED`, `SOURCE_UNAVAILABLE`, `ISSUER_NON_DISCLOSURE`, `NOT_MACHINE_READABLE`, `CONFLICTING_SOURCES`, `STALE_DATA`, `NOT_MATERIAL`, `POLICY_BLOCKED`
+`ACCESS_FAILURE`, `SCOPE_NOT_REQUESTED`, `SOURCE_NOT_IMPLEMENTED`, `SOURCE_UNAVAILABLE`, `ISSUER_NON_DISCLOSURE`, `NOT_MACHINE_READABLE`, `CONFLICTING_SOURCES`, `STALE_DATA`, `EVIDENCE_DEPTH_LIMIT`, `ADJUSTMENT_BASIS_UNVERIFIED`, `NOT_MATERIAL`, `POLICY_BLOCKED`
 
 ### 决策评分
 
@@ -94,6 +95,8 @@ flowchart LR
 行动状态：
 
 `CORE_CANDIDATE`, `STRONG_OBSERVE`, `CANDIDATE_POOL`, `WAIT_FOR_BUY_POINT`, `DATA_GATED`, `LEAD_TRACKING`, `ELIMINATE`, `OBSERVE_ONLY`
+
+候选对比会把正式评级上限、候选优先级和行动状态拆开呈现。同样是 `rating_cap=B` 时，财务质量、资本动作、技术健康、产业链层级和补证任务仍会形成不同的优先级。
 
 ### 快速开始
 
@@ -125,6 +128,15 @@ python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --forma
 
 ```bash
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json candidate_c.json
+```
+
+从真实取数 manifest 生成候选对比报告：
+
+```bash
+python scripts/build_comparison_report.py \
+  /tmp/serenity-chan-data/688019/manifest.json \
+  /tmp/serenity-chan-data/688322/manifest.json \
+  --format both
 ```
 
 交付前门禁：
@@ -192,9 +204,9 @@ flowchart LR
   C --> D["Attempt Ledger"]
   D --> E["Data Gaps"]
   E --> F["Research Debt"]
-  F --> G["Research Lenses"]
-  G --> H["Decision Matrix"]
-  H --> I["Candidate Ranking"]
+  F --> G["Feature Matrices"]
+  G --> H["Research Lenses"]
+  H --> I["Comparison Report"]
 ```
 
 ### Design Principles
@@ -216,7 +228,9 @@ flowchart LR
 | `data_gaps.json` | Typed data gaps and decision impact |
 | `research_debt.json` | Evidence debt that limits rating or action |
 | `manual_retrieval_tasks.json` | Concrete retrieval tasks for unresolved gaps |
+| Official report PDFs | Downloaded CNINFO/HKEX report artifacts with `pdf_hash`; A-share and HK reports include extracted core financial lines when PDF text is readable; A-share financial-sector reports include bank, securities, or insurance profiles when required fields are extracted |
 | Scorecard result | Research rating, evidence confidence, action readiness, candidate priority |
+| Comparison report | Candidate-level acquisition, layer, financial, growth, technical, capital-action, debt, and priority matrices |
 
 ### Key Commands
 
@@ -224,6 +238,7 @@ flowchart LR
 python scripts/data_router.py fetch NVDA --sec-user-agent "Your Name your.email@example.com"
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format both
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
+python scripts/build_comparison_report.py manifest_a.json manifest_b.json --format both
 python scripts/validate_output_contract_json.py <contract.json>
 python scripts/run_static_evals.py
 ```
@@ -235,8 +250,12 @@ python scripts/run_static_evals.py
 | `scripts/data_contracts.py` | Shared enums and structured data contracts |
 | `scripts/data_layer.py` | Providers, raw artifact persistence, basic validation |
 | `scripts/data_router.py` | Fetch manifest, attempt ledger, gaps, debt, tasks |
+| `scripts/technical_health.py` | Technical-health matrix from adjusted daily history |
+| `scripts/a_share_capital_actions.py` | A-share capital-action detection from announcement metadata |
+| `scripts/build_comparison_report.py` | Candidate comparison report from fetch manifests |
 | `scripts/serenity_chan_scorecard.py` | Decision scorecard and nonlinear gates |
-| `scripts/candidate_ranker.py` | Relative candidate ranking |
+| `scripts/candidate_ranker.py` | Relative candidate ranking for scorecard payloads |
+| `assets/comparison_output_contract.schema.json` | Structured comparison-report contract |
 | `assets/data_acquisition_policy.json` | Source ladder and dataset materiality |
 | `assets/sec_cik_bootstrap.json` | SEC CIK bootstrap for high-frequency US test tickers |
 | `assets/output_contract.schema.json` | Structured delivery contract |

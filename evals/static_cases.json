@@ -39,6 +39,212 @@
     }
   },
   {
+    "name": "financial-validation-latest-period-missing-balance-sheet-is-capped",
+    "kind": "financial_validation",
+    "payload": {
+      "periods": [
+        {
+          "period": "2025-12-31",
+          "revenue": 1000,
+          "net_income": 120,
+          "operating_cash_flow": 180,
+          "assets": 3000,
+          "liabilities": 1700,
+          "equity": 1300
+        },
+        {
+          "period": "2026-03-31",
+          "revenue": 260,
+          "net_income": 28,
+          "operating_cash_flow": 35
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "status": "PARTIAL",
+      "rating_cap": "B",
+      "stats.core_complete_period_count": 1,
+      "stats.latest_core_statement_complete": false
+    }
+  },
+  {
+    "name": "financial-validation-accepts-direct-period-list",
+    "kind": "financial_validation",
+    "payload": [
+      {
+        "period": "2025-12-31",
+        "revenue": 1000,
+        "net_income": 120,
+        "operating_cash_flow": 180,
+        "assets": 3000,
+        "liabilities": 1700,
+        "equity": 1300
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 260,
+        "net_income": 28,
+        "operating_cash_flow": 35,
+        "assets": 3180,
+        "liabilities": 1810,
+        "equity": 1370
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "status": "OK",
+      "rating_cap": "S",
+      "stats.core_complete_period_count": 2,
+      "stats.latest_core_statement_complete": true
+    }
+  },
+  {
+    "name": "ok-validation-cap-creates-evidence-depth-debt",
+    "kind": "data_gaps",
+    "statuses": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "requested_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements"
+    ],
+    "critical_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements"
+    ],
+    "result_items": [
+      {
+        "dataset": "price_history_adjusted",
+        "status": "OK",
+        "source": "Yahoo_Chart_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+        "data_path": "/tmp/example_prices.csv",
+        "validation": {
+          "dataset": "price_history",
+          "status": "OK",
+          "warnings": [
+            "Only 246 bars; 250+ preferred for 200DMA and medium-term structure."
+          ],
+          "rating_cap": "B"
+        }
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "gap_count": 1,
+      "research_debt_count": 1,
+      "data_gaps.0.status": "OK",
+      "data_gaps.0.gap_type": "EVIDENCE_DEPTH_LIMIT",
+      "data_gaps.0.decision_impact": "ACTION_IMPACT",
+      "research_debt.0.gap_type": "EVIDENCE_DEPTH_LIMIT"
+    }
+  },
+  {
+    "name": "ok-validation-cap-creates-adjustment-basis-debt",
+    "kind": "data_gaps",
+    "statuses": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "requested_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements"
+    ],
+    "critical_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements"
+    ],
+    "result_items": [
+      {
+        "dataset": "price_history_adjusted",
+        "status": "OK",
+        "source": "Yahoo_Chart_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+        "data_path": "/tmp/example_prices.csv",
+        "validation": {
+          "dataset": "price_history",
+          "status": "OK",
+          "warnings": [
+            "Historical price adjustment is not confirmed; Chan/DMA conclusions may be capped."
+          ],
+          "rating_cap": "B"
+        }
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "gap_count": 1,
+      "research_debt_count": 1,
+      "data_gaps.0.status": "OK",
+      "data_gaps.0.gap_type": "ADJUSTMENT_BASIS_UNVERIFIED",
+      "data_gaps.0.decision_impact": "ACTION_IMPACT",
+      "research_debt.0.gap_type": "ADJUSTMENT_BASIS_UNVERIFIED"
+    }
+  },
+  {
+    "name": "ok-validation-cap-keeps-depth-and-adjustment-debts-distinct",
+    "kind": "data_gaps",
+    "statuses": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "requested_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements"
+    ],
+    "critical_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements"
+    ],
+    "result_items": [
+      {
+        "dataset": "price_history_adjusted",
+        "status": "OK",
+        "source": "Yahoo_Chart_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+        "data_path": "/tmp/example_prices.csv",
+        "validation": {
+          "dataset": "price_history",
+          "status": "OK",
+          "warnings": [
+            "Only 246 bars; 250+ preferred for 200DMA and medium-term structure.",
+            "Historical price adjustment is not confirmed; Chan/DMA conclusions may be capped."
+          ],
+          "rating_cap": "B"
+        }
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "gap_count": 2,
+      "research_debt_count": 2,
+      "data_gaps.0.gap_type": "ADJUSTMENT_BASIS_UNVERIFIED",
+      "data_gaps.1.gap_type": "EVIDENCE_DEPTH_LIMIT",
+      "research_debt.0.gap_type": "ADJUSTMENT_BASIS_UNVERIFIED",
+      "research_debt.1.gap_type": "EVIDENCE_DEPTH_LIMIT"
+    }
+  },
+  {
     "name": "h5-h4-output-contract-json-passes",
     "kind": "output_json",
     "contract": "evals/fixtures/pass_output_contract_json_h5_h4_gap.json",
@@ -229,6 +435,100 @@
     }
   },
   {
+    "name": "technical-health-near-moving-average-is-not-buy-point",
+    "kind": "technical_health",
+    "series": {
+      "start": 80,
+      "step": 0.18,
+      "count": 220
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "buy_point_claim_allowed": false
+    }
+  },
+  {
+    "name": "a-share-private-placement-creates-dilution-debt",
+    "kind": "capital_actions",
+    "announcements": [
+      {
+        "title": "2025年度向特定对象发行A股股票发行情况报告书",
+        "announcement_date": "2026-06-12",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/example.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "summary.has_dilution_event": true,
+      "summary.material_risk_level": "medium_high",
+      "actions.0.action_type": "private_placement"
+    }
+  },
+  {
+    "name": "comparison-report-keeps-priority-differentiated-under-same-cap",
+    "kind": "comparison_report",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "candidate_priority_ranking.0.symbol": "688019.SH",
+      "candidate_priority_ranking.0.priority_score": 60.1,
+      "candidate_priority_ranking.0.rating_cap": "B",
+      "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
+      "candidate_priority_ranking.1.priority_score": 44.3,
+      "candidate_priority_ranking.1.rating_cap": "B",
+      "candidate_priority_ranking.1.action_readiness": "DATA_GATED",
+      "capital_actions.1.summary.has_dilution_event": true,
+      "growth_hypothesis_matrix.0.market_implied_growth": "H3",
+      "growth_hypothesis_matrix.1.market_implied_growth": "H5",
+      "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
+      "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false
+    },
+    "expected_contains": [
+      {
+        "path": "research_debt",
+        "value": {
+          "symbol": "688019.SH",
+          "dataset": "price_history_adjusted"
+        }
+      },
+      {
+        "path": "research_debt",
+        "value": {
+          "symbol": "688322.SH",
+          "dataset": "valuation_growth"
+        }
+      }
+    ]
+  },
+  {
+    "name": "comparison-report-derived-research-debt-gates-action",
+    "kind": "comparison_report",
+    "clear_manifest_research_debt": true,
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "candidate_priority_ranking.0.symbol": "688019.SH",
+      "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
+      "candidate_priority_ranking.1.symbol": "688322.SH",
+      "candidate_priority_ranking.1.action_readiness": "DATA_GATED"
+    },
+    "expected_contains": [
+      {
+        "path": "research_debt",
+        "value": {
+          "symbol": "688322.SH",
+          "dataset": "valuation_growth"
+        }
+      }
+    ]
+  },
+  {
     "name": "a-share-periodic-report-kind-normalization",
     "kind": "report_kind",
     "expect_pass": true,
@@ -239,6 +539,151 @@
       "2026年第一季度报告": "q1",
       "2025年三季度报告": "q3",
       "2025年第三季度报告": "q3"
+    }
+  },
+  {
+    "name": "a-share-official-report-download-selection-prefers-annual-and-q1",
+    "kind": "official_report_selection",
+    "limit": 2,
+    "reports": [
+      {
+        "title": "2026年半年度报告",
+        "report_kind": "semiannual",
+        "announcement_date": "2026-08-20",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/semiannual.pdf"
+      },
+      {
+        "title": "2025年年度报告",
+        "report_kind": "annual",
+        "announcement_date": "2026-04-20",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/annual.pdf"
+      },
+      {
+        "title": "2026年第一季度报告",
+        "report_kind": "q1",
+        "announcement_date": "2026-04-28",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/q1.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "selected_report_kinds.0": "annual",
+      "selected_report_kinds.1": "q1"
+    }
+  },
+  {
+    "name": "cn-statement-start-keeps-first-balance-sheet-page",
+    "kind": "cn_statement_start",
+    "title": "合并资产负债表",
+    "signals": ["资产总计", "资产合计", "负债合计", "所有者权益", "股东权益"],
+    "pages": [
+      {
+        "page_number": 8,
+        "text": "目录\n合并资产负债表\n合并利润表\n合并现金流量表"
+      },
+      {
+        "page_number": 187,
+        "text": "表报务财\n合并资产负债表\n2025年12月31日\n（除特别注明外，金额单位为人民币百万元）\n附注八 2025年12月31日 2024年12月31日\n资产\n货币资金 1 745,679 683,433\n其他资产 21 172,080 119,770\n资产总计 13,898,471 12,957,827"
+      },
+      {
+        "page_number": 188,
+        "text": "合并资产负债表\n2025年12月31日\n（除特别注明外，金额单位为人民币百万元）\n附注八 2025年12月31日 2024年12月31日\n负债及股东权益\n负债\n短期借款 23 84,520 95,662\n负债合计 12,482,483 11,653,115\n股东权益合计 1,415,988 1,304,712"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "start_page": 187
+    }
+  },
+  {
+    "name": "a-share-bank-profile-extracts-table-values-not-ratio-text",
+    "kind": "financial_sector_profile_extraction",
+    "unit": "million_yuan",
+    "pages": [
+      {
+        "page_number": 15,
+        "text": "贷款和垫款总额(2) 7,258,058 6,888,315 5.37 6,508,865\n客户存款总额(2) 9,836,130 9,096,587 8.13 8,155,438\n占营业收入百分比\n－净利息收入 63.87 62.60 上升1.27个百分点 63.30\n－非利息净收入 36.13 37.40 下降1.27个百分点 36.70\n净利息收益率(2) 1.87 1.98 下降0.11个百分点 2.15\n不良贷款率 0.94 0.95 下降0.01个百分点 0.95\n拨备覆盖率(1) 391.79 411.98 下降20.19个百分点 437.70\n核心一级资本充足率 14.16 14.86 下降0.70个百分点 13.73\n一级资本充足率 16.51 17.48 下降0.97个百分点 16.01\n资本充足率 18.24 19.05 下降0.81个百分点 17.88\n净利息收入 215,593 211,277\n非利息净收入总额 121,939 126,211 -3.38"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "status": "OK",
+      "sector": "bank",
+      "metrics.net_interest_income": 215593.0,
+      "metrics.non_interest_income": 121939.0,
+      "metrics.loans_and_advances": 7258058.0,
+      "metrics.customer_deposits": 9836130.0,
+      "metrics.net_interest_margin_pct": 1.87,
+      "metrics.non_performing_loan_ratio_pct": 0.94,
+      "metrics.provision_coverage_ratio_pct": 391.79,
+      "metrics.core_tier1_capital_adequacy_ratio_pct": 14.16,
+      "metrics.capital_adequacy_ratio_pct": 18.24,
+      "sanity_warnings.0": null
+    }
+  },
+  {
+    "name": "a-share-securities-profile-extracts-risk-control-metrics",
+    "kind": "financial_sector_profile_extraction",
+    "unit": "yuan",
+    "pages": [
+      {
+        "page_number": 3,
+        "text": "母公司的净资本及风险控制指标\n净资本 167,336,977,314.44 157,145,566,468.97\n净资产 268,558,219,226.60 256,513,478,695.46\n风险覆盖率（%） 216.14 210.46\n资本杠杆率（%） 13.47 13.83\n流动性覆盖率（%） 179.20 137.80\n净稳定资金率（%） 137.82 125.27\n净资本/净资产（%） 62.31 61.26\n净资本/负债（%） 18.91 18.51"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "status": "OK",
+      "sector": "securities",
+      "metrics.net_capital": 167336977314.44,
+      "metrics.risk_coverage_ratio_pct": 216.14,
+      "metrics.capital_leverage_ratio_pct": 13.47,
+      "metrics.liquidity_coverage_ratio_pct": 179.2,
+      "metrics.net_stable_funding_ratio_pct": 137.82,
+      "sanity_warnings.0": null
+    }
+  },
+  {
+    "name": "a-share-insurance-profile-extracts-solvency-and-contract-metrics",
+    "kind": "financial_sector_profile_extraction",
+    "unit": "million_yuan",
+    "pages": [
+      {
+        "page_number": 10,
+        "text": "财产保险业务\n保险服务收入 84,334 81,153 3.9\n合并利润表\n保险服务收入 138,387 137,671\n保险合同负债 5,488,163 5,360,910\n核心偿付能力充足率（%） 131.0 171.9 291.2 266.9\n综合偿付能力充足率（%） 183.3 217.9 397.0 314.0\n综合成本率（%） 95.8 96.6"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "status": "OK",
+      "sector": "insurance",
+      "metrics.insurance_service_revenue": 138387.0,
+      "metrics.insurance_contract_liabilities": 5488163.0,
+      "metrics.core_solvency_ratio_pct": 131.0,
+      "metrics.comprehensive_solvency_ratio_pct": 183.3,
+      "sanity_warnings.0": null
+    }
+  },
+  {
+    "name": "a-share-provider-chain-includes-eastmoney-market-data",
+    "kind": "provider_chain",
+    "symbol": "920593.BJ",
+    "market": "CN_A",
+    "exchange": "BJ",
+    "currency": "CNY",
+    "required_providers": [
+      "Eastmoney_Quote_Kline_L2",
+      "CNINFO_Tencent_Adjusted_Kline_L0L2",
+      "Tencent_Quote_Kline_L2",
+      "Yahoo_Chart_L2",
+      "Yahoo_Chart_Query2_L2",
+      "CNINFO_Announcements_L0",
+      "CNINFO_FinancialReports_L0",
+      "Eastmoney_F10_Financials_L3"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "has_required_providers": true
     }
   },
   {
@@ -253,6 +698,24 @@
       "Yahoo_Chart_Query2_L2",
       "SEC_Companyfacts_L0",
       "SEC_CompanyConcepts_L0"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "has_required_providers": true
+    }
+  },
+  {
+    "name": "hk-provider-chain-includes-hkexnews-official-sources",
+    "kind": "provider_chain",
+    "symbol": "0700.HK",
+    "market": "HK",
+    "exchange": "HKEX",
+    "currency": "HKD",
+    "required_providers": [
+      "Yahoo_Chart_L2",
+      "Yahoo_Chart_Query2_L2",
+      "HKEXnews_Announcements_L0",
+      "HKEXnews_FinancialReports_L0"
     ],
     "expect_pass": true,
     "expected_result": {

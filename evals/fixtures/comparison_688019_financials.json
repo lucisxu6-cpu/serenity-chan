@@ -1,0 +1,69 @@
+{
+  "symbol": "688019.SH",
+  "source": "Eastmoney_F10_Financials_L3",
+  "source_level": "L3_MEDIA_F10_RESEARCH",
+  "currency": "CNY",
+  "unit": "yuan",
+  "periods": [
+    {
+      "period": "2024-12-31",
+      "security_name": "安集科技",
+      "report_type": "年报",
+      "revenue": 1835000000,
+      "net_income": 533700000,
+      "operating_cash_flow": 350000000,
+      "operating_cost": 780000000,
+      "assets": 4100000000,
+      "liabilities": 1200000000,
+      "share_capital": 168000000,
+      "accounts_receivable": 430000000,
+      "inventory": 760000000,
+      "research_expense": 310000000
+    },
+    {
+      "period": "2025-03-31",
+      "security_name": "安集科技",
+      "report_type": "一季报",
+      "revenue": 545283664.76,
+      "net_income": 168825875.37,
+      "operating_cash_flow": 57645086.75,
+      "operating_cost": 240000000,
+      "assets": 3599182068.45,
+      "liabilities": 721374308.26,
+      "share_capital": 168562450,
+      "accounts_receivable": 459047455.71,
+      "inventory": 654473207.11,
+      "research_expense": 92304900.26
+    },
+    {
+      "period": "2025-12-31",
+      "security_name": "安集科技",
+      "report_type": "年报",
+      "revenue": 2504217940.48,
+      "net_income": 783648337.86,
+      "operating_cash_flow": 439774055.91,
+      "operating_cost": 1083870000,
+      "assets": 5038433221.1,
+      "liabilities": 1507484656.98,
+      "share_capital": 168562450,
+      "accounts_receivable": 552120933.34,
+      "inventory": 1049515256.94,
+      "research_expense": 444701341.42
+    },
+    {
+      "period": "2026-03-31",
+      "security_name": "安集科技",
+      "report_type": "一季报",
+      "revenue": 723928401.13,
+      "net_income": 207668028.8,
+      "operating_cash_flow": 140550416.71,
+      "operating_cost": 322000000,
+      "assets": 5454801096.53,
+      "liabilities": 856169158.39,
+      "share_capital": 174994396,
+      "accounts_receivable": 618465343.93,
+      "inventory": 1123933546.84,
+      "research_expense": 118757111.83
+    }
+  ]
+}

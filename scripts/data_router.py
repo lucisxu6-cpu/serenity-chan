@@ -107,7 +107,7 @@ class ValidationReport:
 def _source_pack(market: Market) -> Tuple[List[str], List[str], List[str]]:
     if market == Market.CN_A:
         disclosure = ["CNINFO", "SSE", "SZSE", "BSE", "Company IR"]
-        price = ["Wind", "Choice", "CSMAR", "Tushare Pro", "AKShare", "BaoStock", "yfinance auxiliary"]
+        price = ["Wind", "Choice", "CSMAR", "Tushare Pro", "Eastmoney", "Tencent", "AKShare", "BaoStock", "yfinance auxiliary"]
         financial = ["CNINFO filings", "SSE/SZSE/BSE filings", "Wind/Choice/CSMAR", "Tushare Pro", "Eastmoney F10 L3 structured preflight", "Company IR"]
     elif market == Market.US:
         disclosure = ["SEC EDGAR", "Company IR", "Earnings releases", "Investor presentations"]
@@ -276,9 +276,11 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
     if len(dates) < min_bars:
         report.warnings.append(f"Only {len(dates)} bars; {min_bars}+ preferred for 200DMA and medium-term structure.")
         report.rating_cap = RatingCap.B
-    if adjust.lower() not in {"qfq", "forward", "hfq", "backward", "adjusted", "none", "unadjusted", "unknown"}:
+    adjust_normalized = adjust.lower()
+    if adjust_normalized not in {"qfq", "forward", "hfq", "backward", "adjusted", "none", "unadjusted", "unknown"} and not adjust_normalized.startswith("qfq_"):
         report.warnings.append(f"Unknown adjustment flag: {adjust}")
-    if adjust.lower() in {"unknown", "none", "unadjusted"}:
+        report.rating_cap = RatingCap.B
+    if adjust_normalized in {"unknown", "none", "unadjusted"}:
         report.warnings.append("Historical price adjustment is not confirmed; Chan/DMA conclusions may be capped.")
         report.rating_cap = RatingCap.B
 
@@ -352,14 +354,25 @@ def validate_financials(path: Path) -> ValidationReport:
         report.rating_cap = RatingCap.B
         return report
     data = load_json(path)
-    rows = data.get("periods", data if isinstance(data, list) else [])
+    if isinstance(data, list):
+        rows = data
+    elif isinstance(data, Mapping):
+        rows = data.get("periods", [])
+    else:
+        rows = []
     if not isinstance(rows, list) or not rows:
         report.status = DataStatus.FAILED
         report.errors.append("Financial JSON must contain a non-empty list or {'periods': [...]}.")
         report.rating_cap = RatingCap.B
         return report
+    if not all(isinstance(row, Mapping) for row in rows):
+        report.status = DataStatus.FAILED
+        report.errors.append("Financial rows must be JSON objects.")
+        report.rating_cap = RatingCap.B
+        return report
 
-    required_any = ["period", "revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    core_statement_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    required_any = ["period", *core_statement_fields]
     bad = 0
     missing_counts: Dict[str, int] = {k: 0 for k in required_any}
     for idx, row in enumerate(rows):
@@ -387,24 +400,49 @@ def validate_financials(path: Path) -> ValidationReport:
     for key, count in missing_counts.items():
         if count:
             report.warnings.append(f"{count}/{len(rows)} periods missing {key}.")
-    core_fields = ["revenue", "net_income", "operating_cash_flow"]
+    def has_core_statement(row: Mapping[str, Any]) -> bool:
+        return all(_parse_float(row.get(key)) is not None for key in core_statement_fields)
+
+    sorted_rows = sorted(
+        [row for row in rows if isinstance(row, Mapping)],
+        key=lambda row: str(row.get("period") or ""),
+    )
+    latest_row = sorted_rows[-1] if sorted_rows else {}
+    latest_period = str(latest_row.get("period") or "") if latest_row else ""
+    latest_missing_core_fields = [
+        key for key in core_statement_fields
+        if not latest_row or _parse_float(latest_row.get(key)) is None
+    ]
     core_complete_rows = [
         row for row in rows
-        if all(row.get(key) is not None for key in core_fields)
+        if isinstance(row, Mapping) and has_core_statement(row)
     ]
     latest_core_period = max((str(row.get("period", "")) for row in core_complete_rows), default="")
     report.stats["core_complete_period_count"] = len(core_complete_rows)
+    report.stats["core_statement_fields"] = core_statement_fields
+    if latest_period:
+        report.stats["latest_period"] = latest_period
+    report.stats["latest_core_statement_complete"] = not latest_missing_core_fields
+    if latest_missing_core_fields:
+        report.stats["latest_core_statement_missing_fields"] = latest_missing_core_fields
     if latest_core_period:
         report.stats["latest_core_complete_period"] = latest_core_period
 
-    if not core_complete_rows:
+    if latest_missing_core_fields:
         report.status = DataStatus.PARTIAL
         report.rating_cap = RatingCap.B
-        report.warnings.append("No retained period has all core financial fields: revenue, net_income, and operating_cash_flow.")
+        period_label = latest_period or "latest retained period"
+        report.warnings.append(
+            f"Latest financial period {period_label} is missing core statement fields: {', '.join(latest_missing_core_fields)}."
+        )
+    elif not core_complete_rows:
+        report.status = DataStatus.PARTIAL
+        report.rating_cap = RatingCap.B
+        report.warnings.append("No retained period has all core statement fields: revenue, net_income, operating_cash_flow, assets, liabilities, and equity.")
     elif len(core_complete_rows) < 2:
         report.status = DataStatus.PARTIAL
         report.rating_cap = min_cap(report.rating_cap, RatingCap.A)
-        report.warnings.append("Only one retained period has all core financial fields; trend analysis is partial.")
+        report.warnings.append("Only one retained period has all core statement fields; trend analysis is partial.")
     if bad:
         report.status = DataStatus.PARTIAL
         report.rating_cap = RatingCap.B
@@ -537,20 +575,73 @@ def _decision_impact_for_dataset(dataset: CanonicalDataset | str) -> DecisionImp
     return DecisionImpact.NO_IMPACT
 
 
+_PRICE_HISTORY_DATASETS = {
+    CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
+    CanonicalDataset.PRICE_HISTORY_RAW.value,
+}
+
+_ADJUSTMENT_BASIS_TOKENS = [
+    "adjustment is not confirmed",
+    "unknown adjustment",
+    "source adjustment basis",
+    "adjustment basis",
+    "unadjusted",
+]
+
+_EVIDENCE_DEPTH_TOKENS = [
+    "200dma",
+    "bar count",
+    "evidence window",
+    "history depth",
+    "medium-term structure",
+    "minimum bar",
+    "minimum bars",
+]
+
+
+def _is_adjustment_basis_gap(dataset: str, reason: str) -> bool:
+    if dataset not in _PRICE_HISTORY_DATASETS:
+        return False
+    text = reason.lower()
+    return any(token in text for token in _ADJUSTMENT_BASIS_TOKENS)
+
+
+def _is_evidence_depth_gap(dataset: str, reason: str) -> bool:
+    if dataset not in _PRICE_HISTORY_DATASETS:
+        return False
+    text = reason.lower()
+    return any(token in text for token in _EVIDENCE_DEPTH_TOKENS)
+
+
+def _validation_cap_gap_types(dataset: str, reason: str) -> List[DataGapType]:
+    gap_types: List[DataGapType] = []
+    if _is_adjustment_basis_gap(dataset, reason):
+        gap_types.append(DataGapType.ADJUSTMENT_BASIS_UNVERIFIED)
+    if _is_evidence_depth_gap(dataset, reason):
+        gap_types.append(DataGapType.EVIDENCE_DEPTH_LIMIT)
+    return gap_types or [DataGapType.EVIDENCE_DEPTH_LIMIT]
+
+
 def _classify_gap(status: str, reason: str, *, dataset: str = "", source_level: str = "") -> DataGapType:
     text = reason.lower()
     if status == DataStatus.STALE.value:
         return DataGapType.STALE_DATA
+    if _is_adjustment_basis_gap(dataset, reason):
+        return DataGapType.ADJUSTMENT_BASIS_UNVERIFIED
     if "does not support dataset" in text or "unsupported dataset" in text:
         return DataGapType.SOURCE_NOT_IMPLEMENTED
     if "does not support market" in text or "market is unknown" in text:
         return DataGapType.POLICY_BLOCKED
-    if any(token in text for token in ["403", "forbidden", "429", "timeout", "timed out", "ssl", "certificate", "network", "urlopen", "connection"]):
+    if any(token in text for token in ["403", "forbidden", "429", "timeout", "timed out", "ssl", "certificate", "network", "urlopen", "connection", "jsondecodeerror", "json parse failed", "malformed json", "parse failed"]):
         return DataGapType.ACCESS_FAILURE
-    if any(token in text for token in ["no announcements", "no filings", "not disclosed", "issuer", "annual report not found"]):
-        return DataGapType.ISSUER_NON_DISCLOSURE
     if any(token in text for token in ["ohlc consistency", "price difference", "cross-source", "difference"]):
         return DataGapType.CONFLICTING_SOURCES
+    if any(token in text for token in ["not machine-readable", "line extraction", "line-item", "line item"]):
+        return DataGapType.NOT_MACHINE_READABLE
+    if any(token in text for token in ["financial-sector", "industry-specific", "bank/insurance/securities"]):
+        return DataGapType.SOURCE_NOT_IMPLEMENTED
+    if any(token in text for token in ["no announcements", "no filings", "not disclosed", "issuer", "annual report not found"]):
+        return DataGapType.ISSUER_NON_DISCLOSURE
     if source_level.startswith("L3_") and dataset == CanonicalDataset.FINANCIALS.value:
         return DataGapType.NOT_MACHINE_READABLE
     return DataGapType.SOURCE_UNAVAILABLE
@@ -672,6 +763,12 @@ def _fetch_with_attempt_ledger(
 def _rating_impact_for_gap(dataset: str, status: str, gap_type: str) -> str:
     if gap_type == DataGapType.NOT_MACHINE_READABLE.value and dataset == CanonicalDataset.FINANCIALS.value:
         return "S/A research ratings require L0/L1 verification of key financial statements."
+    if gap_type == DataGapType.ADJUSTMENT_BASIS_UNVERIFIED.value:
+        return "Price history exists, but the adjustment basis is unverified; Chan, moving-average, and current action conclusions are capped."
+    if gap_type == DataGapType.EVIDENCE_DEPTH_LIMIT.value:
+        if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, CanonicalDataset.PRICE_HISTORY_RAW.value}:
+            return "Data is usable, but the validated history depth or evidence window caps current action and technical conviction."
+        return "Data is usable, but validation limits evidence depth before high-conviction ratings are allowed."
     if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value}:
         return "Current action, valuation reference, and buy-point conclusions are capped at B."
     if dataset in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value}:
@@ -684,6 +781,8 @@ def _rating_impact_for_gap(dataset: str, status: str, gap_type: str) -> str:
 def _next_action_for_gap(dataset: str, gap_type: str) -> str:
     if dataset == CanonicalDataset.FINANCIALS.value and gap_type == DataGapType.NOT_MACHINE_READABLE.value:
         return "Reconcile revenue, profit, cash flow, assets, liabilities, and equity against official filings or an L1 database export."
+    if dataset == CanonicalDataset.FINANCIALS.value and gap_type == DataGapType.SOURCE_NOT_IMPLEMENTED.value:
+        return "Use the issuer's industry-specific official statement metrics, such as bank NIM/NPL/provision/capital ratios or insurance/ securities equivalents, before scoring fundamentals."
     if dataset == CanonicalDataset.FINANCIALS.value:
         return "Fetch latest official or licensed financial statements and run financial validation before scoring fundamentals."
     if dataset == CanonicalDataset.FILINGS.value:
@@ -691,6 +790,10 @@ def _next_action_for_gap(dataset: str, gap_type: str) -> str:
     if dataset == CanonicalDataset.CURRENT_QUOTE.value:
         return "Fetch a current market quote from a market-appropriate source before making current price or valuation claims."
     if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED.value:
+        if gap_type == DataGapType.ADJUSTMENT_BASIS_UNVERIFIED.value:
+            return "Fetch or reconstruct adjusted daily history with explicit forward/backward adjustment basis and corporate-action evidence."
+        if gap_type == DataGapType.EVIDENCE_DEPTH_LIMIT.value:
+            return "Extend adjusted daily history to the configured minimum bar count, or keep action timing and technical claims capped."
         if gap_type == DataGapType.CONFLICTING_SOURCES.value:
             return "Cross-check adjusted history with another market-appropriate source before making Chan or moving-average claims."
         return "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
@@ -702,8 +805,33 @@ def _next_action_for_gap(dataset: str, gap_type: str) -> str:
 def _manual_task_for_gap(gap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     dataset = str(gap.get("dataset") or "")
     impact = str(gap.get("decision_impact") or "")
+    gap_type = str(gap.get("gap_type") or "")
     if impact == DecisionImpact.NO_IMPACT.value:
         return None
+    if gap_type == DataGapType.ADJUSTMENT_BASIS_UNVERIFIED.value and dataset in _PRICE_HISTORY_DATASETS:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="high",
+            target_source="Exchange, licensed vendor, or validated open market-data source",
+            objective="Verify the adjusted-history basis before making Chan, moving-average, or action-timing claims.",
+            acceptance_criteria=[
+                "Forward/backward/unadjusted basis is explicit.",
+                "Corporate-action evidence or vendor adjustment method is recorded.",
+                "Latest trading day and enough bars for the intended technical window are present.",
+            ],
+        ).to_dict()
+    if gap_type == DataGapType.EVIDENCE_DEPTH_LIMIT.value and dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED.value:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="high",
+            target_source="Exchange, licensed vendor, or validated open market-data source",
+            objective="Extend adjusted daily history to the configured minimum bar count before making high-conviction timing or technical-structure claims.",
+            acceptance_criteria=[
+                "Latest trading day is present.",
+                "Adjustment basis is stated.",
+                "At least the configured minimum bars are available, or the shorter listing/history window is explicitly treated as an action-timing cap.",
+            ],
+        ).to_dict()
     if dataset == CanonicalDataset.FINANCIALS.value:
         return ManualRetrievalTask(
             dataset=dataset,
@@ -714,6 +842,7 @@ def _manual_task_for_gap(gap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 "Latest reporting period is identified.",
                 "Revenue, profit, operating cash flow, assets, liabilities, and equity are reconciled.",
                 "Units, currency, and reporting standard are explicit.",
+                "Financial-sector issuers include bank, insurance, or securities-specific risk, capital, and profitability metrics.",
             ],
         ).to_dict()
     if dataset == CanonicalDataset.FILINGS.value:
@@ -768,33 +897,48 @@ def _build_data_gaps(
             reason_items.extend(str(x) for x in (validation.get("warnings") or []))
         reason = "; ".join(reason_items)
 
-        gap_type: Optional[DataGapType] = None
-        gap_status = status
-        if status in {DataStatus.FAILED.value, DataStatus.PARTIAL.value, DataStatus.STALE.value, DataStatus.PENDING.value}:
-            gap_type = _classify_gap(status, reason, dataset=dataset, source_level=source_level)
-        if dataset == CanonicalDataset.FINANCIALS.value and source_level.startswith("L3_"):
-            gap_type = DataGapType.NOT_MACHINE_READABLE
-            if gap_status == DataStatus.OK.value:
-                gap_status = DataStatus.PARTIAL.value
+        gap_entries: List[Tuple[DataGapType, str]] = []
 
-        if not gap_type:
+        def add_gap(gap_type: DataGapType, gap_status: str = status) -> None:
+            if (gap_type, gap_status) not in gap_entries:
+                gap_entries.append((gap_type, gap_status))
+
+        if status in {DataStatus.FAILED.value, DataStatus.PARTIAL.value, DataStatus.STALE.value, DataStatus.PENDING.value}:
+            add_gap(_classify_gap(status, reason, dataset=dataset, source_level=source_level))
+        if dataset == CanonicalDataset.FINANCIALS.value and source_level.startswith("L3_"):
+            add_gap(
+                DataGapType.NOT_MACHINE_READABLE,
+                DataStatus.PARTIAL.value if status == DataStatus.OK.value else status,
+            )
+        if isinstance(validation, dict):
+            validation_cap = validation.get("rating_cap")
+            if isinstance(validation_cap, str):
+                try:
+                    if stricter_cap(RatingCap.S, RatingCap(validation_cap)) != RatingCap.S:
+                        for validation_gap_type in _validation_cap_gap_types(dataset, reason):
+                            add_gap(validation_gap_type)
+                except ValueError:
+                    pass
+
+        if not gap_entries:
             continue
-        key = (dataset, gap_status, gap_type.value)
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        gap = DataGap(
-            dataset=dataset,
-            status=gap_status,
-            gap_type=gap_type.value,
-            decision_impact=_decision_impact_for_dataset(dataset).value,
-            rating_impact=_rating_impact_for_gap(dataset, gap_status, gap_type.value),
-            next_action=_next_action_for_gap(dataset, gap_type.value),
-            source_name=source_name,
-            source_level=source_level,
-            evidence_path=item.get("raw_path") or item.get("data_path"),
-        ).to_dict()
-        gaps.append(gap)
+        for gap_type, gap_status in gap_entries:
+            key = (dataset, gap_status, gap_type.value)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            gap = DataGap(
+                dataset=dataset,
+                status=gap_status,
+                gap_type=gap_type.value,
+                decision_impact=_decision_impact_for_dataset(dataset).value,
+                rating_impact=_rating_impact_for_gap(dataset, gap_status, gap_type.value),
+                next_action=_next_action_for_gap(dataset, gap_type.value),
+                source_name=source_name,
+                source_level=source_level,
+                evidence_path=item.get("raw_path") or item.get("data_path"),
+            ).to_dict()
+            gaps.append(gap)
 
     for dataset in critical_datasets:
         if dataset in requested_set:
@@ -880,6 +1024,26 @@ def _build_ai_review_guidance(
                 )
 
         if dataset == CanonicalDataset.FINANCIALS.value:
+            if (
+                source_usage
+                and source_usage.get("financial_sector_profile_required")
+                and source_usage.get("financial_sector_profile_status") != "OK"
+            ):
+                blockers.append(
+                    "Financial-sector issuer requires bank/insurance/securities-specific statement metrics; ordinary operating-company financial fields are not sufficient for S/A ratings."
+                )
+                upgrade_requirements.extend([
+                    "For banks, extract net interest income, net interest margin, non-performing loan ratio, provision coverage, capital adequacy, deposits, loans, and risk-weighted asset context from official reports.",
+                    "For insurers or securities firms, extract the equivalent industry-specific solvency, underwriting, investment, brokerage, capital, and risk-quality metrics before scoring fundamentals.",
+                ])
+            if source_usage and source_usage.get("report_pdf_evidence_used") and not source_usage.get("report_line_items_extracted"):
+                blockers.append(
+                    f"Financials use official report PDF evidence from {source}; line items must be extracted or reconciled before S/A ratings."
+                )
+                upgrade_requirements.extend([
+                    "Extract and reconcile revenue, profit, operating cash flow, assets, liabilities, equity, reporting currency, and share-count basis from the official report PDFs or an L1 database export.",
+                    "Explain whether the issuer reports annual, interim, or quarterly periods and avoid mixing standalone and cumulative figures.",
+                ])
             if source_level.startswith("L3_"):
                 blockers.append(
                     f"Financials use {source} ({source_level}); L3 structured evidence caps final research rating at B until L0/L1 verification."
@@ -891,7 +1055,8 @@ def _build_ai_review_guidance(
                 ])
             if status in {DataStatus.PARTIAL.value, DataStatus.FAILED.value}:
                 blockers.append(f"Financials status is {status}; do not issue S/A long-term ratings.")
-                upgrade_requirements.append("Fetch market-primary financial statements before upgrading: SEC XBRL/company filings for US, CNINFO/exchange reports or L1 data for A-share, HKEX/company reports for HK.")
+                if not (source_usage and source_usage.get("report_pdf_evidence_used")):
+                    upgrade_requirements.append("Fetch market-primary financial statements before upgrading: SEC XBRL/company filings for US, CNINFO/exchange reports or L1 data for A-share, HKEX/company reports for HK.")
             if validation_warnings:
                 checks.append("Financial validation warnings require explicit AI explanation, not mechanical promotion or downgrade.")
 
@@ -909,7 +1074,12 @@ def _build_ai_review_guidance(
     if data_gaps:
         checks.append("Read data_gaps before scoring; each material gap must map to a rating limit, action limit, or manual retrieval task.")
     if research_debt:
-        blockers.append("Research debt is open; do not upgrade action readiness until the critical debt items are cleared.")
+        blockers.append("Research debt is open; do not upgrade action readiness until the debt items are cleared or explicitly scoped out.")
+        upgrade_requirements.extend(
+            str(item.get("next_action"))
+            for item in research_debt
+            if isinstance(item, Mapping) and item.get("next_action")
+        )
 
     return {
         "required": True,
@@ -963,12 +1133,19 @@ def fetch_real_data(
                 csv_path = destination / f"{symbol.symbol}_{dataset.value}.csv"
                 _write_price_csv(csv_path, list(result.data or []))
                 data_path = str(csv_path)
+                adjust_basis = result.adjust or ("adjusted" if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED else "unadjusted")
                 validation = validate_price_history(
                     csv_path,
                     router_market,
-                    "adjusted" if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED else "unadjusted",
+                    adjust_basis,
                     min_bars,
                 )
+                adjust_basis_normalized = adjust_basis.lower()
+                if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED and adjust_basis_normalized not in {"qfq", "forward", "hfq", "backward", "adjusted"} and not adjust_basis_normalized.startswith("qfq_"):
+                    validation.warnings.append(f"Requested adjusted history but source adjustment basis is {adjust_basis}.")
+                    if validation.status == DataStatus.OK:
+                        validation.status = DataStatus.PARTIAL
+                    validation.rating_cap = stricter_cap(validation.rating_cap, RatingCap.B)
                 status = validation.status.value
                 validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
                 validation_caps.append(validation.rating_cap.value)
@@ -977,10 +1154,43 @@ def fetch_real_data(
                 _write_json(json_path, result.data)
                 data_path = str(json_path)
                 if dataset == CanonicalDataset.FINANCIALS:
-                    validation = validate_financials(json_path)
-                    status = validation.status.value
-                    validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
-                    validation_caps.append(validation.rating_cap.value)
+                    report_evidence = result.data.get("official_report_evidence") if isinstance(result.data, Mapping) else None
+                    has_period_rows = isinstance(result.data, Mapping) and isinstance(result.data.get("periods"), list) and bool(result.data.get("periods"))
+                    if isinstance(report_evidence, Mapping) and not has_period_rows:
+                        validation = ValidationReport(
+                            dataset="financials",
+                            status=DataStatus.PARTIAL,
+                            warnings=[
+                                "Official financial report PDFs were fetched, but core statement lines were not extracted from the available PDF text.",
+                                "Reconcile revenue, profit, cash flow, assets, liabilities, equity, currency, and share-count basis before S/A ratings.",
+                            ],
+                            stats={
+                                "official_report_status": report_evidence.get("status"),
+                                "report_count": len(report_evidence.get("reports", []) or []),
+                                "downloaded_report_count": len(report_evidence.get("downloaded_reports", []) or []),
+                            },
+                            rating_cap=RatingCap.B,
+                        )
+                        status = validation.status.value
+                        validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
+                        validation_caps.append(validation.rating_cap.value)
+                        result.warnings.append("Financials are official report PDF evidence; final S/A research ratings require line-item extraction or L1 reconciliation.")
+                    else:
+                        validation = validate_financials(json_path)
+                        status = validation.status.value
+                        if (
+                            source_usage
+                            and source_usage.get("financial_sector_profile_required")
+                            and source_usage.get("financial_sector_profile_status") != "OK"
+                        ):
+                            validation.status = DataStatus.PARTIAL
+                            validation.rating_cap = stricter_cap(validation.rating_cap, RatingCap.B)
+                            validation.warnings.append(
+                                "Financial-sector issuer requires industry-specific bank/insurance/securities metrics; ordinary operating-company financial fields are not sufficient for S/A ratings."
+                            )
+                            status = validation.status.value
+                        validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
+                        validation_caps.append(validation.rating_cap.value)
                     if source_level_value.startswith("L3_"):
                         validation_caps.append(RatingCap.B.value)
                         result.warnings.append("Financials use L3/F10 structured preflight data; final S/A research ratings require L0/L1 verification.")
@@ -1144,8 +1354,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ],
     )
     p_fetch.add_argument("--out-dir", help="output directory; defaults to /tmp/serenity-chan-data/<symbol>/<timestamp>")
-    p_fetch.add_argument("--range", dest="chart_range", default="2y", help="Yahoo chart range for price history")
-    p_fetch.add_argument("--interval", default="1d", help="Yahoo chart interval")
+    p_fetch.add_argument("--range", dest="chart_range", default="2y", help="chart range for price history")
+    p_fetch.add_argument("--interval", default="1d", help="chart interval")
     p_fetch.add_argument("--min-bars", type=int, default=250)
     p_fetch.add_argument("--sec-user-agent", help="SEC-compliant User-Agent, e.g. 'Your Name your.email@example.com'")
 

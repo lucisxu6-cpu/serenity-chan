@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Technical Health",
+  "type": "object",
+  "required": [
+    "status",
+    "trend_state",
+    "chan_action",
+    "buy_point_claim_allowed",
+    "latest_close",
+    "metrics",
+    "decision_note"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["OK", "PARTIAL", "DATA_GATED"]
+    },
+    "trend_state": {
+      "type": "string",
+      "enum": [
+        "STRONG_EXTENDED_WATCH",
+        "TREND_PULLBACK_WATCH",
+        "CONSTRUCTIVE_PULLBACK_WATCH",
+        "BASE_BUILDING_WATCH",
+        "WEAK_OR_DOWNTREND",
+        "DATA_GATED"
+      ]
+    },
+    "chan_action": {
+      "type": "string",
+      "enum": [
+        "WAIT_FOR_SECOND_BUY",
+        "WAIT_FOR_THIRD_BUY",
+        "WAIT_FOR_STRUCTURE_CONFIRMATION",
+        "NO_BUY_POINT",
+        "DATA_REQUIRED"
+      ]
+    },
+    "buy_point_claim_allowed": { "type": "boolean" },
+    "latest_close": { "type": ["number", "null"] },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "bars": { "type": "integer", "minimum": 0 },
+        "sma20": { "type": ["number", "null"] },
+        "sma50": { "type": ["number", "null"] },
+        "sma200": { "type": ["number", "null"] },
+        "atr20": { "type": ["number", "null"] },
+        "distance_to_sma20_pct": { "type": ["number", "null"] },
+        "distance_to_sma50_pct": { "type": ["number", "null"] },
+        "distance_to_sma200_pct": { "type": ["number", "null"] },
+        "distance_to_52w_high_pct": { "type": ["number", "null"] },
+        "distance_to_52w_low_pct": { "type": ["number", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "decision_note": { "type": "string" }
+  },
+  "additionalProperties": true
+}

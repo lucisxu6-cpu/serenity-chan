@@ -164,7 +164,7 @@
       "properties": {
         "dataset": {"type": "string"},
         "status": {"$ref": "#/$defs/status"},
-        "gap_type": {"type": "string", "enum": ["ACCESS_FAILURE", "SCOPE_NOT_REQUESTED", "SOURCE_NOT_IMPLEMENTED", "SOURCE_UNAVAILABLE", "ISSUER_NON_DISCLOSURE", "NOT_MACHINE_READABLE", "CONFLICTING_SOURCES", "STALE_DATA", "NOT_MATERIAL", "POLICY_BLOCKED"]},
+        "gap_type": {"type": "string", "enum": ["ACCESS_FAILURE", "SCOPE_NOT_REQUESTED", "SOURCE_NOT_IMPLEMENTED", "SOURCE_UNAVAILABLE", "ISSUER_NON_DISCLOSURE", "NOT_MACHINE_READABLE", "CONFLICTING_SOURCES", "STALE_DATA", "EVIDENCE_DEPTH_LIMIT", "ADJUSTMENT_BASIS_UNVERIFIED", "NOT_MATERIAL", "POLICY_BLOCKED"]},
         "decision_impact": {"type": "string", "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]},
         "rating_impact": {"type": "string"},
         "next_action": {"type": "string"}

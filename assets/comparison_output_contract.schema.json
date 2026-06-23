@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Candidate Comparison Output",
+  "type": "object",
+  "required": [
+    "comparison_scope",
+    "candidates",
+    "data_acquisition_summary",
+    "serenity_layer_matrix",
+    "financial_quality_matrix",
+    "growth_hypothesis_matrix",
+    "technical_timing_matrix",
+    "capital_actions",
+    "research_debt",
+    "candidate_priority_ranking",
+    "final_decision"
+  ],
+  "properties": {
+    "comparison_scope": {
+      "type": "object",
+      "required": ["candidate_count", "as_of", "basis"],
+      "properties": {
+        "candidate_count": { "type": "integer", "minimum": 2 },
+        "as_of": { "type": "string" },
+        "basis": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "market", "currency", "rating_cap", "data_package_path"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "name": { "type": "string" },
+          "market": { "type": "string" },
+          "currency": { "type": "string" },
+          "rating_cap": { "$ref": "#/$defs/rating" },
+          "data_package_path": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "data_acquisition_summary": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
+    "serenity_layer_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "layer",
+          "bottleneck_reason",
+          "layer_score",
+          "company_fit",
+          "revenue_transmission",
+          "evidence_gap"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "layer": { "type": "string" },
+          "bottleneck_reason": { "type": "string" },
+          "layer_score": { "type": ["number", "null"] },
+          "company_fit": { "type": ["number", "null"] },
+          "revenue_transmission": { "type": "string" },
+          "evidence_gap": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "financial_quality_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
+    "growth_hypothesis_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "market_implied_growth",
+          "evidence_supported_growth",
+          "gap",
+          "h4_h5_evidence_bar_met",
+          "required_next_evidence"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "market_implied_growth": {
+            "type": "string",
+            "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"]
+          },
+          "evidence_supported_growth": {
+            "type": "string",
+            "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"]
+          },
+          "gap": { "type": "string" },
+          "h4_h5_evidence_bar_met": { "type": "boolean" },
+          "required_next_evidence": { "type": "string" },
+          "market_cap": { "type": ["number", "null"] },
+          "pe_preflight": { "type": ["number", "null"] },
+          "ps_preflight": { "type": ["number", "null"] },
+          "posterior_basis": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "technical_timing_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
+    "capital_actions": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
+    "research_debt": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
+    "candidate_priority_ranking": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "rank",
+          "symbol",
+          "priority_score",
+          "rating_cap",
+          "action_readiness",
+          "key_reason"
+        ],
+        "properties": {
+          "rank": { "type": "integer", "minimum": 1 },
+          "symbol": { "type": "string" },
+          "priority_score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "rating_cap": { "$ref": "#/$defs/rating" },
+          "action_readiness": { "$ref": "#/$defs/action_readiness" },
+          "key_reason": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "final_decision": {
+      "type": "object",
+      "required": ["top_candidate", "decision", "next_research_actions"],
+      "properties": {
+        "top_candidate": { "type": "string" },
+        "decision": { "type": "string" },
+        "next_research_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "rating": {
+      "type": "string",
+      "enum": ["S", "A", "B", "C", "D", "OBSERVE_ONLY"]
+    },
+    "action_readiness": {
+      "type": "string",
+      "enum": [
+        "CORE_CANDIDATE",
+        "STRONG_OBSERVE",
+        "CANDIDATE_POOL",
+        "WAIT_FOR_BUY_POINT",
+        "DATA_GATED",
+        "LEAD_TRACKING",
+        "ELIMINATE",
+        "OBSERVE_ONLY"
+      ]
+    },
+    "candidate_table_row": {
+      "type": "object",
+      "required": ["symbol"],
+      "properties": {
+        "symbol": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

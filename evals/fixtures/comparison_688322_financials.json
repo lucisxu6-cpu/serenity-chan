@@ -1,0 +1,69 @@
+{
+  "symbol": "688322.SH",
+  "source": "Eastmoney_F10_Financials_L3",
+  "source_level": "L3_MEDIA_F10_RESEARCH",
+  "currency": "CNY",
+  "unit": "yuan",
+  "periods": [
+    {
+      "period": "2024-12-31",
+      "security_name": "奥比中光",
+      "report_type": "年报",
+      "revenue": 564500000,
+      "net_income": -62910000,
+      "operating_cash_flow": -20000000,
+      "operating_cost": 330000000,
+      "assets": 3150000000,
+      "liabilities": 300000000,
+      "share_capital": 401144240,
+      "accounts_receivable": 90000000,
+      "inventory": 190000000,
+      "research_expense": 190000000
+    },
+    {
+      "period": "2025-03-31",
+      "security_name": "奥比中光",
+      "report_type": "一季报",
+      "revenue": 191058207.36,
+      "net_income": 24315014.74,
+      "operating_cash_flow": 1428459.1,
+      "operating_cost": 107000000,
+      "assets": 3231604367.35,
+      "liabilities": 327272299.14,
+      "share_capital": 401144240,
+      "accounts_receivable": 86701009.55,
+      "inventory": 196998442.31,
+      "research_expense": 44949026.16
+    },
+    {
+      "period": "2025-12-31",
+      "security_name": "奥比中光",
+      "report_type": "年报",
+      "revenue": 940743637.65,
+      "net_income": 127909973.81,
+      "operating_cash_flow": 82724070.42,
+      "operating_cost": 529100000,
+      "assets": 3412821565.45,
+      "liabilities": 418653884.94,
+      "share_capital": 401144240,
+      "accounts_receivable": 136486540.02,
+      "inventory": 185634013.72,
+      "research_expense": 202534069.33
+    },
+    {
+      "period": "2026-03-31",
+      "security_name": "奥比中光",
+      "report_type": "一季报",
+      "revenue": 202887914.06,
+      "net_income": 30996569.3,
+      "operating_cash_flow": -117430404.43,
+      "operating_cost": 104300000,
+      "assets": 3379522144.16,
+      "liabilities": 368437184.79,
+      "share_capital": 401144240,
+      "accounts_receivable": 107983889.37,
+      "inventory": 235357685.81,
+      "research_expense": 53487200.4
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan A Share Capital Actions",
+  "type": "object",
+  "required": ["summary", "actions", "research_debt"],
+  "properties": {
+    "summary": {
+      "type": "object",
+      "required": [
+        "action_count",
+        "material_action_count",
+        "material_risk_level",
+        "action_types",
+        "has_dilution_event"
+      ],
+      "properties": {
+        "action_count": { "type": "integer", "minimum": 0 },
+        "material_action_count": { "type": "integer", "minimum": 0 },
+        "material_risk_level": {
+          "type": "string",
+          "enum": ["none", "low", "medium", "medium_high", "high"]
+        },
+        "action_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "has_dilution_event": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "action_type",
+          "title",
+          "announcement_date",
+          "risk_level",
+          "market_payoff_effect",
+          "action_readiness_effect",
+          "research_debt"
+        ],
+        "properties": {
+          "action_type": { "type": "string" },
+          "title": { "type": "string" },
+          "announcement_date": { "type": "string" },
+          "pdf_url": { "type": "string" },
+          "risk_level": {
+            "type": "string",
+            "enum": ["low", "medium", "medium_high", "high", "supportive"]
+          },
+          "market_payoff_effect": { "type": "string" },
+          "action_readiness_effect": { "type": "string" },
+          "research_debt": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "research_debt": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

@@ -7,7 +7,7 @@ part of offline CI. It verifies that real fetches work for:
 - the current NVDA use case,
 - representative NVDA upstream / adjacent symbols,
 - A-share current quote, adjusted history, structured financials, and announcements,
-- HK current quote and adjusted history.
+- HK current quote, adjusted history, announcements, and official report PDFs.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -36,6 +37,12 @@ class SmokeCase:
     allowed_quality: dict[str, set[str]] = field(default_factory=dict)
     required_report_kinds: set[str] = field(default_factory=set)
     minimum_report_records: int = 0
+    minimum_downloaded_reports: int = 0
+    required_financial_sector_profile_status: Optional[str] = None
+    required_financial_sector_profile_sector: Optional[str] = None
+    required_financial_sector_profile_metrics: set[str] = field(default_factory=set)
+    required_latest_core_statement_complete: bool = False
+    minimum_core_complete_periods: int = 0
     note: str = ""
 
 
@@ -96,7 +103,7 @@ DEFAULT_CASES = [
         case_set="a-share",
         datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
         required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
-        note="A-share SH quote/history, Eastmoney F10 structured financials, and CNINFO announcement metadata sample.",
+        note="A-share SH quote/K-line, CNINFO L0 official report PDF financial line extraction, CNINFO metadata, and selected official report PDF sample.",
     ),
     SmokeCase(
         name="a-share-current-300750",
@@ -106,7 +113,8 @@ DEFAULT_CASES = [
         required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
         required_report_kinds={"annual", "q1"},
         minimum_report_records=2,
-        note="A-share SZ quote/history, Eastmoney F10 structured financials, and CNINFO announcement metadata sample.",
+        minimum_downloaded_reports=2,
+        note="A-share SZ quote/K-line, CNINFO L0 official report PDF financial line extraction, CNINFO metadata, and selected official report PDF sample.",
     ),
     SmokeCase(
         name="a-share-current-300480",
@@ -117,34 +125,84 @@ DEFAULT_CASES = [
         allowed_quality={"adjusted_history": {"OK", "PARTIAL"}},
         required_report_kinds={"annual", "q1"},
         minimum_report_records=2,
-        note="A-share regression sample that exercises the real 300480.SZ workflow; adjusted history must be visible as OK or PARTIAL when source OHLC validation catches a current-day inconsistency.",
+        minimum_downloaded_reports=2,
+        note="A-share regression sample that exercises the real 300480.SZ workflow across market data, financial line extraction, filings, and official report PDF evidence.",
     ),
     SmokeCase(
         name="a-share-financial-sector-600036",
         symbol="600036",
         case_set="a-share",
         datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
-        required_quality={"current_price": "OK", "adjusted_history": "OK", "filings": "OK"},
-        allowed_quality={"financials": {"OK", "PARTIAL"}},
-        note="A-share bank boundary: ordinary three-statement L3 preflight data may be partial and must remain capped.",
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_financial_sector_profile_status="OK",
+        required_financial_sector_profile_sector="bank",
+        required_financial_sector_profile_metrics={
+            "net_interest_income",
+            "net_interest_margin_pct",
+            "loans_and_advances",
+            "customer_deposits",
+            "non_performing_loan_ratio_pct",
+            "provision_coverage_ratio_pct",
+            "core_tier1_capital_adequacy_ratio_pct",
+            "capital_adequacy_ratio_pct",
+        },
+        note="A-share bank sample: CNINFO L0 official report PDF extraction must include bank-specific profile metrics and avoid ordinary-company shortcuts.",
+    ),
+    SmokeCase(
+        name="a-share-securities-sector-600030",
+        symbol="600030",
+        case_set="a-share",
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_financial_sector_profile_status="OK",
+        required_financial_sector_profile_sector="securities",
+        required_financial_sector_profile_metrics={
+            "net_capital",
+            "risk_coverage_ratio_pct",
+            "capital_leverage_ratio_pct",
+            "liquidity_coverage_ratio_pct",
+            "net_stable_funding_ratio_pct",
+        },
+        note="A-share securities sample: CNINFO L0 official report PDF extraction must include securities risk-control profile metrics.",
+    ),
+    SmokeCase(
+        name="a-share-insurance-sector-601318",
+        symbol="601318",
+        case_set="a-share",
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_financial_sector_profile_status="OK",
+        required_financial_sector_profile_sector="insurance",
+        required_financial_sector_profile_metrics={
+            "insurance_service_revenue",
+            "insurance_contract_liabilities",
+            "core_solvency_ratio_pct",
+            "comprehensive_solvency_ratio_pct",
+        },
+        note="A-share insurance sample: CNINFO L0 official report PDF extraction must include insurance service, liabilities, and solvency profile metrics.",
     ),
     SmokeCase(
         name="a-share-bj-boundary-920593",
         symbol="920593",
         case_set="a-share",
         datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
-        required_quality={"financials": "OK", "filings": "OK"},
-        allowed_quality={"current_price": {"OK", "FAILED"}, "adjusted_history": {"OK", "FAILED"}},
-        note="BJ boundary: financials/filings can resolve while Yahoo quote/history may be unavailable; entry claims must stay capped.",
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_report_kinds={"annual", "q1"},
+        minimum_report_records=2,
+        minimum_downloaded_reports=2,
+        note="BJ coverage sample: quote/history, official CNINFO equity-distribution adjustment, CNINFO L0 financial line extraction, CNINFO metadata, and selected official report PDFs must resolve.",
     ),
     SmokeCase(
         name="hk-current-0700",
         symbol="0700.HK",
         case_set="hk",
-        datasets=["current_quote", "price_history_adjusted"],
-        required_quality={"current_price": "OK"},
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"current_price": "OK", "financials": "OK", "filings": "OK"},
         allowed_quality={"adjusted_history": {"OK", "PARTIAL"}},
-        note="HK current quote and adjusted history sample; source-quality validation may cap technical conclusions when adjusted OHLC is partial.",
+        required_report_kinds={"annual", "interim"},
+        minimum_report_records=2,
+        minimum_downloaded_reports=2,
+        note="HK coverage sample: Yahoo quote/history plus HKEXnews announcements and official annual/interim report PDFs must resolve; financials are PARTIAL only when PDF line extraction or core field coverage is incomplete.",
     ),
 ]
 
@@ -170,6 +228,14 @@ def _load_financial_payload(manifest: dict[str, Any]) -> dict[str, Any]:
             return {}
         return payload if isinstance(payload, dict) else {}
     return {}
+
+
+def _core_statement_expectations(case: SmokeCase) -> tuple[bool, int]:
+    requires_latest = case.required_latest_core_statement_complete or (
+        case.case_set == "a-share" and case.required_quality.get("financials") == "OK"
+    )
+    minimum_periods = max(case.minimum_core_complete_periods, 2 if requires_latest else 0)
+    return requires_latest, minimum_periods
 
 
 def _evaluate(case: SmokeCase, manifest: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -220,6 +286,69 @@ def _evaluate(case: SmokeCase, manifest: dict[str, Any]) -> tuple[bool, list[str
         missing_kinds = sorted(case.required_report_kinds - report_kinds)
         if missing_kinds:
             failures.append(f"official_report_evidence.report_kind: missing {missing_kinds}, got {sorted(report_kinds)}")
+    if case.minimum_downloaded_reports:
+        payload = _load_financial_payload(manifest)
+        evidence = payload.get("official_report_evidence", {}) if isinstance(payload.get("official_report_evidence"), dict) else {}
+        downloaded_reports = evidence.get("downloaded_reports", []) if isinstance(evidence.get("downloaded_reports"), list) else []
+        if len(downloaded_reports) < case.minimum_downloaded_reports:
+            failures.append(
+                f"official_report_evidence.downloaded_reports: expected at least {case.minimum_downloaded_reports}, got {len(downloaded_reports)}"
+            )
+    requires_latest_core, minimum_core_periods = _core_statement_expectations(case)
+    if requires_latest_core or minimum_core_periods:
+        payload = _load_financial_payload(manifest)
+        source_usage = payload.get("source_usage", {}) if isinstance(payload.get("source_usage"), dict) else {}
+        evidence = payload.get("official_report_evidence", {}) if isinstance(payload.get("official_report_evidence"), dict) else {}
+        latest_complete = source_usage.get("latest_core_statement_complete", evidence.get("latest_core_statement_complete"))
+        missing_latest = source_usage.get("latest_core_statement_missing_fields", evidence.get("latest_core_statement_missing_fields"))
+        core_count = source_usage.get("core_complete_period_count", evidence.get("core_complete_period_count"))
+        if requires_latest_core and latest_complete is not True:
+            failures.append(
+                "source_usage.latest_core_statement_complete: expected True, "
+                f"got {latest_complete}; missing={missing_latest}"
+            )
+        try:
+            actual_core_periods = int(core_count)
+        except (TypeError, ValueError):
+            actual_core_periods = -1
+        if minimum_core_periods and actual_core_periods < minimum_core_periods:
+            failures.append(
+                f"source_usage.core_complete_period_count: expected at least {minimum_core_periods}, got {core_count}"
+            )
+    if case.required_financial_sector_profile_status or case.required_financial_sector_profile_sector or case.required_financial_sector_profile_metrics:
+        payload = _load_financial_payload(manifest)
+        source_usage = payload.get("source_usage", {}) if isinstance(payload.get("source_usage"), dict) else {}
+        expected_status = case.required_financial_sector_profile_status
+        if expected_status and source_usage.get("financial_sector_profile_status") != expected_status:
+            failures.append(
+                f"source_usage.financial_sector_profile_status: expected {expected_status}, got {source_usage.get('financial_sector_profile_status')}"
+            )
+        profiles = [
+            row.get("financial_sector_profile")
+            for row in payload.get("periods", [])
+            if isinstance(row, dict) and isinstance(row.get("financial_sector_profile"), dict)
+        ] if isinstance(payload.get("periods"), list) else []
+        if not profiles:
+            failures.append("periods.financial_sector_profile: expected at least one profile")
+        else:
+            latest_profile = profiles[-1]
+            expected_sector = case.required_financial_sector_profile_sector
+            if expected_sector and latest_profile.get("sector") != expected_sector:
+                failures.append(
+                    f"periods.financial_sector_profile.sector: expected {expected_sector}, got {latest_profile.get('sector')}"
+                )
+            expected_profile_status = case.required_financial_sector_profile_status
+            if expected_profile_status and latest_profile.get("status") != expected_profile_status:
+                failures.append(
+                    f"periods.financial_sector_profile.status: expected {expected_profile_status}, got {latest_profile.get('status')}"
+                )
+            metrics = latest_profile.get("metrics", {}) if isinstance(latest_profile.get("metrics"), dict) else {}
+            missing_metrics = sorted(metric for metric in case.required_financial_sector_profile_metrics if metric not in metrics)
+            if missing_metrics:
+                failures.append(f"periods.financial_sector_profile.metrics: missing {missing_metrics}")
+            sanity_warnings = latest_profile.get("sanity_warnings", [])
+            if sanity_warnings:
+                failures.append(f"periods.financial_sector_profile.sanity_warnings: expected empty, got {sanity_warnings}")
     financial_result = next(
         (
             item
@@ -254,6 +383,7 @@ def run_cases(
     sec_user_agent: Optional[str],
     chart_range: str,
     interval: str,
+    progress: bool = False,
 ) -> dict[str, Any]:
     if sec_user_agent:
         os.environ["SEC_USER_AGENT"] = sec_user_agent
@@ -261,15 +391,32 @@ def run_cases(
 
     results = []
     for case in cases:
+        started = time.monotonic()
         case_dir = out_root / _safe_case_dir(case.name)
-        manifest = fetch_real_data(
-            case.symbol,
-            datasets=case.datasets,
-            out_dir=str(case_dir),
-            chart_range=chart_range,
-            interval=interval,
-        )
-        ok, failures = _evaluate(case, manifest)
+        if progress:
+            print(f"[RUN] {case.name} {case.symbol}", flush=True)
+        try:
+            manifest = fetch_real_data(
+                case.symbol,
+                datasets=case.datasets,
+                out_dir=str(case_dir),
+                chart_range=chart_range,
+                interval=interval,
+            )
+            ok, failures = _evaluate(case, manifest)
+            out_dir = manifest.get("out_dir")
+            data_quality = manifest.get("data_quality", {})
+            data_acquisition = manifest.get("data_acquisition", {})
+        except Exception as exc:
+            ok = False
+            failures = [f"fetch_real_data raised {type(exc).__name__}: {exc}"]
+            out_dir = str(case_dir)
+            data_quality = {}
+            data_acquisition = {}
+        elapsed = time.monotonic() - started
+        if progress:
+            marker = "PASS" if ok else "FAIL"
+            print(f"[{marker}] {case.name} {case.symbol} elapsed={elapsed:.1f}s", flush=True)
         results.append({
             "name": case.name,
             "symbol": case.symbol,
@@ -277,9 +424,10 @@ def run_cases(
             "ok": ok,
             "failures": failures,
             "note": case.note,
-            "out_dir": manifest.get("out_dir"),
-            "data_quality": manifest.get("data_quality", {}),
-            "data_acquisition": manifest.get("data_acquisition", {}),
+            "out_dir": out_dir,
+            "elapsed_seconds": round(elapsed, 3),
+            "data_quality": data_quality,
+            "data_acquisition": data_acquisition,
         })
 
     return {
@@ -333,6 +481,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         sec_user_agent=args.sec_user_agent,
         chart_range=args.chart_range,
         interval=args.interval,
+        progress=not args.json,
     )
     if args.json:
         print(json.dumps(summary, ensure_ascii=False, indent=2))

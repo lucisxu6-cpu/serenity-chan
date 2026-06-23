@@ -1,0 +1,91 @@
+{
+  "symbol": {
+    "input_value": "688019",
+    "symbol": "688019.SH",
+    "market": "CN_A",
+    "exchange": "SH",
+    "currency": "CNY"
+  },
+  "out_dir": "evals/fixtures",
+  "retrieved_at": "2026-06-23T00:00:00+00:00",
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "OK",
+      "price_history_adjusted": "NOT_REQUESTED",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "attempt_ledger": [],
+    "data_gaps": [
+      {
+        "dataset": "financials",
+        "status": "PARTIAL",
+        "gap_type": "NOT_MACHINE_READABLE",
+        "decision_impact": "EVIDENCE_IMPACT",
+        "rating_impact": "S/A research ratings require L0/L1 verification of key financial statements.",
+        "next_action": "Reconcile financial statement lines against official filings or L1 export.",
+        "source_name": "Eastmoney_F10_Financials_L3",
+        "source_level": "L3_MEDIA_F10_RESEARCH"
+      }
+    ],
+    "research_debt": [
+      {
+        "dataset": "financials",
+        "priority": "critical",
+        "gap_type": "NOT_MACHINE_READABLE",
+        "decision_impact": "EVIDENCE_IMPACT",
+        "rating_impact": "S/A research ratings require L0/L1 verification of key financial statements.",
+        "next_action": "Reconcile financial statement lines against official filings or L1 export.",
+        "source_name": "Eastmoney_F10_Financials_L3",
+        "source_level": "L3_MEDIA_F10_RESEARCH"
+      }
+    ],
+    "manual_retrieval_tasks": [
+      {
+        "dataset": "financials",
+        "priority": "critical",
+        "target_source": "Official filing PDF/XBRL or L1 financial database",
+        "objective": "Verify the latest core financial statement lines before issuing an S/A research rating.",
+        "acceptance_criteria": ["Revenue, profit, cash flow, assets, liabilities, and equity are reconciled."]
+      }
+    ],
+    "attempt_count": 4,
+    "gap_count": 1,
+    "research_debt_count": 1,
+    "manual_task_count": 1,
+    "full_research_ready": false
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "NOT_REQUESTED",
+    "financials": "OK",
+    "filings": "OK",
+    "requested_data_rating_cap": "B",
+    "full_research_rating_cap": "B",
+    "rating_cap": "B"
+  },
+  "results": [
+    {
+      "dataset": "current_quote",
+      "status": "OK",
+      "source": "Yahoo_Chart_L2",
+      "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+      "data_path": "evals/fixtures/comparison_688019_quote.json"
+    },
+    {
+      "dataset": "financials",
+      "status": "OK",
+      "source": "Eastmoney_F10_Financials_L3",
+      "source_level": "L3_MEDIA_F10_RESEARCH",
+      "data_path": "evals/fixtures/comparison_688019_financials.json"
+    },
+    {
+      "dataset": "filings_announcements",
+      "status": "OK",
+      "source": "CNINFO_Announcements_L0",
+      "source_level": "L0_OFFICIAL_DISCLOSURE",
+      "data_path": "evals/fixtures/comparison_688019_announcements.json"
+    }
+  ]
+}
