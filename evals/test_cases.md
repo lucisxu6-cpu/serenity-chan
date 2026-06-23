@@ -21,7 +21,7 @@ User: 分析 AAPL 当前是否高估。
 Expected:
 - Resolve as US ticker.
 - Use SEC EDGAR / 10-K / 10-Q / 8-K path.
-- yfinance only as L2 fallback.
+- yfinance only as L2 auxiliary source.
 - Check split/dividend adjusted history.
 - Attempt `data_router.py fetch` for quote, adjusted history, SEC financials, and filings before making current-price or buy-point claims.
 
@@ -63,7 +63,7 @@ Expected:
 - Wrong-source output fails unless the source is explicitly marked forbidden.
 
 ## 8. H4/H5 增长必须有强证据
-User: 某机器人概念股是不是 H5 平台级扩张？
+User: 某机器人概念股是否具备 H5 平台级扩张证据？
 Expected:
 - Market heat or FOMO cannot upgrade intrinsic growth.
 - H4/H5 requires primary filings, customer/order, capacity, or financial realization.
@@ -104,11 +104,13 @@ Expected:
 - If market-implied growth is H4/H5 while evidence is weaker, JSON validator blocks S/A cap and core-candidate action.
 - OTHER/UNKNOWN markets are capped to OBSERVE_ONLY in scorecard paths.
 
-## 14. 真实数据 smoke 必须覆盖主标的、上游链路、A 股和港股当前数据
-User: 用真实数据验证 NVDA 用例和上游链路，并确认 A 股与港股当前行情可取。
+## 14. 真实数据 smoke 必须覆盖主标的、上游链路、A 股行情/财务/公告和港股当前数据
+User: 用真实数据验证 NVDA 用例和上游链路，并确认 A 股行情、财务、公告与港股当前行情可取。
 Expected:
-- `scripts/run_real_data_smoke.py --case-set all` covers NVDA, MU, AMD, AVGO, TSM, ASML, 688019, 300750, and 0700.HK.
+- `scripts/run_real_data_smoke.py --case-set all` covers NVDA, MU, AMD, AVGO, TSM, ASML, 688019, 300750, 300480, 600036, 920593, and 0700.HK.
 - US operating companies should fetch current quote, adjusted history, SEC financials, and SEC filings when sources are available.
 - ADR boundary cases may fetch quote/history/filings while SEC companyfacts financials remain `FAILED`; the failure must be visible and rating-capped.
-- A-share current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; CNINFO announcement metadata must be fetched when CNINFO resolves the symbol; structured financials remain `FAILED` / `PENDING` when attempted or `NOT_REQUESTED` in scoped smoke until financial-table adapters are added.
-- HK current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; HKEX filings/financials remain `FAILED` / `PENDING` when attempted or `NOT_REQUESTED` in scoped smoke until HKEX/company-report adapters are added.
+- A-share current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; CNINFO announcement metadata must be fetched when CNINFO resolves the symbol; Eastmoney F10 L3 structured financial preflight must return `financials=OK` when the endpoint supports the symbol, while final S/A research ratings remain capped until L0/L1 verification.
+- The real-data manifest must include `ai_review` guidance so the AI explains source level, industry reporting fit, validation warnings, and exact L0/L1 upgrade requirements instead of treating `financials=OK` as enough for a high rating.
+- A-share financial-sector and BJ boundary cases must stay visible: bank/insurance financials may be `PARTIAL`, and BJ quote/history may be `FAILED`; neither may be hidden by a high rating.
+- HK current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; adjusted history may be `PARTIAL` when source OHLC validation fails, and that state must remain visible with rating caps. HKEX filings/financials remain `FAILED` / `PENDING` when attempted or `NOT_REQUESTED` in scoped smoke until HKEX/company-report adapters are added.

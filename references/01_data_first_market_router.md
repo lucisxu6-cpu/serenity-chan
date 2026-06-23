@@ -102,11 +102,14 @@ currency = HKD unless ADR or dual-counter special case
 - AKShare；
 - BaoStock；
 - yfinance/stooq 辅助行情；
-- 东方财富/同花顺数据接口或网页摘要。
+- 免费数据接口或开源库。
 
 用途：辅助抓取和交叉校验。不能替代原始公告。
 
 #### L3 媒体/研报/F10
+
+- 东方财富/同花顺 F10 与网页摘要；
+- 内置 `Eastmoney_F10_Financials_L3` 可抓取 A 股 L3 结构化三表预检数据。
 
 用途：线索、上下文和快速索引。关键结论必须回 L0/L1 复核。
 
@@ -195,7 +198,7 @@ currency = HKD unless ADR or dual-counter special case
 | 美股 | SEC EDGAR、10-K/10-Q/8-K、公司 IR | 巨潮、A 股 F10、东方财富国际摘要充当 SEC filing |
 | 港股 | HKEXnews、公司公告、年报/中报 | A 股或美股同名证券的价格、股本、货币直接套用 |
 
-如果输出中出现错源，并且不是作为 `forbidden source` 明确标记，必须视为数据路由失败，评级上限降到 `OBSERVE_ONLY` 或 `C`。
+输出中的错源必须以 `forbidden source` 明确标记；未标记的错源视为数据路由失败，评级上限降到 `OBSERVE_ONLY` 或 `C`。
 
 ---
 
@@ -372,7 +375,7 @@ shares_outstanding
 }
 ```
 
-`NOT_REQUESTED` means the current scoped fetch did not ask for the dataset. It is not a successful data state. For formal rating tasks, any missing critical dataset still caps the full-research rating until it is fetched and validated.
+`NOT_REQUESTED` means the current scoped fetch did not ask for the dataset. For formal rating tasks, any missing critical dataset caps the full-research rating until it is fetched and validated.
 
 ---
 
@@ -390,8 +393,10 @@ python scripts/data_router.py validate-financial financials.json
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
 ```
 
-`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, or SEC filings. It writes an auditable bundle with raw source payloads and hashes under `--out-dir` or `/tmp/serenity-chan-data/...`.
+`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, SEC filings, A-share CNINFO announcements, or A-share Eastmoney F10 L3 structured financial preflight. It writes an auditable bundle with raw source payloads and hashes under `--out-dir` or `/tmp/serenity-chan-data/...`.
 
 For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. If network, TLS, identity, rate limit, or provider support fails, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
 
-Additional licensed CNINFO/Tushare/Wind/Choice/HKEX adapters can be added without changing the research logic.
+Eastmoney F10 financials provide A-share L3 structured preflight evidence. Keep the final research rating cap at B until key conclusions are verified against CNINFO/exchange report PDFs or L1 databases. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
+
+Additional official or licensed CNINFO/Tushare/Wind/Choice/HKEX adapters can be added without changing the research logic.

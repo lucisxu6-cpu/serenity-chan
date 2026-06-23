@@ -26,21 +26,21 @@ import sys
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 try:
     from data_layer import build_data_fetch_plan
     from data_layer import Dataset as CanonicalDataset
     from data_layer import Market as CanonicalMarket
     from data_layer import default_real_providers
-    from data_layer import fetch_with_fallback
+    from data_layer import fetch_with_provider_chain
     from data_layer import resolve_symbol as canonical_resolve_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_router
     from scripts.data_layer import build_data_fetch_plan
     from scripts.data_layer import Dataset as CanonicalDataset
     from scripts.data_layer import Market as CanonicalMarket
     from scripts.data_layer import default_real_providers
-    from scripts.data_layer import fetch_with_fallback
+    from scripts.data_layer import fetch_with_provider_chain
     from scripts.data_layer import resolve_symbol as canonical_resolve_symbol
 
 
@@ -102,7 +102,7 @@ def _source_pack(market: Market) -> Tuple[List[str], List[str], List[str]]:
     if market == Market.CN_A:
         disclosure = ["CNINFO", "SSE", "SZSE", "BSE", "Company IR"]
         price = ["Wind", "Choice", "CSMAR", "Tushare Pro", "AKShare", "BaoStock", "yfinance auxiliary"]
-        financial = ["CNINFO filings", "SSE/SZSE/BSE filings", "Wind/Choice/CSMAR", "Tushare Pro", "Company IR"]
+        financial = ["CNINFO filings", "SSE/SZSE/BSE filings", "Wind/Choice/CSMAR", "Tushare Pro", "Eastmoney F10 L3 structured preflight", "Company IR"]
     elif market == Market.US:
         disclosure = ["SEC EDGAR", "Company IR", "Earnings releases", "Investor presentations"]
         price = ["Polygon", "IEX/Tiingo", "Nasdaq Data Link", "Bloomberg/FactSet/Koyfin", "yfinance auxiliary", "Stooq auxiliary"]
@@ -481,6 +481,105 @@ def _cap_for_statuses(
     return cap
 
 
+def _source_usage_from_result(result_data: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(result_data, Mapping):
+        return None
+    source_usage = result_data.get("source_usage")
+    if isinstance(source_usage, Mapping):
+        return dict(source_usage)
+    return None
+
+
+def _build_source_integrity_summary(result_items: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    l3_structured_datasets: List[str] = []
+    preferred_source_gaps: List[str] = []
+    for item in result_items:
+        source_usage = item.get("source_usage") if isinstance(item.get("source_usage"), dict) else None
+        if not source_usage:
+            continue
+        if source_usage.get("structured_preflight_used"):
+            l3_structured_datasets.append(str(item.get("dataset") or ""))
+        if source_usage.get("preferred_source_status") not in {None, "OK"}:
+            preferred_source_gaps.append(
+                f"{item.get('dataset')}: preferred={source_usage.get('preferred_source')} status={source_usage.get('preferred_source_status')}"
+            )
+    return {
+        "l3_structured_preflight_used": bool(l3_structured_datasets),
+        "l3_structured_datasets": l3_structured_datasets,
+        "preferred_source_gaps": preferred_source_gaps,
+    }
+
+
+def _build_ai_review_guidance(result_items: Sequence[Dict[str, Any]], data_quality: Dict[str, str]) -> Dict[str, Any]:
+    """Add explicit AI adjudication prompts to the data bundle.
+
+    Deterministic fetch/validation can say what was available. It cannot decide
+    whether a source is strong enough for a long-term research rating without
+    market, industry, and evidence-context reasoning.
+    """
+    checks: List[str] = [
+        "data_quality.rating_cap defines the maximum permitted rating ceiling.",
+        "Rate evidence strength after reviewing data availability, source level, validation warnings, and raw artifacts.",
+        "Inspect each result's source_level, warnings, validation warnings, and raw_path before upgrading conviction.",
+    ]
+    blockers: List[str] = []
+    upgrade_requirements: List[str] = []
+
+    for item in result_items:
+        dataset = str(item.get("dataset") or "")
+        status = str(item.get("status") or "")
+        source_level = str(item.get("source_level") or "")
+        source = str(item.get("source") or "")
+        source_usage = item.get("source_usage") if isinstance(item.get("source_usage"), dict) else None
+        validation = item.get("validation") if isinstance(item.get("validation"), dict) else {}
+        validation_warnings = validation.get("warnings") if isinstance(validation, dict) else []
+
+        if source_usage and source_usage.get("structured_preflight_used"):
+            checks.append(
+                f"{dataset} source chain: preferred={source_usage.get('preferred_source')} "
+                f"status={source_usage.get('preferred_source_status')}; "
+                f"structured={source_usage.get('structured_source')} level={source_usage.get('structured_source_level')}"
+            )
+            if source_usage.get("preferred_source_status") != "OK":
+                blockers.append(
+                    f"{dataset} preferred source status is {source_usage.get('preferred_source_status')}; apply the source-policy cap."
+                )
+
+        if dataset == CanonicalDataset.FINANCIALS.value:
+            if source_level.startswith("L3_"):
+                blockers.append(
+                    f"Financials use {source} ({source_level}); L3 structured evidence caps final research rating at B until L0/L1 verification."
+                )
+                upgrade_requirements.extend([
+                    "Verify key financial lines against CNINFO/exchange annual or quarterly report PDFs, or an L1 database export.",
+                    "For A-share financial or insurance companies, use industry-specific statement analysis instead of ordinary operating-company three-statement shortcuts.",
+                    "Explain whether cash-flow warnings are seasonal/interim-period effects or structural quality issues before scoring fundamentals.",
+                ])
+            if status in {DataStatus.PARTIAL.value, DataStatus.FAILED.value}:
+                blockers.append(f"Financials status is {status}; do not issue S/A long-term ratings.")
+                upgrade_requirements.append("Fetch market-primary financial statements before upgrading: SEC XBRL/company filings for US, CNINFO/exchange reports or L1 data for A-share, HKEX/company reports for HK.")
+            if validation_warnings:
+                checks.append("Financial validation warnings require explicit AI explanation, not mechanical promotion or downgrade.")
+
+        if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value} and status in {DataStatus.PARTIAL.value, DataStatus.FAILED.value, DataStatus.STALE.value}:
+            blockers.append(f"{dataset} status is {status}; do not issue a current entry/buy-point conclusion.")
+            upgrade_requirements.append("Fetch market-appropriate current quote and adjusted history before making current price, valuation, or buy-point claims.")
+
+        if dataset == CanonicalDataset.FILINGS.value and status != DataStatus.OK.value:
+            blockers.append(f"Filing/announcement status is {status}; customer/order/capacity claims remain unverified leads.")
+            upgrade_requirements.append("Fetch market-primary filings or announcements before treating customer, order, capacity, risk, or governance claims as verified.")
+
+    if data_quality.get("rating_cap") in {RatingCap.B.value, RatingCap.C.value, RatingCap.OBSERVE_ONLY.value}:
+        checks.append("When the cap is B or lower, the output must frame the result as observation/pre-research unless stronger primary evidence is added.")
+
+    return {
+        "required": True,
+        "checks": checks,
+        "blockers": blockers,
+        "upgrade_requirements": list(dict.fromkeys(upgrade_requirements)),
+    }
+
+
 def fetch_real_data(
     symbol_value: str,
     *,
@@ -506,12 +605,14 @@ def fetch_real_data(
         provider_kwargs: Dict[str, Any] = {"raw_dir": destination / "raw"}
         if dataset in {CanonicalDataset.PRICE_HISTORY_RAW, CanonicalDataset.PRICE_HISTORY_ADJUSTED}:
             provider_kwargs.update({"range": chart_range, "interval": interval})
-        result = fetch_with_fallback(
+        result = fetch_with_provider_chain(
             providers,
             symbol,
             dataset,
             **provider_kwargs,
         )
+        source_level_value = getattr(result.source_level, "value", str(result.source_level))
+        source_usage = _source_usage_from_result(result.data)
         data_path: Optional[str] = None
         validation_payload: Optional[Dict[str, Any]] = None
         status = "OK" if result.ok else "FAILED"
@@ -539,13 +640,19 @@ def fetch_real_data(
                     status = validation.status.value
                     validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
                     validation_caps.append(validation.rating_cap.value)
+                    if source_level_value.startswith("L3_"):
+                        validation_caps.append(RatingCap.B.value)
+                        result.warnings.append("Financials use L3/F10 structured preflight data; final S/A research ratings require L0/L1 verification.")
+                    elif source_level_value.startswith("L4_"):
+                        validation_caps.append(RatingCap.B.value)
+                        result.warnings.append("Financials are from unverified L4 source; high-conviction conclusions are not allowed.")
 
         statuses[dataset.value] = status
         result_items.append({
             "dataset": dataset.value,
             "status": status,
             "source": result.source_name,
-            "source_level": getattr(result.source_level, "value", str(result.source_level)),
+            "source_level": source_level_value,
             "retrieved_at": result.retrieved_at,
             "as_of_date": result.as_of_date,
             "currency": result.currency,
@@ -553,6 +660,7 @@ def fetch_real_data(
             "data_path": data_path,
             "raw_path": result.raw_path,
             "raw_hash": result.raw_hash,
+            "source_usage": source_usage,
             "warnings": result.warnings,
             "errors": result.errors,
             "validation": validation_payload,
@@ -586,6 +694,8 @@ def fetch_real_data(
         "full_research_rating_cap": full_research_cap.value,
         "rating_cap": full_research_cap.value,
     }
+    source_integrity = _build_source_integrity_summary(result_items)
+    ai_review = _build_ai_review_guidance(result_items, data_quality)
     manifest = {
         "symbol": symbol.__dict__,
         "requested_datasets": requested_dataset_values,
@@ -593,6 +703,8 @@ def fetch_real_data(
         "out_dir": str(destination),
         "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "data_quality": data_quality,
+        "source_integrity": source_integrity,
+        "ai_review": ai_review,
         "results": result_items,
     }
     _write_json(destination / "manifest.json", manifest)

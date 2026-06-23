@@ -17,4 +17,4 @@ Expected first output:
 - 失败降级：无复权行情则不输出缠论买点；无原始公告则证据最高 B。
 ```
 
-Then the agent may proceed to analysis only after data status is known.
+The agent proceeds to analysis after recording the data status.

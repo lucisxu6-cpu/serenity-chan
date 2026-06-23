@@ -381,7 +381,7 @@ class SourcePolicy:
     dataset: Dataset
     primary: List[str]
     structured: List[str]
-    fallback: List[str]
+    auxiliary: List[str]
     forbidden: List[str]
     notes: str = ""
 
@@ -391,7 +391,7 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
     if market == Market.CN_A:
         policies: Dict[Dataset, SourcePolicy] = {
             Dataset.FILINGS: SourcePolicy(market, dataset, ["CNINFO", "SSE", "SZSE", "BSE"], ["Wind", "Choice", "CSMAR"], ["Eastmoney/F10"], ["SEC EDGAR"], "Official PDFs/HTML are required for S/A evidence."),
-            Dataset.FINANCIALS: SourcePolicy(market, dataset, ["Annual/Quarterly Report PDF"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["AKShare", "BaoStock", "Eastmoney"], ["SEC EDGAR"], "Units must be normalized."),
+            Dataset.FINANCIALS: SourcePolicy(market, dataset, ["Annual/Quarterly Report PDF"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["AKShare", "BaoStock", "Eastmoney F10 L3 structured preflight"], ["SEC EDGAR"], "Units must be normalized."),
             Dataset.CURRENT_QUOTE: SourcePolicy(market, dataset, ["Exchange/vendor"], ["Wind", "Choice", "Tushare Pro"], ["AKShare", "Eastmoney", "Sina"], ["SEC EDGAR"], "Latest A-share trading day required."),
             Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["AKShare"], ["SEC EDGAR"], "Use qfq/front-adjusted for technical."),
             Dataset.PRICE_HISTORY_RAW: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["AKShare"], ["SEC EDGAR"], "Use raw for actual current/reference price."),
@@ -429,7 +429,7 @@ def provider_is_allowed(provider: DataProvider, symbol: SymbolInfo, dataset: Dat
     return True, ""
 
 
-def fetch_with_fallback(providers: Iterable[DataProvider], symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+def fetch_with_provider_chain(providers: Iterable[DataProvider], symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
     failures: List[str] = []
     if symbol.market == Market.UNKNOWN:
         return DataResult.failed(dataset, symbol.symbol, "symbol_resolver", SourceLevel.L4, "market is UNKNOWN; cannot route data safely")
@@ -445,7 +445,7 @@ def fetch_with_fallback(providers: Iterable[DataProvider], symbol: SymbolInfo, d
             failures.append(f"{provider.name}: {'; '.join(result.errors) or 'not ok'}")
         except Exception as exc:  # defensive; provider errors must not crash whole agent
             failures.append(f"{provider.name}: {type(exc).__name__}: {exc}")
-    return DataResult.failed(dataset, symbol.symbol, "fallback_chain", SourceLevel.L4, "All providers failed or incompatible: " + " | ".join(failures))
+    return DataResult.failed(dataset, symbol.symbol, "provider_chain", SourceLevel.L4, "All providers failed or incompatible: " + " | ".join(failures))
 
 
 # ---------------------------------------------------------------------------
@@ -805,7 +805,7 @@ def _millis_to_date(value: Any) -> Optional[str]:
 
 
 class YahooChartProvider:
-    """Free Yahoo chart adapter for quote and historical OHLCV fallback data.
+    """Free Yahoo chart adapter for quote and historical OHLCV auxiliary data.
 
     This is an L2 auxiliary source. It is useful for automated preflight, but it
     must not replace market-specific official filings or licensed/pro databases.
@@ -1022,15 +1022,15 @@ class CninfoAnnouncementsProvider:
                 return item
         return None
 
-    def _query_announcements(self, code: str, org_id: str, suffix: str) -> Mapping[str, Any]:
+    def _query_announcements(self, code: str, org_id: str, suffix: str, *, page_num: int = 1, page_size: int = 30) -> Mapping[str, Any]:
         column = "sse" if suffix == "SH" else "szse" if suffix == "SZ" else "bj"
         payload = form_json(
             self.announcement_url,
             {
                 "stock": f"{code},{org_id}",
                 "tabName": "fulltext",
-                "pageSize": "80",
-                "pageNum": "1",
+                "pageSize": str(page_size),
+                "pageNum": str(page_num),
                 "column": column,
                 "plate": column,
                 "seDate": "",
@@ -1057,6 +1057,357 @@ class CninfoAnnouncementsProvider:
             "announcement_type": item.get("announcementType"),
             "page_column": item.get("pageColumn"),
         }
+
+
+def _first_non_empty(row: Mapping[str, Any], keys: Sequence[str]) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _first_number(row: Mapping[str, Any], keys: Sequence[str]) -> Optional[float]:
+    for key in keys:
+        value = _safe_float(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _date10(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:10]
+
+
+def _put_number(target: Dict[str, Any], key: str, value: Any) -> None:
+    number = _safe_float(value)
+    if number is not None:
+        target[key] = number
+
+
+class EastmoneyF10FinancialsProvider:
+    """Eastmoney F10 L3 structured preflight for A-share financial statements.
+
+    The adapter records official periodic-report evidence when available and
+    exposes cumulative income/cash-flow plus period-end balance data. Final S/A
+    conclusions require L0/L1 verification of the key financial lines.
+    """
+
+    name = "Eastmoney_F10_Financials_L3"
+    level = SourceLevel.L3
+    markets = [Market.CN_A]
+    datasets = [Dataset.FINANCIALS]
+    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    api_url = "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+    referer = "https://emweb.securities.eastmoney.com/"
+    table_specs = {
+        "income": "RPT_F10_FINANCE_GINCOME",
+        "balance": "RPT_F10_FINANCE_GBALANCE",
+        "cashflow": "RPT_F10_FINANCE_GCASHFLOW",
+    }
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.CN_A:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney F10 financials only support A-share symbols")
+        if dataset != Dataset.FINANCIALS:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+
+        official_report_evidence = self._locate_official_report_evidence(symbol)
+        page_size = int(kwargs.get("page_size", 16) or 16)
+        raw_payloads: Dict[str, Any] = {"official_report_evidence": official_report_evidence}
+        table_rows: Dict[str, List[Mapping[str, Any]]] = {}
+        warnings: List[str] = [
+            "Eastmoney F10 provides L3 structured preflight financial data; verify important conclusions against CNINFO/exchange report PDFs or L1 databases.",
+            "A-share income and cash-flow fields use reported cumulative statement periods; do not treat interim periods as standalone quarters without conversion.",
+        ]
+        if official_report_evidence.get("status") != "OK":
+            warnings.append("Official periodic-report evidence status is not OK; keep the financial evidence cap at B.")
+        errors: List[str] = []
+
+        for table_name, report_name in self.table_specs.items():
+            try:
+                payload = self._fetch_table(symbol.symbol, report_name, page_size=page_size)
+            except Exception as exc:
+                errors.append(f"{table_name}: {type(exc).__name__}: {exc}")
+                continue
+            raw_payloads[table_name] = payload
+            rows = self._extract_rows(payload)
+            if rows:
+                table_rows[table_name] = rows
+            else:
+                errors.append(f"{table_name}: no rows returned")
+
+        if "income" not in table_rows or "balance" not in table_rows or "cashflow" not in table_rows:
+            if not table_rows:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney F10 returned no usable financial tables: " + " | ".join(errors))
+            warnings.append("One or more Eastmoney F10 financial tables were unavailable: " + " | ".join(errors))
+
+        periods = self._merge_period_rows(table_rows)
+        if not periods:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney F10 rows could not be normalized")
+
+        raw_path = raw_hash = None
+        raw_dir = kwargs.get("raw_dir")
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json(
+                raw_payloads,
+                raw_dir,
+                f"{symbol.symbol}_eastmoney_f10_financials_raw.json",
+            )
+
+        latest_period = max((str(row.get("period") or "") for row in periods), default=None)
+        latest_notice = max((str(row.get("notice_date") or "") for row in periods if row.get("notice_date")), default=None)
+        return DataResult(
+            True,
+            Dataset.FINANCIALS,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=latest_period,
+            data={
+                "symbol": symbol.symbol,
+                "source": self.name,
+                "source_level": self.level.value,
+                "currency": symbol.currency or "CNY",
+                "unit": "yuan",
+                "period_basis": "A-share reported cumulative statement periods for income and cash flow; balance sheet values are period-end.",
+                "latest_period": latest_period,
+                "latest_notice_date": latest_notice,
+                "official_report_evidence": official_report_evidence,
+                "source_usage": {
+                    "preferred_source": "CNINFO/SSE/SZSE/BSE annual or quarterly report PDF",
+                    "preferred_source_status": official_report_evidence.get("status"),
+                    "preferred_source_records": len(official_report_evidence.get("reports", []) or []),
+                    "structured_source": self.name,
+                    "structured_source_level": self.level.value,
+                    "structured_preflight_used": True,
+                    "source_role": "L3_STRUCTURED_PREFLIGHT",
+                    "source_policy_reason": "Official periodic-report evidence anchors disclosure provenance; Eastmoney F10 supplies L3 structured preflight fields under the source policy.",
+                    "required_ai_action": "Compare key financial lines with official PDFs or L1 exports before assigning S/A.",
+                },
+                "periods": periods,
+            },
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            unit="yuan",
+            currency=symbol.currency or "CNY",
+            warnings=warnings,
+        )
+
+    def _locate_official_report_evidence(self, symbol: SymbolInfo) -> Dict[str, Any]:
+        code, _, suffix = symbol.symbol.partition(".")
+        evidence: Dict[str, Any] = {
+            "status": "FAILED",
+            "source": "CNINFO_Announcements_L0",
+            "source_level": SourceLevel.L0.value,
+            "reports": [],
+            "errors": [],
+        }
+        try:
+            cninfo = CninfoAnnouncementsProvider()
+            listing = cninfo._lookup_listing(code)
+            if not listing:
+                evidence["errors"].append(f"could not resolve CNINFO orgId for {symbol.symbol}")
+                return evidence
+            announcements: List[Any] = []
+            queried_pages = 0
+            seen_report_keys: set[str] = set()
+            reports: List[Dict[str, Any]] = []
+            for page_num in range(1, 7):
+                payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
+                page_announcements = payload.get("announcements") or []
+                if not isinstance(page_announcements, list) or not page_announcements:
+                    break
+                queried_pages += 1
+                announcements.extend(page_announcements)
+                for item in page_announcements:
+                    if not isinstance(item, Mapping):
+                        continue
+                    record = cninfo._normalize_announcement(item)
+                    title = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
+                    if not self._is_periodic_report_title(title):
+                        continue
+                    record["title"] = title
+                    record["report_kind"] = self._report_kind(title)
+                    report_key = str(record.get("announcement_id") or record.get("pdf_url") or title)
+                    if report_key in seen_report_keys:
+                        continue
+                    seen_report_keys.add(report_key)
+                    reports.append(record)
+                    if len(reports) >= 8:
+                        break
+                if len(reports) >= 8:
+                    break
+            evidence.update({
+                "status": "OK" if reports else "PARTIAL",
+                "code": code,
+                "org_id": listing.get("orgId"),
+                "name": listing.get("zwjc"),
+                "queried_announcements": len(announcements) if isinstance(announcements, list) else 0,
+                "queried_pages": queried_pages,
+                "reports": reports,
+            })
+            if not reports:
+                evidence["errors"].append("CNINFO announcement query succeeded but no recent periodic report PDF was found in the scanned pages")
+            return evidence
+        except Exception as exc:
+            evidence["errors"].append(f"CNINFO report evidence lookup failed: {type(exc).__name__}: {exc}")
+            return evidence
+
+    @staticmethod
+    def _clean_title(title: str) -> str:
+        return re.sub(r"<[^>]+>", "", title).replace("&nbsp;", " ").strip()
+
+    @staticmethod
+    def _is_periodic_report_title(title: str) -> bool:
+        if not title or "摘要" in title:
+            return False
+        excluded = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
+        if any(token in title for token in excluded):
+            return False
+        return bool(re.search(r"(年度报告|半年度报告|第一季度报告|第三季度报告|季度报告)", title))
+
+    @staticmethod
+    def _report_kind(title: str) -> str:
+        if "半年度报告" in title:
+            return "semiannual"
+        if "年度报告" in title:
+            return "annual"
+        if "第一季度报告" in title or "一季度报告" in title:
+            return "q1"
+        if "第三季度报告" in title or "三季度报告" in title:
+            return "q3"
+        if "季度报告" in title:
+            return "quarterly"
+        return "periodic"
+
+    def _fetch_table(self, secucode: str, report_name: str, *, page_size: int) -> Mapping[str, Any]:
+        params = urllib.parse.urlencode({
+            "reportName": report_name,
+            "columns": "ALL",
+            "filter": f'(SECUCODE="{secucode}")',
+            "pageNumber": "1",
+            "pageSize": str(page_size),
+            "sortTypes": "-1",
+            "sortColumns": "REPORT_DATE",
+            "source": "HSF10",
+            "client": "PC",
+        })
+        payload = https_json(
+            f"{self.api_url}?{params}",
+            user_agent=self.user_agent,
+            headers={"Referer": self.referer},
+        )
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("Eastmoney response is not a JSON object")
+        if payload.get("success") is False:
+            raise RuntimeError(str(payload.get("message") or "Eastmoney returned success=false"))
+        return payload
+
+    @staticmethod
+    def _extract_rows(payload: Mapping[str, Any]) -> List[Mapping[str, Any]]:
+        result = payload.get("result") if isinstance(payload.get("result"), Mapping) else {}
+        rows = result.get("data") if isinstance(result, Mapping) else []
+        return [row for row in rows if isinstance(row, Mapping)]
+
+    def _merge_period_rows(self, table_rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
+        periods: Dict[str, Dict[str, Any]] = {}
+
+        for row in table_rows.get("income", []):
+            period = _date10(row.get("REPORT_DATE"))
+            if not period:
+                continue
+            target = periods.setdefault(period, {"period": period})
+            self._copy_common_fields(target, row)
+            revenue = _first_number(row, ["TOTAL_OPERATE_INCOME", "OPERATE_INCOME"])
+            operating_cost = _first_number(row, ["OPERATE_COST", "TOTAL_OPERATE_COST"])
+            _put_number(target, "revenue", revenue)
+            _put_number(target, "operating_income", _first_number(row, ["OPERATE_PROFIT"]))
+            _put_number(target, "net_income", _first_number(row, ["PARENT_NETPROFIT", "NETPROFIT"]))
+            _put_number(target, "net_profit", target.get("net_income"))
+            _put_number(target, "total_net_profit", _first_number(row, ["NETPROFIT"]))
+            _put_number(target, "operating_cost", operating_cost)
+            _put_number(target, "research_expense", _first_number(row, ["RESEARCH_EXPENSE", "ME_RESEARCH_EXPENSE"]))
+            _put_number(target, "sales_expense", _first_number(row, ["SALE_EXPENSE"]))
+            _put_number(target, "management_expense", _first_number(row, ["MANAGE_EXPENSE"]))
+            _put_number(target, "finance_expense", _first_number(row, ["FINANCE_EXPENSE"]))
+            _put_number(target, "basic_eps", _first_number(row, ["BASIC_EPS"]))
+            if revenue is not None and operating_cost is not None:
+                target["gross_profit"] = revenue - operating_cost
+
+        for row in table_rows.get("balance", []):
+            period = _date10(row.get("REPORT_DATE"))
+            if not period:
+                continue
+            target = periods.setdefault(period, {"period": period})
+            self._copy_common_fields(target, row)
+            assets = _first_number(row, ["TOTAL_ASSETS"])
+            liabilities = _first_number(row, ["TOTAL_LIABILITIES"])
+            equity = _first_number(row, ["TOTAL_EQUITY"])
+            _put_number(target, "assets", assets)
+            _put_number(target, "total_assets", assets)
+            _put_number(target, "liabilities", liabilities)
+            _put_number(target, "total_liabilities", liabilities)
+            _put_number(target, "equity", equity)
+            _put_number(target, "total_equity", equity)
+            _put_number(target, "parent_equity", _first_number(row, ["TOTAL_PARENT_EQUITY"]))
+            _put_number(target, "cash", _first_number(row, ["MONETARYFUNDS"]))
+            _put_number(target, "accounts_receivable", _first_number(row, ["ACCOUNTS_RECE"]))
+            _put_number(target, "notes_and_accounts_receivable", _first_number(row, ["NOTE_ACCOUNTS_RECE"]))
+            _put_number(target, "inventory", _first_number(row, ["INVENTORY"]))
+            _put_number(target, "goodwill", _first_number(row, ["GOODWILL"]))
+            _put_number(target, "current_assets", _first_number(row, ["TOTAL_CURRENT_ASSETS"]))
+            _put_number(target, "current_liabilities", _first_number(row, ["TOTAL_CURRENT_LIAB"]))
+            _put_number(target, "noncurrent_assets", _first_number(row, ["TOTAL_NONCURRENT_ASSETS"]))
+            _put_number(target, "noncurrent_liabilities", _first_number(row, ["TOTAL_NONCURRENT_LIAB"]))
+            _put_number(target, "share_capital", _first_number(row, ["SHARE_CAPITAL"]))
+            _put_number(target, "short_term_borrowings", _first_number(row, ["SHORT_LOAN"]))
+            _put_number(target, "bonds_payable", _first_number(row, ["BOND_PAYABLE"]))
+
+        for row in table_rows.get("cashflow", []):
+            period = _date10(row.get("REPORT_DATE"))
+            if not period:
+                continue
+            target = periods.setdefault(period, {"period": period})
+            self._copy_common_fields(target, row)
+            ocf = _first_number(row, ["NETCASH_OPERATE", "NETCASH_OPERATENOTE"])
+            capex = _first_number(row, ["CONSTRUCT_LONG_ASSET"])
+            _put_number(target, "operating_cash_flow", ocf)
+            _put_number(target, "investing_cash_flow", _first_number(row, ["NETCASH_INVEST"]))
+            _put_number(target, "financing_cash_flow", _first_number(row, ["NETCASH_FINANCE"]))
+            _put_number(target, "cash_and_equivalents_end", _first_number(row, ["END_CCE"]))
+            _put_number(target, "sales_cash_received", _first_number(row, ["SALES_SERVICES"]))
+            _put_number(target, "cash_paid_for_goods_services", _first_number(row, ["BUY_SERVICES"]))
+            _put_number(target, "capital_expenditure_cash_outflow", capex)
+            if ocf is not None and capex is not None:
+                target["free_cash_flow_after_capex"] = ocf - capex
+
+        rows = list(periods.values())
+        rows.sort(key=lambda item: str(item.get("period") or ""))
+        return rows[-16:]
+
+    @staticmethod
+    def _copy_common_fields(target: Dict[str, Any], row: Mapping[str, Any]) -> None:
+        for output_key, candidates in {
+            "security_name": ["SECURITY_NAME_ABBR"],
+            "report_type": ["REPORT_TYPE"],
+            "report_date_name": ["REPORT_DATE_NAME"],
+            "notice_date": ["NOTICE_DATE"],
+            "update_date": ["UPDATE_DATE"],
+            "currency": ["CURRENCY"],
+        }.items():
+            value = _first_non_empty(row, candidates)
+            if value is None:
+                continue
+            if output_key.endswith("_date"):
+                value = _date10(value)
+            target.setdefault(output_key, value)
 
 
 def _sec_user_agent() -> Tuple[str, List[str]]:
@@ -1336,6 +1687,7 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
         providers.append(YahooChartProvider())
     if symbol is None or symbol.market == Market.CN_A:
         providers.append(CninfoAnnouncementsProvider())
+        providers.append(EastmoneyF10FinancialsProvider())
     if symbol is None or symbol.market == Market.US:
         providers.append(SecCompanyFactsProvider())
     return providers
@@ -1343,8 +1695,8 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
 
 # Real Tushare/Wind/Choice/AKShare/HKEX adapters should implement DataProvider.
 # Keep credentialed adapters separate so credentials, rate limits, and legal usage
-# are explicit. The free adapters above are preflight/fallback, not a substitute
-# for licensed A-share/HK structured financial-data sources.
+# are explicit. The free adapters above are preflight/auxiliary sources, not a substitute
+# for official filings or licensed structured financial-data sources.
 
 
 # ---------------------------------------------------------------------------

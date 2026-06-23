@@ -34,6 +34,8 @@
         "missing_latest_quote": {"type": "boolean"},
         "missing_price_history": {"type": "boolean"},
         "missing_latest_financials": {"type": "boolean"},
+        "l3_financials_without_l0_l1_verification": {"type": "boolean"},
+        "financial_sector_without_industry_specific_statements": {"type": "boolean"},
         "unverified_customer_claim": {"type": "boolean"},
         "price_source_conflict_gt_2pct": {"type": "boolean"},
         "major_dilution_or_governance_red_flag": {"type": "boolean"},

@@ -14,11 +14,13 @@ try:
     from validate_output_contract_json import validate_contract
     from build_falsification_dashboard import build_from_output_contract
     from serenity_chan_scorecard import score
+    from data_layer import EastmoneyF10FinancialsProvider
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
     from scripts.validate_output_contract import validate_text
     from scripts.validate_output_contract_json import validate_contract
     from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.serenity_chan_scorecard import score
+    from scripts.data_layer import EastmoneyF10FinancialsProvider
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -76,6 +78,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "report_kind":
+            titles = case.get("titles", {})
+            if not isinstance(titles, dict):
+                raise ValueError("report_kind static eval requires titles object")
+            result_payload = {
+                str(title): EastmoneyF10FinancialsProvider._report_kind(str(title))
+                for title in titles
+            }
+            mismatches = {
+                title: {"expected": expected, "actual": result_payload.get(title)}
+                for title, expected in titles.items()
+                if result_payload.get(title) != expected
+            }
+            actual_pass = not mismatches
+            if mismatches:
+                findings = [json.dumps(mismatches, ensure_ascii=False, sort_keys=True)]
         else:
             raise ValueError(f"unknown static eval kind: {kind}")
 

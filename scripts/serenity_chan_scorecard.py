@@ -41,6 +41,8 @@ MODULE_WEIGHTS = {
     "risk": 10,
 }
 
+SCORE_PURPOSE = "candidate_decision_strength"
+
 REQUIRED_TOP_LEVEL = set(MODULE_WEIGHTS) | {"ticker", "market", "as_of_date", "penalties"}
 ALLOWED_MARKETS = {"CN_A", "US", "HK", "GLOBAL", "OTHER", "UNKNOWN"}
 
@@ -50,6 +52,8 @@ PENALTY_CAPS = {
     "missing_latest_quote": Rating.B,
     "missing_price_history": Rating.B,
     "missing_latest_financials": Rating.B,
+    "l3_financials_without_l0_l1_verification": Rating.B,
+    "financial_sector_without_industry_specific_statements": Rating.B,
     "unverified_customer_claim": Rating.C,
     "price_source_conflict_gt_2pct": Rating.C,
     "major_dilution_or_governance_red_flag": Rating.B,
@@ -129,12 +133,12 @@ def score(data: Dict[str, Any]) -> Dict[str, Any]:
     final_rating = _apply_cap(raw_rating, cap)
 
     verdict_map = {
-        Rating.S: "核心长线候选：买点出现后可重点研究",
-        Rating.A: "强观察对象：等待关键验证或买点",
-        Rating.B: "有潜力但存在证据/估值/数据缺口",
-        Rating.C: "主题型或交易型，不适合作长线核心",
-        Rating.D: "剔除/证伪/仅作反面样本",
-        Rating.OBSERVE_ONLY: "仅观察：市场或关键数据未解析",
+        Rating.S: "核心长线候选：证据、赔率、位置和证伪路径同时达标",
+        Rating.A: "强观察对象：方向较强，但仍缺关键验证、赔率或买点",
+        Rating.B: "候选池保留：有潜力但存在明确证据、估值、数据或时点缺口",
+        Rating.C: "线索跟踪：主题或交易线索为主，不适合作长线核心",
+        Rating.D: "剔除/证伪/反面样本：风险或证据缺陷压倒机会",
+        Rating.OBSERVE_ONLY: "仅观察：市场、代码或关键数据未解析",
     }
 
     return {
@@ -142,6 +146,7 @@ def score(data: Dict[str, Any]) -> Dict[str, Any]:
         "company": data.get("company", ""),
         "market": data.get("market", ""),
         "as_of_date": data.get("as_of_date", ""),
+        "score_purpose": SCORE_PURPOSE,
         "raw_score": round(total, 2),
         "raw_rating": raw_rating.value,
         "rating_cap": cap.value,
@@ -193,6 +198,7 @@ def to_markdown(result: Dict[str, Any]) -> str:
         "",
         f"- Market: {result.get('market', '')}",
         f"- As of: {result.get('as_of_date', '')}",
+        f"- Score purpose: **{result.get('score_purpose', SCORE_PURPOSE)}**",
         f"- Raw score: **{result['raw_score']} / 100**",
         f"- Raw rating: **{result['raw_rating']}**",
         f"- Rating cap: **{result['rating_cap']}**",

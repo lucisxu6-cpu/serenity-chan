@@ -62,6 +62,8 @@
     "missing_latest_quote": false,
     "missing_price_history": false,
     "missing_latest_financials": false,
+    "l3_financials_without_l0_l1_verification": false,
+    "financial_sector_without_industry_specific_statements": false,
     "unverified_customer_claim": false,
     "price_source_conflict_gt_2pct": false,
     "major_dilution_or_governance_red_flag": false,

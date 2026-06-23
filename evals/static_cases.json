@@ -214,5 +214,18 @@
       "rating_cap": "OBSERVE_ONLY",
       "final_rating": "OBSERVE_ONLY"
     }
+  },
+  {
+    "name": "a-share-periodic-report-kind-normalization",
+    "kind": "report_kind",
+    "expect_pass": true,
+    "titles": {
+      "2025年年度报告": "annual",
+      "2025年半年度报告": "semiannual",
+      "2026年一季度报告": "q1",
+      "2026年第一季度报告": "q1",
+      "2025年三季度报告": "q3",
+      "2025年第三季度报告": "q3"
+    }
   }
 ]

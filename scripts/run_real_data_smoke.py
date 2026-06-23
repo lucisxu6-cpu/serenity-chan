@@ -6,7 +6,7 @@ part of offline CI. It verifies that real fetches work for:
 
 - the current NVDA use case,
 - representative NVDA upstream / adjacent symbols,
-- A-share current quote and adjusted history,
+- A-share current quote, adjusted history, structured financials, and announcements,
 - HK current quote and adjusted history.
 """
 
@@ -34,6 +34,8 @@ class SmokeCase:
     datasets: Sequence[str]
     required_quality: dict[str, str]
     allowed_quality: dict[str, set[str]] = field(default_factory=dict)
+    required_report_kinds: set[str] = field(default_factory=set)
+    minimum_report_records: int = 0
     note: str = ""
 
 
@@ -92,25 +94,56 @@ DEFAULT_CASES = [
         name="a-share-current-688019",
         symbol="688019",
         case_set="a-share",
-        datasets=["current_quote", "price_history_adjusted", "filings_announcements"],
-        required_quality={"current_price": "OK", "adjusted_history": "OK", "filings": "OK"},
-        note="A-share current quote, adjusted history, and CNINFO announcement metadata sample.",
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        note="A-share SH quote/history, Eastmoney F10 structured financials, and CNINFO announcement metadata sample.",
     ),
     SmokeCase(
         name="a-share-current-300750",
         symbol="300750",
         case_set="a-share",
-        datasets=["current_quote", "price_history_adjusted", "filings_announcements"],
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_report_kinds={"annual", "q1"},
+        minimum_report_records=2,
+        note="A-share SZ quote/history, Eastmoney F10 structured financials, and CNINFO announcement metadata sample.",
+    ),
+    SmokeCase(
+        name="a-share-current-300480",
+        symbol="300480",
+        case_set="a-share",
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_report_kinds={"annual", "q1"},
+        minimum_report_records=2,
+        note="A-share regression sample that exercises the real 300480.SZ workflow.",
+    ),
+    SmokeCase(
+        name="a-share-financial-sector-600036",
+        symbol="600036",
+        case_set="a-share",
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
         required_quality={"current_price": "OK", "adjusted_history": "OK", "filings": "OK"},
-        note="A-share SZ current quote, adjusted history, and CNINFO announcement metadata sample.",
+        allowed_quality={"financials": {"OK", "PARTIAL"}},
+        note="A-share bank boundary: ordinary three-statement L3 preflight data may be partial and must remain capped.",
+    ),
+    SmokeCase(
+        name="a-share-bj-boundary-920593",
+        symbol="920593",
+        case_set="a-share",
+        datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+        required_quality={"financials": "OK", "filings": "OK"},
+        allowed_quality={"current_price": {"OK", "FAILED"}, "adjusted_history": {"OK", "FAILED"}},
+        note="BJ boundary: financials/filings can resolve while Yahoo quote/history may be unavailable; entry claims must stay capped.",
     ),
     SmokeCase(
         name="hk-current-0700",
         symbol="0700.HK",
         case_set="hk",
         datasets=["current_quote", "price_history_adjusted"],
-        required_quality={"current_price": "OK", "adjusted_history": "OK"},
-        note="HK current quote and adjusted history sample; HKEX filings/financials remain out of scope for built-in adapters.",
+        required_quality={"current_price": "OK"},
+        allowed_quality={"adjusted_history": {"OK", "PARTIAL"}},
+        note="HK current quote and adjusted history sample; source-quality validation may cap technical conclusions when adjusted OHLC is partial.",
     ),
 ]
 
@@ -123,9 +156,27 @@ def _safe_case_dir(name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
 
 
+def _load_financial_payload(manifest: dict[str, Any]) -> dict[str, Any]:
+    for item in manifest.get("results", []):
+        if not isinstance(item, dict) or item.get("dataset") != "financials":
+            continue
+        path = item.get("data_path")
+        if not path:
+            return {}
+        try:
+            payload = json.loads(Path(str(path)).read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+    return {}
+
+
 def _evaluate(case: SmokeCase, manifest: dict[str, Any]) -> tuple[bool, list[str]]:
     quality = manifest.get("data_quality", {}) if isinstance(manifest.get("data_quality"), dict) else {}
+    ai_review = manifest.get("ai_review", {}) if isinstance(manifest.get("ai_review"), dict) else {}
     failures: list[str] = []
+    if ai_review.get("required") is not True:
+        failures.append("ai_review.required: expected True")
     for key, expected in case.required_quality.items():
         actual = quality.get(key)
         if actual != expected:
@@ -134,6 +185,16 @@ def _evaluate(case: SmokeCase, manifest: dict[str, Any]) -> tuple[bool, list[str
         actual = quality.get(key)
         if actual not in allowed:
             failures.append(f"{key}: expected one of {sorted(allowed)}, got {actual}")
+    if case.required_report_kinds or case.minimum_report_records:
+        payload = _load_financial_payload(manifest)
+        evidence = payload.get("official_report_evidence", {}) if isinstance(payload.get("official_report_evidence"), dict) else {}
+        reports = evidence.get("reports", []) if isinstance(evidence.get("reports"), list) else []
+        report_kinds = {str(report.get("report_kind")) for report in reports if isinstance(report, dict)}
+        if len(reports) < case.minimum_report_records:
+            failures.append(f"official_report_evidence.reports: expected at least {case.minimum_report_records}, got {len(reports)}")
+        missing_kinds = sorted(case.required_report_kinds - report_kinds)
+        if missing_kinds:
+            failures.append(f"official_report_evidence.report_kind: missing {missing_kinds}, got {sorted(report_kinds)}")
     return not failures, failures
 
 
