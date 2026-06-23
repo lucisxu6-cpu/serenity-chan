@@ -180,9 +180,9 @@
     "expect_pass": false
   },
   {
-    "name": "unknown-scorecard-penalty-blocked",
+    "name": "unknown-scorecard-blocker-blocked",
     "kind": "scorecard",
-    "scorecard": "evals/fixtures/fail_unknown_penalty_scorecard.json",
+    "scorecard": "evals/fixtures/fail_unknown_blocker_scorecard.json",
     "expect_pass": false
   },
   {
@@ -216,6 +216,19 @@
     }
   },
   {
+    "name": "candidate-ranker-prioritizes-researchable-candidate",
+    "kind": "candidate_rank",
+    "scorecards": [
+      "evals/fixtures/pass_h5_scorecard_capped.json",
+      "evals/fixtures/pass_other_market_observe_scorecard.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "ranking.0.ticker": "688019.SH",
+      "ranking.0.watchlist_bucket": "DATA_GATED"
+    }
+  },
+  {
     "name": "a-share-periodic-report-kind-normalization",
     "kind": "report_kind",
     "expect_pass": true,
@@ -226,6 +239,62 @@
       "2026年第一季度报告": "q1",
       "2025年三季度报告": "q3",
       "2025年第三季度报告": "q3"
+    }
+  },
+  {
+    "name": "us-provider-chain-keeps-sec-concepts",
+    "kind": "provider_chain",
+    "symbol": "NVDA",
+    "market": "US",
+    "exchange": "US",
+    "currency": "USD",
+    "required_providers": [
+      "Yahoo_Chart_L2",
+      "Yahoo_Chart_Query2_L2",
+      "SEC_Companyfacts_L0",
+      "SEC_CompanyConcepts_L0"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "has_required_providers": true
+    }
+  },
+  {
+    "name": "sec-identity-match-accepts-requested-ticker",
+    "kind": "sec_identity_match",
+    "symbol": "NVDA",
+    "submission_tickers": ["NVDA"],
+    "expected_match": true,
+    "expect_pass": true,
+    "expected_result": {
+      "matches": true
+    }
+  },
+  {
+    "name": "sec-identity-match-rejects-wrong-cik-ticker",
+    "kind": "sec_identity_match",
+    "symbol": "NVDA",
+    "submission_tickers": ["AMD"],
+    "expected_match": false,
+    "expect_pass": true,
+    "expected_result": {
+      "matches": false
+    }
+  },
+  {
+    "name": "sec-cik-resolution-recovers-from-stale-bootstrap",
+    "kind": "sec_cik_candidate_recovery",
+    "symbol": "NVDA",
+    "bootstrap_cik": "0000002488",
+    "directory_cik": "0001045810",
+    "submission_tickers_by_cik": {
+      "0000002488": ["AMD"],
+      "0001045810": ["NVDA"]
+    },
+    "expected_cik": "0001045810",
+    "expect_pass": true,
+    "expected_result": {
+      "resolved_cik": "0001045810"
     }
   }
 ]

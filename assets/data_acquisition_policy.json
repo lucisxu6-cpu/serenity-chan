@@ -1,0 +1,104 @@
+{
+  "schema_version": "1",
+  "name": "serenity-chan-data-acquisition-policy",
+  "purpose": "Define the source ladder, materiality, and decision limits for each required research dataset.",
+  "source_ladder": [
+    {
+      "stage": "PRIMARY_DISCLOSURE",
+      "source_level": "L0_OFFICIAL_DISCLOSURE",
+      "role": "Official filings, exchange disclosures, SEC/HKEX/CNINFO/company IR evidence."
+    },
+    {
+      "stage": "LICENSED_STRUCTURED",
+      "source_level": "L1_LICENSED_OR_PRO_DATABASE",
+      "role": "Licensed structured databases for statements, market data, estimates, and ownership."
+    },
+    {
+      "stage": "OPEN_STRUCTURED",
+      "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+      "role": "Open automated preflight data for quote/history and non-final checks."
+    },
+    {
+      "stage": "STRUCTURED_PREFLIGHT",
+      "source_level": "L3_MEDIA_F10_RESEARCH",
+      "role": "Structured preflight evidence that must be verified before high-conviction ratings."
+    },
+    {
+      "stage": "MANUAL_RETRIEVAL",
+      "source_level": "L0_OR_L1_TARGET",
+      "role": "Human or agent retrieval task generated when automation cannot clear a material gap."
+    }
+  ],
+  "datasets": {
+    "current_quote": {
+      "materiality": "critical",
+      "decision_role": ["valuation_reference", "action_timing"],
+      "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED", "OPEN_STRUCTURED"],
+      "decision_limit_when_missing": "No current price, valuation reference, or buy-point conclusion."
+    },
+    "price_history_adjusted": {
+      "materiality": "critical",
+      "decision_role": ["chan_structure", "moving_average_structure", "entry_timing"],
+      "preferred_route": ["LICENSED_STRUCTURED", "OPEN_STRUCTURED"],
+      "decision_limit_when_missing": "No Chan/GF-DMA action conclusion."
+    },
+    "financials": {
+      "materiality": "critical",
+      "decision_role": ["fundamental_quality", "growth_validation", "valuation_basis"],
+      "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED", "STRUCTURED_PREFLIGHT"],
+      "decision_limit_when_missing": "No S/A long-term research rating.",
+      "verification_rule": "L3 structured preflight must be reconciled against L0/L1 before S/A ratings."
+    },
+    "filings_announcements": {
+      "materiality": "critical",
+      "decision_role": ["evidence_validation", "risk_events", "customer_order_capacity_claims"],
+      "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED"],
+      "decision_limit_when_missing": "Official claim verification remains open."
+    },
+    "customer_order_capacity_evidence": {
+      "materiality": "high",
+      "decision_role": ["serenity_bottleneck_validation", "transmission_chain"],
+      "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED", "OPEN_STRUCTURED"],
+      "decision_limit_when_missing": "Theme and customer claims remain leads."
+    },
+    "peer_valuation": {
+      "materiality": "medium",
+      "decision_role": ["relative_payoff", "implied_growth_check"],
+      "preferred_route": ["LICENSED_STRUCTURED", "OPEN_STRUCTURED"],
+      "decision_limit_when_missing": "Relative payoff must be framed as provisional."
+    }
+  },
+  "market_routes": {
+    "US": {
+      "cik_resolution": [
+        "assets/sec_cik_bootstrap.json",
+        "SEC company_tickers_exchange.json",
+        "SEC company_tickers.json",
+        "SEC ticker.txt"
+      ],
+      "market_data": [
+        "Yahoo chart query1",
+        "Yahoo chart query2"
+      ],
+      "financials": [
+        "SEC companyfacts",
+        "SEC companyconcepts"
+      ],
+      "filings_announcements": [
+        "SEC submissions"
+      ]
+    }
+  },
+  "gap_types": [
+    "ACCESS_FAILURE",
+    "SCOPE_NOT_REQUESTED",
+    "SOURCE_NOT_IMPLEMENTED",
+    "SOURCE_UNAVAILABLE",
+    "ISSUER_NON_DISCLOSURE",
+    "NOT_MACHINE_READABLE",
+    "CONFLICTING_SOURCES",
+    "STALE_DATA",
+    "NOT_MATERIAL",
+    "POLICY_BLOCKED"
+  ]
+}

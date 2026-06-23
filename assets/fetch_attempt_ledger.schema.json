@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Fetch Attempt Ledger",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "dataset",
+      "source_name",
+      "source_level",
+      "stage",
+      "status",
+      "attempted_at",
+      "reason"
+    ],
+    "properties": {
+      "dataset": { "type": "string" },
+      "source_name": { "type": "string" },
+      "source_level": {
+        "type": "string",
+        "enum": [
+          "L0_OFFICIAL_DISCLOSURE",
+          "L1_LICENSED_OR_PRO_DATABASE",
+          "L2_FREE_API_OR_OPEN_SOURCE",
+          "L3_MEDIA_F10_RESEARCH",
+          "L4_RUMOR_OR_UNVERIFIED"
+        ]
+      },
+      "stage": {
+        "type": "string",
+        "enum": [
+          "LOCAL_CACHE",
+          "PRIMARY_DISCLOSURE",
+          "LICENSED_STRUCTURED",
+          "OPEN_STRUCTURED",
+          "STRUCTURED_PREFLIGHT",
+          "MANUAL_RETRIEVAL"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+      },
+      "attempted_at": { "type": "string" },
+      "gap_type": {
+        "type": ["string", "null"],
+        "enum": [
+          "ACCESS_FAILURE",
+          "SCOPE_NOT_REQUESTED",
+          "SOURCE_NOT_IMPLEMENTED",
+          "SOURCE_UNAVAILABLE",
+          "ISSUER_NON_DISCLOSURE",
+          "NOT_MACHINE_READABLE",
+          "CONFLICTING_SOURCES",
+          "STALE_DATA",
+          "NOT_MATERIAL",
+          "POLICY_BLOCKED",
+          null
+        ]
+      },
+      "decision_impact": {
+        "type": ["string", "null"],
+        "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT", null]
+      },
+      "reason": { "type": "string" }
+    },
+    "additionalProperties": false
+  }
+}

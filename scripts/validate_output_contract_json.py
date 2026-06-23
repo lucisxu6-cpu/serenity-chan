@@ -24,8 +24,17 @@ CONFIDENCE = {"Strong", "Medium", "Weak", "Unverified"}
 GROWTH = {"H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"}
 GROWTH_ORDER = {"H0": 0, "H1": 1, "H2": 2, "H3": 3, "H4": 4, "H5": 5, "UNKNOWN": -1}
 ACTIONS = {"观察", "等待买点", "等待二买", "等待三买", "小仓试错", "核心候选", "强观察", "剔除", "不参与", "数据不足"}
-REQUIRED_ROOT = {"market_route", "data_quality", "rating", "rating_cap", "evidence", "falsification", "action", "uncertainty"}
+GAP_TYPES = {"ACCESS_FAILURE", "SCOPE_NOT_REQUESTED", "SOURCE_NOT_IMPLEMENTED", "SOURCE_UNAVAILABLE", "ISSUER_NON_DISCLOSURE", "NOT_MACHINE_READABLE", "CONFLICTING_SOURCES", "STALE_DATA", "NOT_MATERIAL", "POLICY_BLOCKED"}
+DECISION_IMPACTS = {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"}
+ACTION_READINESS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "WAIT_FOR_BUY_POINT", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
+WATCHLIST_BUCKETS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
+REQUIRED_ROOT = {"market_route", "data_quality", "data_acquisition", "decision_matrix", "rating", "rating_cap", "evidence", "falsification", "action", "uncertainty"}
 REQUIRED_DATA_QUALITY = {"market_resolution", "current_price", "adjusted_history", "financials", "filings"}
+REQUIRED_DATA_ACQUISITION_STATUS = {"current_quote", "price_history_adjusted", "financials", "filings_announcements"}
+REQUIRED_DATA_GAP = {"dataset", "status", "gap_type", "decision_impact", "rating_impact", "next_action"}
+REQUIRED_RESEARCH_DEBT = {"dataset", "priority", "gap_type", "decision_impact", "next_action"}
+REQUIRED_MANUAL_TASK = {"dataset", "priority", "target_source", "objective"}
+REQUIRED_DECISION_MATRIX = {"thesis_quality_score", "evidence_confidence_score", "market_payoff_score", "action_readiness", "candidate_priority_score", "watchlist_bucket"}
 REQUIRED_UNCERTAINTY = {"confirmed", "inferred", "missing", "downgrade_trigger"}
 
 
@@ -73,6 +82,16 @@ def _as_list(value: Any, label: str, errors: list[str]) -> list[Any]:
     return []
 
 
+def _score_0_100(value: Any, label: str, errors: list[str]) -> None:
+    try:
+        number = float(value)
+    except Exception:
+        errors.append(f"{label} must be numeric 0-100")
+        return
+    if number < 0 or number > 100:
+        errors.append(f"{label} must be in 0-100, got {number}")
+
+
 def validate_contract(data: Mapping[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -116,6 +135,85 @@ def validate_contract(data: Mapping[str, Any]) -> dict[str, Any]:
     if market in {"OTHER", "UNKNOWN"} and rating_cap != "OBSERVE_ONLY":
         errors.append("OTHER/UNKNOWN market requires rating_cap OBSERVE_ONLY")
 
+    data_acquisition = _as_mapping(data.get("data_acquisition", {}), "data_acquisition", errors)
+    errors.extend(_missing(data_acquisition, {"status_by_dataset", "data_gaps", "research_debt", "manual_retrieval_tasks"}, "data_acquisition"))
+    status_by_dataset = _as_mapping(data_acquisition.get("status_by_dataset", {}), "data_acquisition.status_by_dataset", errors)
+    errors.extend(_missing(status_by_dataset, REQUIRED_DATA_ACQUISITION_STATUS, "data_acquisition.status_by_dataset"))
+    for key in sorted(REQUIRED_DATA_ACQUISITION_STATUS):
+        if key not in status_by_dataset:
+            continue
+        status = str(status_by_dataset.get(key))
+        if status not in STATUSES:
+            errors.append(f"data_acquisition.status_by_dataset.{key} must be one of {sorted(STATUSES)}, got {status!r}")
+
+    data_gaps = _as_list(data_acquisition.get("data_gaps", []), "data_acquisition.data_gaps", errors)
+    material_gap_count = 0
+    material_gap_datasets: set[str] = set()
+    for idx, item in enumerate(data_gaps):
+        label = f"data_acquisition.data_gaps[{idx}]"
+        gap = _as_mapping(item, label, errors)
+        errors.extend(_missing(gap, REQUIRED_DATA_GAP, label))
+        if gap.get("status") and gap.get("status") not in STATUSES:
+            errors.append(f"{label}.status must be one of {sorted(STATUSES)}")
+        if gap.get("gap_type") and gap.get("gap_type") not in GAP_TYPES:
+            errors.append(f"{label}.gap_type must be one of {sorted(GAP_TYPES)}")
+        if gap.get("decision_impact") and gap.get("decision_impact") not in DECISION_IMPACTS:
+            errors.append(f"{label}.decision_impact must be one of {sorted(DECISION_IMPACTS)}")
+        if gap.get("decision_impact") in {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT"}:
+            material_gap_count += 1
+            if str(gap.get("dataset", "")).strip():
+                material_gap_datasets.add(str(gap.get("dataset")))
+
+    research_debt = _as_list(data_acquisition.get("research_debt", []), "data_acquisition.research_debt", errors)
+    has_critical_debt = False
+    debt_datasets: set[str] = set()
+    for idx, item in enumerate(research_debt):
+        label = f"data_acquisition.research_debt[{idx}]"
+        debt = _as_mapping(item, label, errors)
+        errors.extend(_missing(debt, REQUIRED_RESEARCH_DEBT, label))
+        priority = str(debt.get("priority") or "")
+        if priority and priority not in {"critical", "high", "medium", "low"}:
+            errors.append(f"{label}.priority must be one of ['critical', 'high', 'medium', 'low']")
+        if priority == "critical":
+            has_critical_debt = True
+        if str(debt.get("dataset", "")).strip():
+            debt_datasets.add(str(debt.get("dataset")))
+        if debt.get("gap_type") and debt.get("gap_type") not in GAP_TYPES:
+            errors.append(f"{label}.gap_type must be one of {sorted(GAP_TYPES)}")
+        if debt.get("decision_impact") and debt.get("decision_impact") not in DECISION_IMPACTS:
+            errors.append(f"{label}.decision_impact must be one of {sorted(DECISION_IMPACTS)}")
+
+    manual_tasks = _as_list(data_acquisition.get("manual_retrieval_tasks", []), "data_acquisition.manual_retrieval_tasks", errors)
+    manual_task_datasets: set[str] = set()
+    for idx, item in enumerate(manual_tasks):
+        label = f"data_acquisition.manual_retrieval_tasks[{idx}]"
+        task = _as_mapping(item, label, errors)
+        errors.extend(_missing(task, REQUIRED_MANUAL_TASK, label))
+        priority = str(task.get("priority") or "")
+        if priority and priority not in {"critical", "high", "medium", "low"}:
+            errors.append(f"{label}.priority must be one of ['critical', 'high', 'medium', 'low']")
+        if str(task.get("dataset", "")).strip():
+            manual_task_datasets.add(str(task.get("dataset")))
+    missing_debt = sorted(material_gap_datasets - debt_datasets)
+    if missing_debt:
+        errors.append(f"material data gaps require research debt for datasets: {missing_debt}")
+    missing_manual_tasks = sorted(debt_datasets - manual_task_datasets)
+    if missing_manual_tasks:
+        errors.append(f"research_debt requires manual retrieval tasks for datasets: {missing_manual_tasks}")
+
+    decision_matrix = _as_mapping(data.get("decision_matrix", {}), "decision_matrix", errors)
+    errors.extend(_missing(decision_matrix, REQUIRED_DECISION_MATRIX, "decision_matrix"))
+    for key in ["thesis_quality_score", "evidence_confidence_score", "market_payoff_score", "candidate_priority_score"]:
+        if key in decision_matrix:
+            _score_0_100(decision_matrix.get(key), f"decision_matrix.{key}", errors)
+    action_readiness = str(decision_matrix.get("action_readiness", ""))
+    watchlist_bucket = str(decision_matrix.get("watchlist_bucket", ""))
+    if action_readiness and action_readiness not in ACTION_READINESS:
+        errors.append(f"decision_matrix.action_readiness must be one of {sorted(ACTION_READINESS)}")
+    if watchlist_bucket and watchlist_bucket not in WATCHLIST_BUCKETS:
+        errors.append(f"decision_matrix.watchlist_bucket must be one of {sorted(WATCHLIST_BUCKETS)}")
+    action = str(data.get("action", ""))
+
     if statuses.get("current_price") in UNAVAILABLE_STATUSES and rating_cap in RATINGS and _rating_above(rating_cap, "B"):
         errors.append("current_price unavailable requires rating_cap B or lower")
     if statuses.get("adjusted_history") in UNAVAILABLE_STATUSES and rating_cap in RATINGS and _rating_above(rating_cap, "B"):
@@ -130,6 +228,14 @@ def validate_contract(data: Mapping[str, Any]) -> dict[str, Any]:
             errors.append("filings unavailable cannot support S/A rating")
         if rating_cap in RATINGS and _rating_above(rating_cap, "B"):
             errors.append("filings unavailable requires rating_cap B or lower")
+    if has_critical_debt and rating in RATINGS and _rating_above(rating, "B"):
+        errors.append("critical research_debt cannot support S/A rating")
+    if has_critical_debt and action in {"核心候选", "小仓试错"}:
+        errors.append("critical research_debt cannot use core/test-position action")
+    if has_critical_debt and action_readiness == "CORE_CANDIDATE":
+        errors.append("critical research_debt cannot use CORE_CANDIDATE action readiness")
+    if material_gap_count and watchlist_bucket == "CORE_CANDIDATE":
+        errors.append("material data gaps cannot use CORE_CANDIDATE watchlist bucket")
 
     evidence = _as_list(data.get("evidence", []), "evidence", errors)
     if not evidence:

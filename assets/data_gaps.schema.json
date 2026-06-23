@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Data Gaps",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "dataset",
+      "status",
+      "gap_type",
+      "decision_impact",
+      "rating_impact",
+      "next_action"
+    ],
+    "properties": {
+      "dataset": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+      },
+      "gap_type": {
+        "type": "string",
+        "enum": [
+          "ACCESS_FAILURE",
+          "SCOPE_NOT_REQUESTED",
+          "SOURCE_NOT_IMPLEMENTED",
+          "SOURCE_UNAVAILABLE",
+          "ISSUER_NON_DISCLOSURE",
+          "NOT_MACHINE_READABLE",
+          "CONFLICTING_SOURCES",
+          "STALE_DATA",
+          "NOT_MATERIAL",
+          "POLICY_BLOCKED"
+        ]
+      },
+      "decision_impact": {
+        "type": "string",
+        "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]
+      },
+      "rating_impact": { "type": "string" },
+      "next_action": { "type": "string" },
+      "source_name": { "type": "string" },
+      "source_level": { "type": "string" },
+      "evidence_path": { "type": "string" }
+    },
+    "additionalProperties": false
+  }
+}

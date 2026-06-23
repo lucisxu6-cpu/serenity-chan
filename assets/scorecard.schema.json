@@ -1,58 +1,43 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SerenityChanScorecard",
+  "title": "SerenityChanDecisionScorecard",
   "type": "object",
   "required": [
     "ticker",
     "market",
     "as_of_date",
-    "data_quality",
-    "serenity",
-    "evidence",
-    "fundamentals",
-    "valuation",
-    "technical",
-    "risk",
-    "penalties"
+    "layer",
+    "company_thesis",
+    "evidence_confidence",
+    "market_payoff",
+    "technical_timing",
+    "risk_controls",
+    "data_acquisition",
+    "blockers"
   ],
   "properties": {
-    "ticker": {"type": "string", "minLength": 1},
-    "company": {"type": "string"},
-    "market": {"type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL", "OTHER", "UNKNOWN"]},
-    "as_of_date": {"type": "string", "pattern": "^(\\d{4}-\\d{2}-\\d{2}|YYYY-MM-DD)$"},
-    "data_quality": {"$ref": "#/$defs/module"},
-    "serenity": {"$ref": "#/$defs/module"},
-    "evidence": {"$ref": "#/$defs/module"},
-    "fundamentals": {"$ref": "#/$defs/module"},
-    "valuation": {"$ref": "#/$defs/module"},
-    "technical": {"$ref": "#/$defs/module"},
-    "risk": {"$ref": "#/$defs/module"},
-    "penalties": {
-      "type": "object",
-      "properties": {
-        "only_weak_evidence": {"type": "boolean"},
-        "missing_latest_quote": {"type": "boolean"},
-        "missing_price_history": {"type": "boolean"},
-        "missing_latest_financials": {"type": "boolean"},
-        "l3_financials_without_l0_l1_verification": {"type": "boolean"},
-        "financial_sector_without_industry_specific_statements": {"type": "boolean"},
-        "unverified_customer_claim": {"type": "boolean"},
-        "price_source_conflict_gt_2pct": {"type": "boolean"},
-        "major_dilution_or_governance_red_flag": {"type": "boolean"},
-        "technical_escape_overheat": {"type": "boolean"},
-        "h4_h5_without_strong_evidence": {"type": "boolean"},
-        "market_implied_growth_exceeds_evidence": {"type": "boolean"},
-        "fundamental_falsified": {"type": "boolean"}
-      },
-      "additionalProperties": false
+    "ticker": { "type": "string", "minLength": 1 },
+    "company": { "type": "string" },
+    "market": { "type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL", "OTHER", "UNKNOWN"] },
+    "as_of_date": { "type": "string", "pattern": "^(\\d{4}-\\d{2}-\\d{2}|YYYY-MM-DD)$" },
+    "layer": { "$ref": "#/$defs/module" },
+    "company_thesis": { "$ref": "#/$defs/module" },
+    "evidence_confidence": { "$ref": "#/$defs/module" },
+    "market_payoff": { "$ref": "#/$defs/module" },
+    "technical_timing": { "$ref": "#/$defs/module" },
+    "risk_controls": { "$ref": "#/$defs/module" },
+    "data_acquisition": { "$ref": "#/$defs/data_acquisition" },
+    "blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
     },
     "evidence_notes": {
       "type": "array",
-      "items": {"$ref": "#/$defs/evidence_note"}
+      "items": { "$ref": "#/$defs/evidence_note" }
     },
     "falsification_points": {
       "type": "array",
-      "items": {"type": "string"}
+      "items": { "type": "string" }
     }
   },
   "$defs": {
@@ -65,15 +50,122 @@
         "maximum": 5
       }
     },
+    "status": {
+      "type": "string",
+      "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+    },
+    "data_acquisition": {
+      "type": "object",
+      "required": ["status_by_dataset", "data_gaps", "research_debt", "manual_retrieval_tasks"],
+      "properties": {
+        "status_by_dataset": {
+          "type": "object",
+          "required": ["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+          "properties": {
+            "current_quote": { "$ref": "#/$defs/status" },
+            "price_history_adjusted": { "$ref": "#/$defs/status" },
+            "financials": { "$ref": "#/$defs/status" },
+            "filings_announcements": { "$ref": "#/$defs/status" }
+          },
+          "additionalProperties": { "$ref": "#/$defs/status" }
+        },
+        "data_gaps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/data_gap" }
+        },
+        "research_debt": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/research_debt" }
+        },
+        "manual_retrieval_tasks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/manual_retrieval_task" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "data_gap": {
+      "type": "object",
+      "required": ["dataset", "status", "gap_type", "decision_impact", "rating_impact", "next_action"],
+      "properties": {
+        "dataset": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" },
+        "gap_type": {
+          "type": "string",
+          "enum": [
+            "ACCESS_FAILURE",
+            "SCOPE_NOT_REQUESTED",
+            "SOURCE_NOT_IMPLEMENTED",
+            "SOURCE_UNAVAILABLE",
+            "ISSUER_NON_DISCLOSURE",
+            "NOT_MACHINE_READABLE",
+            "CONFLICTING_SOURCES",
+            "STALE_DATA",
+            "NOT_MATERIAL",
+            "POLICY_BLOCKED"
+          ]
+        },
+        "decision_impact": {
+          "type": "string",
+          "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]
+        },
+        "rating_impact": { "type": "string" },
+        "next_action": { "type": "string" },
+        "source_name": { "type": "string" },
+        "source_level": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "research_debt": {
+      "type": "object",
+      "required": ["dataset", "priority", "gap_type", "decision_impact", "next_action"],
+      "properties": {
+        "dataset": { "type": "string" },
+        "priority": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+        "gap_type": { "type": "string" },
+        "decision_impact": { "type": "string" },
+        "rating_impact": { "type": "string" },
+        "next_action": { "type": "string" },
+        "source_name": { "type": "string" },
+        "source_level": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "blocker": {
+      "type": "object",
+      "required": ["name", "severity", "effect"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
+        "effect": { "type": "string", "enum": ["rating_cap_b", "rating_cap_c", "action_block", "priority_haircut", "eliminate"] },
+        "rationale": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "manual_retrieval_task": {
+      "type": "object",
+      "required": ["dataset", "priority", "target_source", "objective"],
+      "properties": {
+        "dataset": { "type": "string" },
+        "priority": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+        "target_source": { "type": "string" },
+        "objective": { "type": "string" },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
     "evidence_note": {
       "type": "object",
       "properties": {
-        "claim": {"type": "string"},
-        "source": {"type": "string"},
-        "source_level": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", ""]},
-        "supports": {"type": "string"},
-        "missing_proof": {"type": "string"},
-        "confidence": {"type": "string", "enum": ["Strong", "Medium", "Weak", "Unverified", ""]}
+        "claim": { "type": "string" },
+        "source": { "type": "string" },
+        "source_level": { "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", ""] },
+        "supports": { "type": "string" },
+        "missing_proof": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["Strong", "Medium", "Weak", "Unverified", ""] }
       },
       "additionalProperties": true
     }

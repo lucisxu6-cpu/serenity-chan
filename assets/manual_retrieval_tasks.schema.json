@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Manual Retrieval Tasks",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "dataset",
+      "priority",
+      "target_source",
+      "objective",
+      "acceptance_criteria"
+    ],
+    "properties": {
+      "dataset": { "type": "string" },
+      "priority": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+      "target_source": { "type": "string" },
+      "objective": { "type": "string" },
+      "acceptance_criteria": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1
+      }
+    },
+    "additionalProperties": false
+  }
+}

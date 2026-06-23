@@ -346,36 +346,96 @@ shares_outstanding
 
 ---
 
-## 9. Data Manifest
+## 9. Data Acquisition Contract
 
 每次正式分析应生成或隐式维护：
 
 ```json
 {
-  "symbol": "688019.SH",
-  "market": "CN_A",
+  "symbol": {
+    "symbol": "688019.SH",
+    "market": "CN_A",
+    "currency": "CNY"
+  },
   "retrieved_at": "2026-06-22T...Z",
   "requested_datasets": ["current_quote", "price_history_adjusted", "filings_announcements"],
   "full_research_required_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
-  "datasets": [
-    {
-      "name": "latest_quote",
-      "status": "OK",
-      "source": "provider_name",
-      "source_level": "L1",
-      "as_of_date": "2026-06-22",
-      "currency": "CNY",
-      "unit": "raw"
-    }
-  ],
-  "requested_data_rating_cap": "S",
-  "full_research_rating_cap": "B",
-  "rating_cap": "B",
-  "missing_fields": []
+  "data_acquisition": {
+    "policy": "assets/data_acquisition_policy.json",
+    "status_by_dataset": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "NOT_REQUESTED",
+      "filings_announcements": "OK"
+    },
+    "attempt_ledger": [
+      {
+        "dataset": "current_quote",
+        "source_name": "Yahoo_Chart_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+        "stage": "OPEN_STRUCTURED",
+        "status": "OK",
+        "attempted_at": "2026-06-22T...Z",
+        "gap_type": null,
+        "decision_impact": null,
+        "reason": ""
+      }
+    ],
+    "data_gaps": [
+      {
+        "dataset": "financials",
+        "status": "NOT_REQUESTED",
+        "gap_type": "SCOPE_NOT_REQUESTED",
+        "decision_impact": "EVIDENCE_IMPACT",
+        "rating_impact": "High-conviction long-term ratings are capped at B until primary or licensed evidence is complete.",
+        "next_action": "Fetch latest official or licensed financial statements and run financial validation before scoring fundamentals."
+      }
+    ],
+    "research_debt": [
+      {
+        "dataset": "financials",
+        "priority": "critical",
+        "gap_type": "SCOPE_NOT_REQUESTED",
+        "decision_impact": "EVIDENCE_IMPACT",
+        "next_action": "Fetch latest official or licensed financial statements and run financial validation before scoring fundamentals."
+      }
+    ],
+    "manual_retrieval_tasks": [
+      {
+        "dataset": "financials",
+        "priority": "critical",
+        "target_source": "Official filing PDF/XBRL or L1 financial database",
+        "objective": "Verify the latest core financial statement lines before issuing an S/A research rating."
+      }
+    ],
+    "attempt_count": 8,
+    "gap_count": 1,
+    "research_debt_count": 1,
+    "manual_task_count": 1,
+    "full_research_ready": false
+  },
+  "data_quality": {
+    "requested_data_rating_cap": "S",
+    "full_research_rating_cap": "B",
+    "rating_cap": "B"
+  }
 }
 ```
 
 `NOT_REQUESTED` means the current scoped fetch did not ask for the dataset. For formal rating tasks, any missing critical dataset caps the full-research rating until it is fetched and validated.
+
+L3 structured financial preflight creates a material evidence gap:
+
+```json
+{
+  "dataset": "financials",
+  "status": "PARTIAL",
+  "gap_type": "NOT_MACHINE_READABLE",
+  "decision_impact": "EVIDENCE_IMPACT",
+  "rating_impact": "S/A research ratings require L0/L1 verification of key financial statements.",
+  "next_action": "Reconcile revenue, profit, cash flow, assets, liabilities, and equity against official filings or an L1 database export."
+}
+```
 
 ---
 
@@ -391,11 +451,12 @@ python scripts/data_router.py plan 688019
 python scripts/data_router.py validate-price prices.csv --market CN_A --adjust qfq
 python scripts/data_router.py validate-financial financials.json
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
+python scripts/candidate_ranker.py candidate_a.json candidate_b.json
 ```
 
-`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, SEC filings, A-share CNINFO announcements, or A-share Eastmoney F10 L3 structured financial preflight. It writes an auditable bundle with raw source payloads and hashes under `--out-dir` or `/tmp/serenity-chan-data/...`.
+`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, SEC filings, A-share CNINFO announcements, or A-share Eastmoney F10 L3 structured financial preflight. It writes an auditable bundle with raw source payloads, hashes, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
 
-For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. If network, TLS, identity, rate limit, or provider support fails, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
+For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. Resolve CIK through the bundled bootstrap table first, then SEC ticker directories. Fetch filings through SEC submissions, fetch financials through SEC companyfacts, and continue through SEC companyconcepts if the larger companyfacts payload is unavailable. If network, TLS, identity, rate limit, or provider support fails after the available route is attempted, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
 
 Eastmoney F10 financials provide A-share L3 structured preflight evidence. Keep the final research rating cap at B until key conclusions are verified against CNINFO/exchange report PDFs or L1 databases. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
 

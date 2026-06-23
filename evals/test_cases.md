@@ -77,11 +77,12 @@ Expected:
 - 688019.SH may use CNINFO / exchange announcements as A-share primary evidence.
 - The validator should block wrong source use within a local object, not block legitimate cross-market reports.
 
-## 10. 结构化 scorecard 也必须封顶 H4/H5 弱证据
+## 10. 结构化 scorecard 必须执行决策矩阵门控
 User: 一个满分 scorecard 但 market-implied growth 是 H5，证据只支持 H3。
 Expected:
-- `h4_h5_without_strong_evidence` or `market_implied_growth_exceeds_evidence` caps rating at B.
-- Final rating cannot stay S/A just because module scores are high.
+- H4/H5 证据缺口必须进入 `data_gaps` / `research_debt` / `blockers`。
+- Research rating、candidate priority、action readiness 必须被门控到 B / DATA_GATED 或更低。
+- 高模块分数不能覆盖关键证据债务。
 
 ## 11. Falsification dashboard 必须可验证
 User: 把一个高估值争议对象转成长期跟踪 dashboard。
@@ -100,7 +101,7 @@ Expected:
 ## 13. 结构化 JSON 输出合同必须独立可验
 User: 产出机器可读 output contract。
 Expected:
-- Required fields, market route, data statuses, rating cap, evidence, falsification, action, and uncertainty are all validated.
+- Required fields, market route, data statuses, data acquisition, research debt, decision matrix, rating cap, evidence, falsification, action, and uncertainty are all validated.
 - If market-implied growth is H4/H5 while evidence is weaker, JSON validator blocks S/A cap and core-candidate action.
 - OTHER/UNKNOWN markets are capped to OBSERVE_ONLY in scorecard paths.
 
@@ -111,6 +112,6 @@ Expected:
 - US operating companies should fetch current quote, adjusted history, SEC financials, and SEC filings when sources are available.
 - ADR boundary cases may fetch quote/history/filings while SEC companyfacts financials remain `FAILED`; the failure must be visible and rating-capped.
 - A-share current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; CNINFO announcement metadata must be fetched when CNINFO resolves the symbol; Eastmoney F10 L3 structured financial preflight must return `financials=OK` when the endpoint supports the symbol, while final S/A research ratings remain capped until L0/L1 verification.
-- The real-data manifest must include `ai_review` guidance so the AI explains source level, industry reporting fit, validation warnings, and exact L0/L1 upgrade requirements instead of treating `financials=OK` as enough for a high rating.
+- The real-data manifest must include `attempt_ledger`, `data_gaps`, `research_debt`, `manual_retrieval_tasks`, and `ai_review` guidance so the AI explains source level, industry reporting fit, validation warnings, and exact L0/L1 upgrade requirements.
 - A-share financial-sector and BJ boundary cases must stay visible: bank/insurance financials may be `PARTIAL`, and BJ quote/history may be `FAILED`; neither may be hidden by a high rating.
 - HK current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; adjusted history may be `PARTIAL` when source OHLC validation fails, and that state must remain visible with rating caps. HKEX filings/financials remain `FAILED` / `PENDING` when attempted or `NOT_REQUESTED` in scoped smoke until HKEX/company-report adapters are added.

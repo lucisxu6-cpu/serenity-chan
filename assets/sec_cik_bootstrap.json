@@ -1,0 +1,32 @@
+{
+  "schema_version": "1",
+  "name": "sec-cik-bootstrap",
+  "purpose": "Provide stable SEC CIK bootstrap identifiers for high-frequency US smoke and upstream test tickers when SEC ticker-directory endpoints are unavailable.",
+  "source": "SEC submissions endpoint entity metadata",
+  "tickers": {
+    "AMD": {
+      "cik": "0000002488",
+      "entity_name": "ADVANCED MICRO DEVICES INC"
+    },
+    "ASML": {
+      "cik": "0000937966",
+      "entity_name": "ASML HOLDING NV"
+    },
+    "AVGO": {
+      "cik": "0001730168",
+      "entity_name": "Broadcom Inc."
+    },
+    "MU": {
+      "cik": "0000723125",
+      "entity_name": "MICRON TECHNOLOGY INC"
+    },
+    "NVDA": {
+      "cik": "0001045810",
+      "entity_name": "NVIDIA CORP"
+    },
+    "TSM": {
+      "cik": "0001046179",
+      "entity_name": "TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD"
+    }
+  }
+}

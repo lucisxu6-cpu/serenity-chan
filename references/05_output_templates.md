@@ -21,12 +21,27 @@
 - 财报数据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
 - 公告/filing：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
 - 供应链证据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
+- 取数账本：attempt_ledger 路径或摘要
+- 数据缺口：data_gaps 摘要
+- 研究债务：research_debt 摘要
+- 补数任务：manual_retrieval_tasks 摘要
 - 无法验证字段：____
 - 因数据限制，本报告评级上限：____
 
 `NOT_APPLICABLE` 和 `NOT_REQUESTED` 只说明当前 scope 或适用性，不能支持高评级；正式评级任务中仍按关键数据不可用处理。
 若 A 股财报来自 `Eastmoney_F10_Financials_L3`，可写财报数据 `OK`，并标注 L3 结构化预检证据；没有巨潮/交易所报告 PDF 或 L1 数据库复核时，最终研究评级上限为 `B`。
-必须读取 fetch manifest 的 `ai_review`，并说明是否存在金融行业特殊口径、现金流质量 warning、行情/公告缺口，以及升级到 A/S 需要补哪类 L0/L1 证据。
+必须读取 fetch manifest 的 `attempt_ledger`、`data_gaps`、`research_debt`、`manual_retrieval_tasks` 和 `ai_review`，并说明是否存在金融行业特殊口径、现金流质量 warning、行情/公告缺口，以及升级到 A/S 需要补哪类 L0/L1 证据。
+
+## 1.1 决策矩阵
+| 维度 | 分数/状态 | 说明 |
+|---|---:|---|
+| Thesis Quality | /100 | |
+| Evidence Confidence | /100 | |
+| Market Payoff | /100 | |
+| Technical Timing | /100 | |
+| Action Readiness | CORE_CANDIDATE / STRONG_OBSERVE / CANDIDATE_POOL / WAIT_FOR_BUY_POINT / DATA_GATED / LEAD_TRACKING / ELIMINATE / OBSERVE_ONLY | |
+| Candidate Priority | /100 | |
+| Watchlist Bucket | ____ | |
 
 ## 2. 一句话 Thesis
 这家公司控制/接近的瓶颈是：____。
@@ -213,9 +228,17 @@
 | Dataset | Status | Source | Level | As-of | Warnings |
 |---|---|---|---|---|---|
 
-## 3. Validation Errors
+## 3. Data Gaps And Research Debt
+| Dataset | Gap Type | Decision Impact | Rating Impact | Next Action |
+|---|---|---|---|---|
+
+## 4. Manual Retrieval Tasks
+| Dataset | Priority | Target Source | Objective |
+|---|---|---|---|
+
+## 5. Validation Errors
 - ____
 
-## 4. Rating Cap
+## 6. Rating Cap
 由于____，评级上限为____。
 ```

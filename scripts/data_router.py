@@ -26,46 +26,52 @@ import sys
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 try:
+    from data_contracts import (
+        AcquisitionStage,
+        DataGap,
+        DataGapType,
+        DataStatus,
+        DecisionImpact,
+        FetchAttempt,
+        ManualRetrievalTask,
+        Market,
+        RatingCap,
+        SourceLevel,
+        stricter_cap,
+    )
     from data_layer import build_data_fetch_plan
+    from data_layer import DataProvider
+    from data_layer import DataResult
     from data_layer import Dataset as CanonicalDataset
     from data_layer import Market as CanonicalMarket
     from data_layer import default_real_providers
-    from data_layer import fetch_with_provider_chain
+    from data_layer import provider_is_allowed
     from data_layer import resolve_symbol as canonical_resolve_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_router
+    from scripts.data_contracts import (
+        AcquisitionStage,
+        DataGap,
+        DataGapType,
+        DataStatus,
+        DecisionImpact,
+        FetchAttempt,
+        ManualRetrievalTask,
+        Market,
+        RatingCap,
+        SourceLevel,
+        stricter_cap,
+    )
     from scripts.data_layer import build_data_fetch_plan
+    from scripts.data_layer import DataProvider
+    from scripts.data_layer import DataResult
     from scripts.data_layer import Dataset as CanonicalDataset
     from scripts.data_layer import Market as CanonicalMarket
     from scripts.data_layer import default_real_providers
-    from scripts.data_layer import fetch_with_provider_chain
+    from scripts.data_layer import provider_is_allowed
     from scripts.data_layer import resolve_symbol as canonical_resolve_symbol
-
-
-class Market(str, Enum):
-    CN_A = "CN_A"
-    US = "US"
-    HK = "HK"
-    OTHER = "OTHER"
-
-
-class DataStatus(str, Enum):
-    OK = "OK"
-    PARTIAL = "PARTIAL"
-    STALE = "STALE"
-    FAILED = "FAILED"
-    PENDING = "PENDING"
-    NOT_REQUESTED = "NOT_REQUESTED"
-
-
-class RatingCap(str, Enum):
-    S = "S"
-    A = "A"
-    B = "B"
-    C = "C"
-    OBSERVE_ONLY = "OBSERVE_ONLY"
 
 
 @dataclass
@@ -315,8 +321,7 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
 
 
 def min_cap(a: RatingCap, b: RatingCap) -> RatingCap:
-    order = [RatingCap.OBSERVE_ONLY, RatingCap.C, RatingCap.B, RatingCap.A, RatingCap.S]
-    return a if order.index(a) < order.index(b) else b
+    return stricter_cap(a, b)
 
 
 def compare_quotes(prices: Sequence[float]) -> Dict[str, Any]:
@@ -455,12 +460,10 @@ def _cap_for_statuses(
     downgrade_not_requested: bool = True,
 ) -> RatingCap:
     cap = RatingCap.S
-    order = [RatingCap.OBSERVE_ONLY, RatingCap.C, RatingCap.B, RatingCap.A, RatingCap.S]
 
     def downgrade(target: RatingCap) -> None:
         nonlocal cap
-        if order.index(target) < order.index(cap):
-            cap = target
+        cap = stricter_cap(cap, target)
 
     keys = list(required_datasets) if required_datasets is not None else list(statuses)
     for key in keys:
@@ -510,7 +513,338 @@ def _build_source_integrity_summary(result_items: Sequence[Dict[str, Any]]) -> D
     }
 
 
-def _build_ai_review_guidance(result_items: Sequence[Dict[str, Any]], data_quality: Dict[str, str]) -> Dict[str, Any]:
+def _stage_for_source_level(level: SourceLevel | str) -> AcquisitionStage:
+    value = getattr(level, "value", str(level))
+    if value.startswith("L0_"):
+        return AcquisitionStage.PRIMARY_DISCLOSURE
+    if value.startswith("L1_"):
+        return AcquisitionStage.LICENSED_STRUCTURED
+    if value.startswith("L2_"):
+        return AcquisitionStage.OPEN_STRUCTURED
+    if value.startswith("L3_"):
+        return AcquisitionStage.STRUCTURED_PREFLIGHT
+    return AcquisitionStage.MANUAL_RETRIEVAL
+
+
+def _decision_impact_for_dataset(dataset: CanonicalDataset | str) -> DecisionImpact:
+    value = getattr(dataset, "value", str(dataset))
+    if value in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, CanonicalDataset.PRICE_HISTORY_RAW.value}:
+        return DecisionImpact.ACTION_IMPACT
+    if value in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value, CanonicalDataset.CUSTOMER_EVIDENCE.value}:
+        return DecisionImpact.EVIDENCE_IMPACT
+    if value in {CanonicalDataset.PEER_VALUATION.value, CanonicalDataset.ESTIMATES.value}:
+        return DecisionImpact.THESIS_IMPACT
+    return DecisionImpact.NO_IMPACT
+
+
+def _classify_gap(status: str, reason: str, *, dataset: str = "", source_level: str = "") -> DataGapType:
+    text = reason.lower()
+    if status == DataStatus.STALE.value:
+        return DataGapType.STALE_DATA
+    if "does not support dataset" in text or "unsupported dataset" in text:
+        return DataGapType.SOURCE_NOT_IMPLEMENTED
+    if "does not support market" in text or "market is unknown" in text:
+        return DataGapType.POLICY_BLOCKED
+    if any(token in text for token in ["403", "forbidden", "429", "timeout", "timed out", "ssl", "certificate", "network", "urlopen", "connection"]):
+        return DataGapType.ACCESS_FAILURE
+    if any(token in text for token in ["no announcements", "no filings", "not disclosed", "issuer", "annual report not found"]):
+        return DataGapType.ISSUER_NON_DISCLOSURE
+    if any(token in text for token in ["ohlc consistency", "price difference", "cross-source", "difference"]):
+        return DataGapType.CONFLICTING_SOURCES
+    if source_level.startswith("L3_") and dataset == CanonicalDataset.FINANCIALS.value:
+        return DataGapType.NOT_MACHINE_READABLE
+    return DataGapType.SOURCE_UNAVAILABLE
+
+
+def _attempt_from_provider(
+    *,
+    dataset: CanonicalDataset,
+    provider_name: str,
+    source_level: SourceLevel | str,
+    status: DataStatus,
+    attempted_at: str,
+    reason: str = "",
+) -> Dict[str, Any]:
+    level_value = getattr(source_level, "value", str(source_level))
+    gap_type = None
+    decision_impact = None
+    if status != DataStatus.OK:
+        gap_type = _classify_gap(status.value, reason, dataset=dataset.value, source_level=level_value).value
+        decision_impact = _decision_impact_for_dataset(dataset).value
+    return FetchAttempt(
+        dataset=dataset.value,
+        source_name=provider_name,
+        source_level=level_value,
+        stage=_stage_for_source_level(source_level).value,
+        status=status.value,
+        attempted_at=attempted_at,
+        gap_type=gap_type,
+        decision_impact=decision_impact,
+        reason=reason,
+    ).to_dict()
+
+
+def _fetch_with_attempt_ledger(
+    providers: Iterable[DataProvider],
+    symbol: Any,
+    dataset: CanonicalDataset,
+    **kwargs: Any,
+) -> Tuple[DataResult, List[Dict[str, Any]]]:
+    attempts: List[Dict[str, Any]] = []
+    if symbol.market == CanonicalMarket.UNKNOWN:
+        result = DataResult.failed(dataset, symbol.symbol, "symbol_resolver", SourceLevel.L4, "market is UNKNOWN; cannot route data safely")
+        attempts.append(_attempt_from_provider(
+            dataset=dataset,
+            provider_name="symbol_resolver",
+            source_level=SourceLevel.L4,
+            status=DataStatus.FAILED,
+            attempted_at=result.retrieved_at,
+            reason="market is UNKNOWN; cannot route data safely",
+        ))
+        return result, attempts
+
+    failures: List[str] = []
+    for provider in providers:
+        allowed, reason = provider_is_allowed(provider, symbol, dataset)
+        source_level = getattr(provider, "level", SourceLevel.L4)
+        if not allowed:
+            attempts.append(_attempt_from_provider(
+                dataset=dataset,
+                provider_name=getattr(provider, "name", provider.__class__.__name__),
+                source_level=source_level,
+                status=DataStatus.NOT_APPLICABLE,
+                attempted_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                reason=reason,
+            ))
+            continue
+
+        provider_name = getattr(provider, "name", provider.__class__.__name__)
+        try:
+            result = provider.fetch(symbol, dataset, **kwargs)
+        except Exception as exc:  # defensive; provider errors must not crash whole agent
+            reason = f"{type(exc).__name__}: {exc}"
+            failures.append(f"{provider_name}: {reason}")
+            attempts.append(_attempt_from_provider(
+                dataset=dataset,
+                provider_name=provider_name,
+                source_level=source_level,
+                status=DataStatus.FAILED,
+                attempted_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                reason=reason,
+            ))
+            continue
+
+        if result.ok:
+            attempts.append(_attempt_from_provider(
+                dataset=dataset,
+                provider_name=result.source_name,
+                source_level=result.source_level,
+                status=DataStatus.OK,
+                attempted_at=result.retrieved_at,
+                reason="",
+            ))
+            return result, attempts
+
+        reason = "; ".join(result.errors) or "not ok"
+        failures.append(f"{provider_name}: {reason}")
+        attempts.append(_attempt_from_provider(
+            dataset=dataset,
+            provider_name=result.source_name,
+            source_level=result.source_level,
+            status=DataStatus.FAILED,
+            attempted_at=result.retrieved_at,
+            reason=reason,
+        ))
+
+    result = DataResult.failed(dataset, symbol.symbol, "provider_chain", SourceLevel.L4, "All providers failed or incompatible: " + " | ".join(failures))
+    if not attempts:
+        attempts.append(_attempt_from_provider(
+            dataset=dataset,
+            provider_name="provider_chain",
+            source_level=SourceLevel.L4,
+            status=DataStatus.FAILED,
+            attempted_at=result.retrieved_at,
+            reason="no providers configured",
+        ))
+    return result, attempts
+
+
+def _rating_impact_for_gap(dataset: str, status: str, gap_type: str) -> str:
+    if gap_type == DataGapType.NOT_MACHINE_READABLE.value and dataset == CanonicalDataset.FINANCIALS.value:
+        return "S/A research ratings require L0/L1 verification of key financial statements."
+    if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value}:
+        return "Current action, valuation reference, and buy-point conclusions are capped at B."
+    if dataset in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value}:
+        return "High-conviction long-term ratings are capped at B until primary or licensed evidence is complete."
+    if status in {DataStatus.PARTIAL.value, DataStatus.STALE.value}:
+        return "Evidence confidence is capped at A until the gap is cleared."
+    return "No rating lift is allowed from this dataset until the gap is cleared."
+
+
+def _next_action_for_gap(dataset: str, gap_type: str) -> str:
+    if dataset == CanonicalDataset.FINANCIALS.value and gap_type == DataGapType.NOT_MACHINE_READABLE.value:
+        return "Reconcile revenue, profit, cash flow, assets, liabilities, and equity against official filings or an L1 database export."
+    if dataset == CanonicalDataset.FINANCIALS.value:
+        return "Fetch latest official or licensed financial statements and run financial validation before scoring fundamentals."
+    if dataset == CanonicalDataset.FILINGS.value:
+        return "Fetch official filings or announcement metadata from the market-primary disclosure venue."
+    if dataset == CanonicalDataset.CURRENT_QUOTE.value:
+        return "Fetch a current market quote from a market-appropriate source before making current price or valuation claims."
+    if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED.value:
+        if gap_type == DataGapType.CONFLICTING_SOURCES.value:
+            return "Cross-check adjusted history with another market-appropriate source before making Chan or moving-average claims."
+        return "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+    if gap_type == DataGapType.ACCESS_FAILURE.value:
+        return "Fix access prerequisites, identity headers, network, or rate-limit handling, then retry the same source route."
+    return "Open the data bundle, inspect source errors, and fetch the missing market-appropriate evidence."
+
+
+def _manual_task_for_gap(gap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    dataset = str(gap.get("dataset") or "")
+    impact = str(gap.get("decision_impact") or "")
+    if impact == DecisionImpact.NO_IMPACT.value:
+        return None
+    if dataset == CanonicalDataset.FINANCIALS.value:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="critical",
+            target_source="Official filing PDF/XBRL or L1 financial database",
+            objective="Verify the latest core financial statement lines before issuing an S/A research rating.",
+            acceptance_criteria=[
+                "Latest reporting period is identified.",
+                "Revenue, profit, operating cash flow, assets, liabilities, and equity are reconciled.",
+                "Units, currency, and reporting standard are explicit.",
+            ],
+        ).to_dict()
+    if dataset == CanonicalDataset.FILINGS.value:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="critical",
+            target_source="Market-primary disclosure venue",
+            objective="Verify announcements, annual reports, interim reports, risk events, and customer/order claims.",
+            acceptance_criteria=[
+                "Source venue matches the resolved market.",
+                "Filing title, date, URL/path, and source level are recorded.",
+                "Claims used in the thesis are linked to a concrete filing or announcement.",
+            ],
+        ).to_dict()
+    if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value}:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="high",
+            target_source="Exchange, licensed vendor, or validated open market-data source",
+            objective="Recover current quote and adjusted history needed for valuation reference and action timing.",
+            acceptance_criteria=[
+                "Latest trading day is present.",
+                "Adjustment basis is stated.",
+                "At least the configured minimum bars are available for technical analysis.",
+            ],
+        ).to_dict()
+    return None
+
+
+def _build_data_gaps(
+    result_items: Sequence[Dict[str, Any]],
+    statuses: Mapping[str, str],
+    *,
+    requested_dataset_values: Sequence[str],
+    critical_datasets: Sequence[str],
+) -> List[Dict[str, Any]]:
+    gaps: List[Dict[str, Any]] = []
+    seen_keys: set[Tuple[str, str, str]] = set()
+    requested_set = set(requested_dataset_values)
+
+    for item in result_items:
+        dataset = str(item.get("dataset") or "")
+        status = str(item.get("status") or DataStatus.FAILED.value)
+        source_level = str(item.get("source_level") or "")
+        source_name = str(item.get("source") or "")
+        reason_items: List[str] = []
+        reason_items.extend(str(x) for x in (item.get("errors") or []))
+        reason_items.extend(str(x) for x in (item.get("warnings") or []))
+        validation = item.get("validation") if isinstance(item.get("validation"), dict) else {}
+        if isinstance(validation, dict):
+            reason_items.extend(str(x) for x in (validation.get("errors") or []))
+            reason_items.extend(str(x) for x in (validation.get("warnings") or []))
+        reason = "; ".join(reason_items)
+
+        gap_type: Optional[DataGapType] = None
+        gap_status = status
+        if status in {DataStatus.FAILED.value, DataStatus.PARTIAL.value, DataStatus.STALE.value, DataStatus.PENDING.value}:
+            gap_type = _classify_gap(status, reason, dataset=dataset, source_level=source_level)
+        if dataset == CanonicalDataset.FINANCIALS.value and source_level.startswith("L3_"):
+            gap_type = DataGapType.NOT_MACHINE_READABLE
+            if gap_status == DataStatus.OK.value:
+                gap_status = DataStatus.PARTIAL.value
+
+        if not gap_type:
+            continue
+        key = (dataset, gap_status, gap_type.value)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        gap = DataGap(
+            dataset=dataset,
+            status=gap_status,
+            gap_type=gap_type.value,
+            decision_impact=_decision_impact_for_dataset(dataset).value,
+            rating_impact=_rating_impact_for_gap(dataset, gap_status, gap_type.value),
+            next_action=_next_action_for_gap(dataset, gap_type.value),
+            source_name=source_name,
+            source_level=source_level,
+            evidence_path=item.get("raw_path") or item.get("data_path"),
+        ).to_dict()
+        gaps.append(gap)
+
+    for dataset in critical_datasets:
+        if dataset in requested_set:
+            continue
+        key = (dataset, DataStatus.NOT_REQUESTED.value, DataGapType.SCOPE_NOT_REQUESTED.value)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        gap = DataGap(
+            dataset=dataset,
+            status=DataStatus.NOT_REQUESTED.value,
+            gap_type=DataGapType.SCOPE_NOT_REQUESTED.value,
+            decision_impact=_decision_impact_for_dataset(dataset).value,
+            rating_impact=_rating_impact_for_gap(dataset, DataStatus.NOT_REQUESTED.value, DataGapType.SCOPE_NOT_REQUESTED.value),
+            next_action=_next_action_for_gap(dataset, DataGapType.SCOPE_NOT_REQUESTED.value),
+        ).to_dict()
+        gaps.append(gap)
+
+    return gaps
+
+
+def _build_research_debt(data_gaps: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    debt: List[Dict[str, Any]] = []
+    for gap in data_gaps:
+        impact = str(gap.get("decision_impact") or "")
+        dataset = str(gap.get("dataset") or "")
+        if impact == DecisionImpact.NO_IMPACT.value:
+            continue
+        priority = "critical" if dataset in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value} else "high"
+        if str(gap.get("gap_type")) == DataGapType.SCOPE_NOT_REQUESTED.value:
+            priority = "high"
+        debt.append({
+            "dataset": dataset,
+            "priority": priority,
+            "gap_type": gap.get("gap_type"),
+            "decision_impact": impact,
+            "rating_impact": gap.get("rating_impact"),
+            "next_action": gap.get("next_action"),
+            "source_name": gap.get("source_name", ""),
+            "source_level": gap.get("source_level", ""),
+        })
+    return debt
+
+
+def _build_ai_review_guidance(
+    result_items: Sequence[Dict[str, Any]],
+    data_quality: Dict[str, str],
+    data_gaps: Optional[Sequence[Dict[str, Any]]] = None,
+    research_debt: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Add explicit AI adjudication prompts to the data bundle.
 
     Deterministic fetch/validation can say what was available. It cannot decide
@@ -572,6 +906,11 @@ def _build_ai_review_guidance(result_items: Sequence[Dict[str, Any]], data_quali
     if data_quality.get("rating_cap") in {RatingCap.B.value, RatingCap.C.value, RatingCap.OBSERVE_ONLY.value}:
         checks.append("When the cap is B or lower, the output must frame the result as observation/pre-research unless stronger primary evidence is added.")
 
+    if data_gaps:
+        checks.append("Read data_gaps before scoring; each material gap must map to a rating limit, action limit, or manual retrieval task.")
+    if research_debt:
+        blockers.append("Research debt is open; do not upgrade action readiness until the critical debt items are cleared.")
+
     return {
         "required": True,
         "checks": checks,
@@ -595,6 +934,7 @@ def fetch_real_data(
 
     providers = default_real_providers(symbol)
     result_items: List[Dict[str, Any]] = []
+    attempt_ledger: List[Dict[str, Any]] = []
     statuses: Dict[str, str] = {}
     validation_caps: List[str] = []
     router_market = _market_for_router(symbol.market)
@@ -605,12 +945,13 @@ def fetch_real_data(
         provider_kwargs: Dict[str, Any] = {"raw_dir": destination / "raw"}
         if dataset in {CanonicalDataset.PRICE_HISTORY_RAW, CanonicalDataset.PRICE_HISTORY_ADJUSTED}:
             provider_kwargs.update({"range": chart_range, "interval": interval})
-        result = fetch_with_provider_chain(
+        result, attempts = _fetch_with_attempt_ledger(
             providers,
             symbol,
             dataset,
             **provider_kwargs,
         )
+        attempt_ledger.extend(attempts)
         source_level_value = getattr(result.source_level, "value", str(result.source_level))
         source_usage = _source_usage_from_result(result.data)
         data_path: Optional[str] = None
@@ -694,19 +1035,64 @@ def fetch_real_data(
         "full_research_rating_cap": full_research_cap.value,
         "rating_cap": full_research_cap.value,
     }
+    data_gaps = _build_data_gaps(
+        result_items,
+        statuses,
+        requested_dataset_values=requested_dataset_values,
+        critical_datasets=critical_datasets,
+    )
+    research_debt = _build_research_debt(data_gaps)
+    manual_retrieval_tasks: List[Dict[str, Any]] = []
+    seen_tasks: set[Tuple[str, str]] = set()
+    for gap in data_gaps:
+        task = _manual_task_for_gap(gap)
+        if not task:
+            continue
+        key = (str(task.get("dataset") or ""), str(task.get("objective") or ""))
+        if key in seen_tasks:
+            continue
+        seen_tasks.add(key)
+        manual_retrieval_tasks.append(task)
+
+    data_acquisition = {
+        "policy": "assets/data_acquisition_policy.json",
+        "status_by_dataset": {
+            dataset: statuses.get(dataset, DataStatus.NOT_REQUESTED.value)
+            for dataset in critical_datasets
+        },
+        "requested_dataset_statuses": dict(statuses),
+        "attempt_ledger": attempt_ledger,
+        "data_gaps": data_gaps,
+        "research_debt": research_debt,
+        "manual_retrieval_tasks": manual_retrieval_tasks,
+        "attempt_ledger_path": str(destination / "attempt_ledger.json"),
+        "data_gaps_path": str(destination / "data_gaps.json"),
+        "research_debt_path": str(destination / "research_debt.json"),
+        "manual_retrieval_tasks_path": str(destination / "manual_retrieval_tasks.json"),
+        "attempt_count": len(attempt_ledger),
+        "gap_count": len(data_gaps),
+        "research_debt_count": len(research_debt),
+        "manual_task_count": len(manual_retrieval_tasks),
+        "full_research_ready": full_research_cap == RatingCap.S and not research_debt,
+    }
     source_integrity = _build_source_integrity_summary(result_items)
-    ai_review = _build_ai_review_guidance(result_items, data_quality)
+    ai_review = _build_ai_review_guidance(result_items, data_quality, data_gaps, research_debt)
     manifest = {
         "symbol": symbol.__dict__,
         "requested_datasets": requested_dataset_values,
         "full_research_required_datasets": critical_datasets,
         "out_dir": str(destination),
         "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "data_acquisition": data_acquisition,
         "data_quality": data_quality,
         "source_integrity": source_integrity,
         "ai_review": ai_review,
         "results": result_items,
     }
+    _write_json(destination / "attempt_ledger.json", attempt_ledger)
+    _write_json(destination / "data_gaps.json", data_gaps)
+    _write_json(destination / "research_debt.json", research_debt)
+    _write_json(destination / "manual_retrieval_tasks.json", manual_retrieval_tasks)
     _write_json(destination / "manifest.json", manifest)
     return manifest
 

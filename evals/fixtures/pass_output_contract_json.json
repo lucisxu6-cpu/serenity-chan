@@ -3,8 +3,13 @@
     "normalized_symbol": "688019.SH",
     "market": "CN_A",
     "currency": "CNY",
-    "primary_disclosure_sources": ["CNINFO", "SSE"],
-    "forbidden_sources": ["SEC EDGAR"]
+    "primary_disclosure_sources": [
+      "CNINFO",
+      "SSE"
+    ],
+    "forbidden_sources": [
+      "SEC EDGAR"
+    ]
   },
   "data_quality": {
     "market_resolution": "OK",
@@ -13,6 +18,78 @@
     "financials": "OK",
     "filings": "OK",
     "supply_chain_evidence": "PARTIAL"
+  },
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "PENDING",
+      "price_history_adjusted": "PENDING",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "data_gaps": [
+      {
+        "dataset": "current_quote",
+        "status": "PENDING",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
+        "next_action": "Fetch a current market quote from a market-appropriate source."
+      },
+      {
+        "dataset": "price_history_adjusted",
+        "status": "PENDING",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
+        "next_action": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+      }
+    ],
+    "research_debt": [
+      {
+        "dataset": "current_quote",
+        "priority": "high",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
+        "next_action": "Fetch a current market quote from a market-appropriate source."
+      },
+      {
+        "dataset": "price_history_adjusted",
+        "priority": "high",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
+        "next_action": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+      }
+    ],
+    "manual_retrieval_tasks": [
+      {
+        "dataset": "current_quote",
+        "priority": "high",
+        "target_source": "Exchange, licensed vendor, or validated open market-data source",
+        "objective": "Fetch a current market quote from a market-appropriate source.",
+        "acceptance_criteria": [
+          "Source, date, status, and evidence level are recorded."
+        ]
+      },
+      {
+        "dataset": "price_history_adjusted",
+        "priority": "high",
+        "target_source": "Exchange, licensed vendor, or validated open market-data source",
+        "objective": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis.",
+        "acceptance_criteria": [
+          "Source, date, status, and evidence level are recorded."
+        ]
+      }
+    ]
+  },
+  "decision_matrix": {
+    "thesis_quality_score": 68,
+    "evidence_confidence_score": 62,
+    "market_payoff_score": 58,
+    "action_readiness": "DATA_GATED",
+    "candidate_priority_score": 60,
+    "watchlist_bucket": "DATA_GATED"
   },
   "rating": "B",
   "rating_cap": "B",
@@ -45,7 +122,7 @@
   "uncertainty": {
     "confirmed": "filings exist",
     "inferred": "growth may transmit through orders",
-    "missing": "customer/order proof",
+    "missing": "customer/order proof and current market data",
     "downgrade_trigger": "no financial realization"
   }
 }

@@ -113,10 +113,11 @@ DEFAULT_CASES = [
         symbol="300480",
         case_set="a-share",
         datasets=["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
-        required_quality={"current_price": "OK", "adjusted_history": "OK", "financials": "OK", "filings": "OK"},
+        required_quality={"current_price": "OK", "financials": "OK", "filings": "OK"},
+        allowed_quality={"adjusted_history": {"OK", "PARTIAL"}},
         required_report_kinds={"annual", "q1"},
         minimum_report_records=2,
-        note="A-share regression sample that exercises the real 300480.SZ workflow.",
+        note="A-share regression sample that exercises the real 300480.SZ workflow; adjusted history must be visible as OK or PARTIAL when source OHLC validation catches a current-day inconsistency.",
     ),
     SmokeCase(
         name="a-share-financial-sector-600036",
@@ -174,9 +175,33 @@ def _load_financial_payload(manifest: dict[str, Any]) -> dict[str, Any]:
 def _evaluate(case: SmokeCase, manifest: dict[str, Any]) -> tuple[bool, list[str]]:
     quality = manifest.get("data_quality", {}) if isinstance(manifest.get("data_quality"), dict) else {}
     ai_review = manifest.get("ai_review", {}) if isinstance(manifest.get("ai_review"), dict) else {}
+    data_acquisition = manifest.get("data_acquisition", {}) if isinstance(manifest.get("data_acquisition"), dict) else {}
+    attempt_ledger = data_acquisition.get("attempt_ledger", [])
+    data_gaps = data_acquisition.get("data_gaps", [])
+    research_debt = data_acquisition.get("research_debt", [])
+    manual_tasks = data_acquisition.get("manual_retrieval_tasks", [])
     failures: list[str] = []
     if ai_review.get("required") is not True:
         failures.append("ai_review.required: expected True")
+    if not isinstance(data_acquisition, dict) or not data_acquisition:
+        failures.append("data_acquisition: expected non-empty object")
+    if not isinstance(attempt_ledger, list) or not attempt_ledger:
+        failures.append("attempt_ledger: expected non-empty array")
+    if not isinstance(data_gaps, list):
+        failures.append("data_gaps: expected array")
+    if not isinstance(research_debt, list):
+        failures.append("research_debt: expected array")
+    if not isinstance(manual_tasks, list):
+        failures.append("manual_retrieval_tasks: expected array")
+    if isinstance(attempt_ledger, list):
+        attempted_datasets = {
+            str(item.get("dataset"))
+            for item in attempt_ledger
+            if isinstance(item, dict)
+        }
+        missing_attempts = sorted(set(case.datasets) - attempted_datasets)
+        if missing_attempts:
+            failures.append(f"attempt_ledger: missing requested datasets {missing_attempts}")
     for key, expected in case.required_quality.items():
         actual = quality.get(key)
         if actual != expected:
@@ -195,6 +220,30 @@ def _evaluate(case: SmokeCase, manifest: dict[str, Any]) -> tuple[bool, list[str
         missing_kinds = sorted(case.required_report_kinds - report_kinds)
         if missing_kinds:
             failures.append(f"official_report_evidence.report_kind: missing {missing_kinds}, got {sorted(report_kinds)}")
+    financial_result = next(
+        (
+            item
+            for item in manifest.get("results", [])
+            if isinstance(item, dict) and item.get("dataset") == "financials"
+        ),
+        {},
+    )
+    if str(financial_result.get("source_level", "")).startswith("L3_"):
+        has_financial_gap = any(
+            isinstance(item, dict)
+            and item.get("dataset") == "financials"
+            and item.get("gap_type") == "NOT_MACHINE_READABLE"
+            for item in data_gaps
+        )
+        has_financial_debt = any(
+            isinstance(item, dict)
+            and item.get("dataset") == "financials"
+            for item in research_debt
+        )
+        if not has_financial_gap:
+            failures.append("data_gaps: L3 financials require NOT_MACHINE_READABLE gap")
+        if not has_financial_debt:
+            failures.append("research_debt: L3 financials require financial verification debt")
     return not failures, failures
 
 
@@ -230,6 +279,7 @@ def run_cases(
             "note": case.note,
             "out_dir": manifest.get("out_dir"),
             "data_quality": manifest.get("data_quality", {}),
+            "data_acquisition": manifest.get("data_acquisition", {}),
         })
 
     return {
@@ -246,9 +296,10 @@ def _print_human(summary: dict[str, Any]) -> None:
     for item in summary["results"]:
         marker = "PASS" if item["ok"] else "FAIL"
         quality = item["data_quality"]
+        acquisition = item.get("data_acquisition", {})
         print(
             "[{marker}] {name} {symbol}: current={current} adjusted={adjusted} "
-            "financials={financials} filings={filings} cap={cap} requested_cap={requested_cap}".format(
+            "financials={financials} filings={filings} cap={cap} requested_cap={requested_cap} debt={debt}".format(
                 marker=marker,
                 name=item["name"],
                 symbol=item["symbol"],
@@ -258,6 +309,7 @@ def _print_human(summary: dict[str, Any]) -> None:
                 filings=quality.get("filings"),
                 cap=quality.get("rating_cap"),
                 requested_cap=quality.get("requested_data_rating_cap"),
+                debt=acquisition.get("research_debt_count"),
             )
         )
         for failure in item["failures"]:

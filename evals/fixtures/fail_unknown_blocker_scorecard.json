@@ -1,7 +1,7 @@
 {
-  "ticker": "ABC",
-  "company": "Invalid Market Co",
-  "market": "CN",
+  "ticker": "688019.SH",
+  "company": "Unknown Blocker Co",
+  "market": "CN_A",
   "as_of_date": "2026-06-22",
   "layer": {
     "x": 5
@@ -32,5 +32,11 @@
     "research_debt": [],
     "manual_retrieval_tasks": []
   },
-  "blockers": []
+  "blockers": [
+    {
+      "name": "unknown decision gate",
+      "severity": "major",
+      "effect": "unknown_effect"
+    }
+  ]
 }

@@ -3,8 +3,13 @@
     "normalized_symbol": "NVDA",
     "market": "US",
     "currency": "USD",
-    "primary_disclosure_sources": ["SEC EDGAR", "Company IR"],
-    "forbidden_sources": ["CNINFO"]
+    "primary_disclosure_sources": [
+      "SEC EDGAR",
+      "Company IR"
+    ],
+    "forbidden_sources": [
+      "CNINFO"
+    ]
   },
   "data_quality": {
     "market_resolution": "OK",
@@ -13,6 +18,53 @@
     "financials": "OK",
     "filings": "OK",
     "supply_chain_evidence": "PARTIAL"
+  },
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "OK",
+      "price_history_adjusted": "PENDING",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "data_gaps": [
+      {
+        "dataset": "price_history_adjusted",
+        "status": "PENDING",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
+        "next_action": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+      }
+    ],
+    "research_debt": [
+      {
+        "dataset": "price_history_adjusted",
+        "priority": "high",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
+        "next_action": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+      }
+    ],
+    "manual_retrieval_tasks": [
+      {
+        "dataset": "price_history_adjusted",
+        "priority": "high",
+        "target_source": "Exchange, licensed vendor, or validated open market-data source",
+        "objective": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis.",
+        "acceptance_criteria": [
+          "Source, date, status, and evidence level are recorded."
+        ]
+      }
+    ]
+  },
+  "decision_matrix": {
+    "thesis_quality_score": 74,
+    "evidence_confidence_score": 69,
+    "market_payoff_score": 64,
+    "action_readiness": "DATA_GATED",
+    "candidate_priority_score": 67,
+    "watchlist_bucket": "DATA_GATED"
   },
   "rating": "B",
   "rating_cap": "B",

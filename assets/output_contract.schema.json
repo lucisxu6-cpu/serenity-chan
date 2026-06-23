@@ -5,6 +5,8 @@
   "required": [
     "market_route",
     "data_quality",
+    "data_acquisition",
+    "decision_matrix",
     "rating",
     "rating_cap",
     "evidence",
@@ -44,6 +46,58 @@
     },
     "rating": {"$ref": "#/$defs/rating"},
     "rating_cap": {"$ref": "#/$defs/rating_cap"},
+    "data_acquisition": {
+      "type": "object",
+      "required": ["status_by_dataset", "data_gaps", "research_debt", "manual_retrieval_tasks"],
+      "properties": {
+        "status_by_dataset": {
+          "type": "object",
+          "required": ["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+          "properties": {
+            "current_quote": {"$ref": "#/$defs/status"},
+            "price_history_adjusted": {"$ref": "#/$defs/status"},
+            "financials": {"$ref": "#/$defs/status"},
+            "filings_announcements": {"$ref": "#/$defs/status"}
+          },
+          "additionalProperties": {"$ref": "#/$defs/status"}
+        },
+        "data_gaps": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/data_gap"}
+        },
+        "research_debt": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/research_debt"}
+        },
+        "manual_retrieval_tasks": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/manual_retrieval_task"}
+        },
+        "attempt_ledger_path": {"type": "string"},
+        "manual_retrieval_tasks_path": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "decision_matrix": {
+      "type": "object",
+      "required": [
+        "thesis_quality_score",
+        "evidence_confidence_score",
+        "market_payoff_score",
+        "action_readiness",
+        "candidate_priority_score",
+        "watchlist_bucket"
+      ],
+      "properties": {
+        "thesis_quality_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "evidence_confidence_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "market_payoff_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "action_readiness": {"type": "string", "enum": ["CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "WAIT_FOR_BUY_POINT", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"]},
+        "candidate_priority_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "watchlist_bucket": {"type": "string", "enum": ["CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"]}
+      },
+      "additionalProperties": true
+    },
     "evidence": {
       "type": "array",
       "items": {"$ref": "#/$defs/evidence"}
@@ -103,6 +157,47 @@
         "confidence": {"type": "string", "enum": ["Strong", "Medium", "Weak", "Unverified"]},
         "missing_proof": {"type": "string"}
       }
+    },
+    "data_gap": {
+      "type": "object",
+      "required": ["dataset", "status", "gap_type", "decision_impact", "rating_impact", "next_action"],
+      "properties": {
+        "dataset": {"type": "string"},
+        "status": {"$ref": "#/$defs/status"},
+        "gap_type": {"type": "string", "enum": ["ACCESS_FAILURE", "SCOPE_NOT_REQUESTED", "SOURCE_NOT_IMPLEMENTED", "SOURCE_UNAVAILABLE", "ISSUER_NON_DISCLOSURE", "NOT_MACHINE_READABLE", "CONFLICTING_SOURCES", "STALE_DATA", "NOT_MATERIAL", "POLICY_BLOCKED"]},
+        "decision_impact": {"type": "string", "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]},
+        "rating_impact": {"type": "string"},
+        "next_action": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "research_debt": {
+      "type": "object",
+      "required": ["dataset", "priority", "gap_type", "decision_impact", "next_action"],
+      "properties": {
+        "dataset": {"type": "string"},
+        "priority": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+        "gap_type": {"type": "string"},
+        "decision_impact": {"type": "string"},
+        "rating_impact": {"type": "string"},
+        "next_action": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "manual_retrieval_task": {
+      "type": "object",
+      "required": ["dataset", "priority", "target_source", "objective"],
+      "properties": {
+        "dataset": {"type": "string"},
+        "priority": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+        "target_source": {"type": "string"},
+        "objective": {"type": "string"},
+        "acceptance_criteria": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

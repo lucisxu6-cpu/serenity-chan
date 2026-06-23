@@ -3,12 +3,34 @@
   "company": "Unresolved Market Co",
   "market": "OTHER",
   "as_of_date": "2026-06-22",
-  "data_quality": {"symbol_resolution": 5},
-  "serenity": {"x": 5},
-  "evidence": {"x": 5},
-  "fundamentals": {"x": 5},
-  "valuation": {"x": 5},
-  "technical": {"x": 5},
-  "risk": {"x": 5},
-  "penalties": {}
+  "layer": {
+    "x": 5
+  },
+  "company_thesis": {
+    "x": 5
+  },
+  "evidence_confidence": {
+    "x": 5
+  },
+  "market_payoff": {
+    "x": 5
+  },
+  "technical_timing": {
+    "x": 5
+  },
+  "risk_controls": {
+    "x": 5
+  },
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "OK",
+      "filings_announcements": "OK"
+    },
+    "data_gaps": [],
+    "research_debt": [],
+    "manual_retrieval_tasks": []
+  },
+  "blockers": []
 }

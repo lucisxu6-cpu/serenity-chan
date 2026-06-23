@@ -18,7 +18,6 @@ If a critical dataset fails, the agent must cap the conclusion instead of guessi
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 import gzip
 import http.client
 from hashlib import sha256
@@ -40,54 +39,10 @@ try:
 except Exception:  # pragma: no cover
     pd = None  # type: ignore
 
-
-# ---------------------------------------------------------------------------
-# Enums and data contracts
-# ---------------------------------------------------------------------------
-
-class Market(str, Enum):
-    CN_A = "CN_A"
-    HK = "HK"
-    US = "US"
-    GLOBAL = "GLOBAL"
-    UNKNOWN = "UNKNOWN"
-
-
-class SourceLevel(str, Enum):
-    L0 = "L0_OFFICIAL_DISCLOSURE"
-    L1 = "L1_LICENSED_OR_PRO_DATABASE"
-    L2 = "L2_FREE_API_OR_OPEN_SOURCE"
-    L3 = "L3_MEDIA_F10_RESEARCH"
-    L4 = "L4_RUMOR_OR_UNVERIFIED"
-
-
-class Dataset(str, Enum):
-    CURRENT_QUOTE = "current_quote"
-    PRICE_HISTORY_RAW = "price_history_raw"
-    PRICE_HISTORY_ADJUSTED = "price_history_adjusted"
-    SHARE_CAPITAL = "share_capital"
-    FINANCIALS = "financials"
-    FILINGS = "filings_announcements"
-    CUSTOMER_EVIDENCE = "customer_order_capacity_evidence"
-    PEER_VALUATION = "peer_valuation"
-    ESTIMATES = "consensus_estimates"
-    TRADING_CALENDAR = "trading_calendar"
-
-
-class DataStatus(str, Enum):
-    OK = "OK"
-    PARTIAL = "PARTIAL"
-    STALE = "STALE"
-    FAILED = "FAILED"
-
-
-class RatingCap(str, Enum):
-    S = "S"
-    A = "A"
-    B = "B"
-    C = "C"
-    D = "D"
-    OBSERVE_ONLY = "OBSERVE_ONLY"
+try:
+    from data_contracts import DataStatus, Dataset, Market, RatingCap, SourceLevel
+except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_layer
+    from scripts.data_contracts import DataStatus, Dataset, Market, RatingCap, SourceLevel
 
 
 @dataclass(frozen=True)
@@ -249,6 +204,53 @@ def https_json(
     if last_error:
         raise last_error
     raise RuntimeError("HTTPS JSON fetch failed without a captured exception")
+
+
+def https_text(
+    url: str,
+    *,
+    user_agent: str,
+    timeout: int = 30,
+    headers: Optional[Mapping[str, str]] = None,
+    retries: int = 2,
+) -> str:
+    """Fetch HTTPS text with the same TLS and retry policy as JSON fetches."""
+    merged_headers = {
+        "User-Agent": user_agent,
+        "Accept": "text/plain,*/*",
+        "Accept-Encoding": "gzip",
+    }
+    if headers:
+        merged_headers.update(headers)
+
+    try:
+        import certifi  # type: ignore
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        context = ssl.create_default_context()
+
+    last_error: Optional[BaseException] = None
+    for attempt in range(retries + 1):
+        request = urllib.request.Request(url, headers=merged_headers)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+                raw = response.read()
+                if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                    raw = gzip.decompress(raw)
+                return raw.decode("utf-8-sig")
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code != 429 or attempt >= retries:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionResetError, http.client.IncompleteRead, http.client.RemoteDisconnected) as exc:
+            last_error = exc
+            if attempt >= retries:
+                raise
+        time.sleep(0.75 * (attempt + 1))
+    if last_error:
+        raise last_error
+    raise RuntimeError("HTTPS text fetch failed without a captured exception")
 
 
 def form_json(
@@ -695,7 +697,7 @@ def quality_summary_markdown(score: DataQualityScore) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Data Fetch Plan
+# Data Acquisition Plan
 # ---------------------------------------------------------------------------
 
 
@@ -817,6 +819,10 @@ class YahooChartProvider:
     datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED]
     user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
 
+    def __init__(self, *, name: str = "Yahoo_Chart_L2", host: str = "query1.finance.yahoo.com") -> None:
+        self.name = name
+        self.host = host
+
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         yahoo_symbol = _yahoo_symbol(symbol)
         chart_range = str(kwargs.get("range", "5d" if dataset == Dataset.CURRENT_QUOTE else "1y"))
@@ -827,7 +833,7 @@ class YahooChartProvider:
             "events": "history|div|split",
             "includeAdjustedClose": "true",
         })
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(yahoo_symbol)}?{params}"
+        url = f"https://{self.host}/v8/finance/chart/{urllib.parse.quote(yahoo_symbol)}?{params}"
         try:
             payload = https_json(url, user_agent=self.user_agent)
         except Exception as exc:
@@ -1420,14 +1426,230 @@ def _sec_user_agent() -> Tuple[str, List[str]]:
     )
 
 
-def _sec_cik_from_ticker(ticker: str, *, user_agent: str) -> Optional[str]:
+_SEC_SUBMISSIONS_CACHE: Dict[str, Mapping[str, Any]] = {}
+
+
+def _sec_text_tokens(values: Iterable[str]) -> set[str]:
+    output: set[str] = set()
+    for token in values:
+        cleaned = str(token).strip().upper()
+        if not cleaned:
+            continue
+        output.add(cleaned)
+        output.add(cleaned.replace(".", "-"))
+        output.add(cleaned.replace("-", "."))
+    return output
+
+
+def _sec_symbol_tokens(symbol: SymbolInfo) -> set[str]:
+    return _sec_text_tokens([symbol.symbol, symbol.input_value])
+
+
+def _fetch_sec_submissions_payload(cik: str, *, user_agent: str) -> Mapping[str, Any]:
+    padded_cik = f"{int(str(cik)):010d}"
+    if padded_cik not in _SEC_SUBMISSIONS_CACHE:
+        payload = https_json(f"https://data.sec.gov/submissions/CIK{padded_cik}.json", user_agent=user_agent)
+        if not isinstance(payload, Mapping):
+            raise ValueError("SEC submissions payload is not an object")
+        _SEC_SUBMISSIONS_CACHE[padded_cik] = payload
+    return _SEC_SUBMISSIONS_CACHE[padded_cik]
+
+
+def _sec_submission_matches_tokens(expected: set[str], payload: Mapping[str, Any]) -> bool:
+    tickers = payload.get("tickers", [])
+    if not isinstance(tickers, list):
+        return False
+    actual = {str(ticker).strip().upper() for ticker in tickers if str(ticker).strip()}
+    expanded_actual = set(actual)
+    for ticker in actual:
+        expanded_actual.add(ticker.replace(".", "-"))
+        expanded_actual.add(ticker.replace("-", "."))
+    return bool(expected & expanded_actual)
+
+
+def _sec_submission_matches_symbol(symbol: SymbolInfo, payload: Mapping[str, Any]) -> bool:
+    return _sec_submission_matches_tokens(_sec_symbol_tokens(symbol), payload)
+
+
+def _sec_identity_error(symbol: SymbolInfo, cik: str, payload: Mapping[str, Any]) -> Optional[str]:
+    if _sec_submission_matches_symbol(symbol, payload):
+        return None
+    return (
+        f"SEC CIK {cik} belongs to tickers {payload.get('tickers', [])}, "
+        f"not requested symbol {symbol.symbol}"
+    )
+
+
+def _sec_identity_summary(cik: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "cik": f"{int(str(cik)):010d}",
+        "entity_name": payload.get("name"),
+        "tickers": payload.get("tickers", []),
+        "exchanges": payload.get("exchanges", []),
+    }
+
+
+def _sec_bootstrap_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "assets" / "sec_cik_bootstrap.json"
+
+
+def _sec_cik_from_bootstrap(ticker: str) -> Optional[str]:
+    path = _sec_bootstrap_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    records = payload.get("tickers", {}) if isinstance(payload, Mapping) else {}
+    record = None
+    if isinstance(records, Mapping):
+        for token in _sec_text_tokens([ticker]):
+            candidate = records.get(token)
+            if isinstance(candidate, Mapping):
+                record = candidate
+                break
+    if not isinstance(record, Mapping):
+        return None
+    raw_cik = record.get("cik")
+    if raw_cik is None:
+        return None
+    try:
+        return f"{int(str(raw_cik)):010d}"
+    except ValueError:
+        digits = re.sub(r"\D", "", str(raw_cik))
+        return digits.zfill(10) if digits else None
+
+
+def _sec_cik_from_ticker_exchange_json(ticker: str, *, user_agent: str) -> Optional[str]:
+    payload = https_json("https://www.sec.gov/files/company_tickers_exchange.json", user_agent=user_agent)
+    token = ticker.upper().replace("-", ".")
+    fields = payload.get("fields", []) if isinstance(payload, Mapping) else []
+    data = payload.get("data", []) if isinstance(payload, Mapping) else []
+    if not isinstance(fields, list) or not isinstance(data, list):
+        return None
+    try:
+        ticker_idx = fields.index("ticker")
+        cik_idx = fields.index("cik")
+    except ValueError:
+        return None
+    for row in data:
+        if not isinstance(row, list) or len(row) <= max(ticker_idx, cik_idx):
+            continue
+        if str(row[ticker_idx]).upper() == token:
+            return f"{int(row[cik_idx]):010d}"
+    return None
+
+
+def _sec_cik_from_company_tickers_json(ticker: str, *, user_agent: str) -> Optional[str]:
     payload = https_json("https://www.sec.gov/files/company_tickers.json", user_agent=user_agent)
     token = ticker.upper().replace("-", ".")
+    if not isinstance(payload, Mapping):
+        return None
     for row in payload.values():
+        if not isinstance(row, Mapping):
+            continue
         if str(row.get("ticker", "")).upper() == token:
-            cik = int(row["cik_str"])
-            return f"{cik:010d}"
+            return f"{int(row['cik_str']):010d}"
     return None
+
+
+def _sec_cik_from_ticker_txt(ticker: str, *, user_agent: str) -> Optional[str]:
+    text = https_text("https://www.sec.gov/include/ticker.txt", user_agent=user_agent)
+    token = ticker.lower().replace("-", ".")
+    for line in text.splitlines():
+        parts = line.strip().split()
+        if len(parts) != 2:
+            continue
+        raw_ticker, raw_cik = parts
+        if raw_ticker.lower() == token:
+            return f"{int(raw_cik):010d}"
+    return None
+
+
+def _sec_cik_from_ticker(ticker: str, *, user_agent: str) -> Optional[str]:
+    token = ticker.upper().replace("-", ".")
+    candidates: List[str] = []
+
+    def add_candidate(cik: Optional[str]) -> None:
+        if not cik:
+            return
+        try:
+            normalized = f"{int(str(cik)):010d}"
+        except ValueError:
+            digits = re.sub(r"\D", "", str(cik))
+            normalized = digits.zfill(10) if digits else ""
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
+    bootstrap_cik = _sec_cik_from_bootstrap(token)
+    add_candidate(bootstrap_cik)
+    resolvers = [
+        _sec_cik_from_ticker_exchange_json,
+        _sec_cik_from_company_tickers_json,
+        _sec_cik_from_ticker_txt,
+    ]
+    for resolver in resolvers:
+        try:
+            cik = resolver(token, user_agent=user_agent)
+        except Exception:
+            continue
+        add_candidate(cik)
+    expected_tokens = _sec_text_tokens([token])
+    for cik in candidates:
+        try:
+            payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        except Exception:
+            continue
+        if _sec_submission_matches_tokens(expected_tokens, payload):
+            return cik
+    return None
+
+
+SEC_FINANCIAL_CONCEPTS: Dict[str, List[str]] = {
+    "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
+    "gross_profit": ["GrossProfit"],
+    "net_income": ["NetIncomeLoss", "ProfitLoss"],
+    "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
+    "assets": ["Assets"],
+    "liabilities": ["Liabilities"],
+    "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    "accounts_receivable": ["AccountsReceivableNetCurrent"],
+    "inventory": ["InventoryNet"],
+}
+
+
+def _facts_from_concept_object(concept: str, concept_obj: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    units = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
+    unit = "USD" if "USD" in units else next(iter(units), None)
+    if not unit:
+        return output
+    facts = units.get(unit, [])
+    if not isinstance(facts, list):
+        return output
+    for fact in facts:
+        if not isinstance(fact, Mapping):
+            continue
+        if fact.get("form") not in {"10-K", "10-Q"}:
+            continue
+        if "val" not in fact or "end" not in fact:
+            continue
+        output.append({
+            "concept": concept,
+            "label": concept_obj.get("label", concept),
+            "unit": unit,
+            "period": fact.get("end"),
+            "fy": fact.get("fy"),
+            "fp": fact.get("fp"),
+            "form": fact.get("form"),
+            "filed": fact.get("filed"),
+            "frame": fact.get("frame"),
+            "value": fact.get("val"),
+            "accession": fact.get("accn"),
+        })
+    output.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
+    return output
 
 
 def _latest_facts_by_concept(companyfacts: Mapping[str, Any], concept_names: Sequence[str]) -> List[Dict[str, Any]]:
@@ -1436,49 +1658,15 @@ def _latest_facts_by_concept(companyfacts: Mapping[str, Any], concept_names: Seq
     output: List[Dict[str, Any]] = []
     for concept in concept_names:
         concept_obj = us_gaap.get(concept)
-        if not isinstance(concept_obj, Mapping):
-            continue
-        units = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
-        unit = "USD" if "USD" in units else next(iter(units), None)
-        if not unit:
-            continue
-        for fact in units.get(unit, []):
-            if fact.get("form") not in {"10-K", "10-Q"}:
-                continue
-            if "val" not in fact or "end" not in fact:
-                continue
-            output.append({
-                "concept": concept,
-                "label": concept_obj.get("label", concept),
-                "unit": unit,
-                "period": fact.get("end"),
-                "fy": fact.get("fy"),
-                "fp": fact.get("fp"),
-                "form": fact.get("form"),
-                "filed": fact.get("filed"),
-                "frame": fact.get("frame"),
-                "value": fact.get("val"),
-                "accession": fact.get("accn"),
-            })
+        if isinstance(concept_obj, Mapping):
+            output.extend(_facts_from_concept_object(concept, concept_obj))
     output.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
     return output
 
 
-def _period_rows_from_sec_facts(companyfacts: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    concepts = {
-        "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
-        "gross_profit": ["GrossProfit"],
-        "net_income": ["NetIncomeLoss", "ProfitLoss"],
-        "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
-        "assets": ["Assets"],
-        "liabilities": ["Liabilities"],
-        "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
-        "accounts_receivable": ["AccountsReceivableNetCurrent"],
-        "inventory": ["InventoryNet"],
-    }
+def _period_rows_from_field_facts(field_facts: Mapping[str, Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     rows_by_period: Dict[Tuple[str, str, str, str, str], Dict[str, Any]] = {}
-    for field, candidates in concepts.items():
-        facts = _latest_facts_by_concept(companyfacts, candidates)
+    for field, facts in field_facts.items():
         for fact in facts:
             key = (
                 str(fact.get("period") or ""),
@@ -1506,6 +1694,34 @@ def _period_rows_from_sec_facts(companyfacts: Mapping[str, Any]) -> List[Dict[st
                 row["liabilities_concept"] = "derived_from_assets_minus_equity"
     rows.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or "")))
     return rows[-16:]
+
+
+def _period_rows_from_sec_facts(companyfacts: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    return _period_rows_from_field_facts({
+        field: _latest_facts_by_concept(companyfacts, candidates)
+        for field, candidates in SEC_FINANCIAL_CONCEPTS.items()
+    })
+
+
+def _period_rows_from_companyconcepts(concept_payloads: Mapping[str, Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    field_facts: Dict[str, List[Dict[str, Any]]] = {}
+    for field, candidates in SEC_FINANCIAL_CONCEPTS.items():
+        facts: List[Dict[str, Any]] = []
+        for concept in candidates:
+            payload = concept_payloads.get(concept)
+            if isinstance(payload, Mapping):
+                facts.extend(_facts_from_concept_object(concept, payload))
+        field_facts[field] = facts
+    return _period_rows_from_field_facts(field_facts)
+
+
+def _all_sec_financial_concepts() -> List[str]:
+    ordered: List[str] = []
+    for concepts in SEC_FINANCIAL_CONCEPTS.values():
+        for concept in concepts:
+            if concept not in ordered:
+                ordered.append(concept)
+    return ordered
 
 
 class SecCompanyFactsProvider:
@@ -1555,8 +1771,10 @@ class SecCompanyFactsProvider:
         raw_dir: Optional[str | Path],
         warnings: List[str],
     ) -> DataResult:
-        url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-        payload = https_json(url, user_agent=user_agent)
+        payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error = _sec_identity_error(symbol, cik, payload)
+        if identity_error:
+            return DataResult.failed(Dataset.FILINGS, symbol.symbol, self.name, self.level, identity_error)
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_sec_submissions_raw.json")
@@ -1590,6 +1808,7 @@ class SecCompanyFactsProvider:
                 "entity_name": payload.get("name"),
                 "tickers": payload.get("tickers", []),
                 "recent_filings": filings,
+                "identity_check": _sec_identity_summary(cik, payload),
             },
             raw_path=raw_path,
             raw_hash=raw_hash,
@@ -1605,6 +1824,10 @@ class SecCompanyFactsProvider:
         raw_dir: Optional[str | Path],
         warnings: List[str],
     ) -> DataResult:
+        submissions_payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error = _sec_identity_error(symbol, cik, submissions_payload)
+        if identity_error:
+            return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, identity_error)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
         payload = https_json(url, user_agent=user_agent)
         raw_path = raw_hash = None
@@ -1638,6 +1861,149 @@ class SecCompanyFactsProvider:
                 "entity_name": payload.get("entityName"),
                 "periods": periods,
                 "latest_facts": facts[-40:],
+                "identity_check": _sec_identity_summary(cik, submissions_payload),
+            },
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=symbol.currency,
+            warnings=warnings,
+        )
+
+
+class SecCompanyConceptsProvider:
+    """Official SEC companyconcept adapter for US financial statements.
+
+    This provider fetches smaller per-concept SEC XBRL payloads. It is useful
+    when the larger companyfacts endpoint is blocked, reset, or too large for
+    the current network path.
+    """
+
+    name = "SEC_CompanyConcepts_L0"
+    level = SourceLevel.L0
+    markets = [Market.US]
+    datasets = [Dataset.FINANCIALS]
+
+    def __init__(self) -> None:
+        self._cik_cache: Dict[str, str] = {}
+
+    def _resolve_cik(self, symbol: SymbolInfo, *, user_agent: str) -> Optional[str]:
+        if symbol.cik:
+            return str(symbol.cik).zfill(10)
+        token = symbol.symbol.upper()
+        if token not in self._cik_cache:
+            cik = _sec_cik_from_ticker(token, user_agent=user_agent)
+            if cik:
+                self._cik_cache[token] = cik
+        return self._cik_cache.get(token)
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.US:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC companyconcept only supports US/SEC filers")
+        if dataset != Dataset.FINANCIALS:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        user_agent, warnings = _sec_user_agent()
+        try:
+            cik = self._resolve_cik(symbol, user_agent=user_agent)
+            if not cik:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve SEC CIK for {symbol.symbol}")
+            return self._fetch_financials(symbol, cik, user_agent=user_agent, raw_dir=kwargs.get("raw_dir"), warnings=warnings)
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"SEC companyconcept fetch failed: {type(exc).__name__}: {exc}")
+
+    def _fetch_financials(
+        self,
+        symbol: SymbolInfo,
+        cik: str,
+        *,
+        user_agent: str,
+        raw_dir: Optional[str | Path],
+        warnings: List[str],
+    ) -> DataResult:
+        submissions_payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error = _sec_identity_error(symbol, cik, submissions_payload)
+        if identity_error:
+            return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, identity_error)
+        concept_payloads: Dict[str, Mapping[str, Any]] = {}
+        concept_errors: List[str] = []
+        for concept in _all_sec_financial_concepts():
+            url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{concept}.json"
+            try:
+                payload = https_json(url, user_agent=user_agent, retries=1)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    concept_errors.append(f"{concept}: not reported")
+                    continue
+                concept_errors.append(f"{concept}: HTTP {exc.code}")
+                continue
+            except Exception as exc:
+                concept_errors.append(f"{concept}: {type(exc).__name__}: {exc}")
+                continue
+            if isinstance(payload, Mapping):
+                concept_payloads[concept] = payload
+
+        if not concept_payloads:
+            return DataResult.failed(
+                Dataset.FINANCIALS,
+                symbol.symbol,
+                self.name,
+                self.level,
+                "SEC companyconcept returned no usable concepts: " + " | ".join(concept_errors[:8]),
+            )
+
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json(
+                {
+                    "cik": cik,
+                    "symbol": symbol.symbol,
+                    "concept_payloads": concept_payloads,
+                    "concept_errors": concept_errors,
+                },
+                raw_dir,
+                f"{symbol.symbol}_sec_companyconcepts_raw.json",
+            )
+
+        periods = _period_rows_from_companyconcepts(concept_payloads)
+        latest_facts: List[Dict[str, Any]] = []
+        for concept, payload in concept_payloads.items():
+            latest_facts.extend(_facts_from_concept_object(concept, payload))
+        latest_facts.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
+
+        if not periods and not latest_facts:
+            return DataResult.failed(
+                Dataset.FINANCIALS,
+                symbol.symbol,
+                self.name,
+                self.level,
+                "SEC companyconcept returned payloads but no 10-K/10-Q financial facts",
+            )
+
+        entity_name = next(
+            (
+                str(payload.get("entityName"))
+                for payload in concept_payloads.values()
+                if isinstance(payload, Mapping) and payload.get("entityName")
+            ),
+            None,
+        )
+        as_of = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
+        if concept_errors:
+            warnings = list(warnings) + ["Some SEC concepts were unavailable: " + " | ".join(concept_errors[:8])]
+        return DataResult(
+            True,
+            Dataset.FINANCIALS,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=as_of,
+            data={
+                "cik": cik,
+                "entity_name": entity_name,
+                "periods": periods,
+                "latest_facts": latest_facts[-40:],
+                "concepts_fetched": sorted(concept_payloads),
+                "identity_check": _sec_identity_summary(cik, submissions_payload),
             },
             raw_path=raw_path,
             raw_hash=raw_hash,
@@ -1685,11 +2051,15 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
     providers: List[DataProvider] = []
     if symbol is None or symbol.market in {Market.US, Market.HK, Market.CN_A}:
         providers.append(YahooChartProvider())
+        providers.append(YahooChartProvider(name="Yahoo_Chart_Query2_L2", host="query2.finance.yahoo.com"))
     if symbol is None or symbol.market == Market.CN_A:
         providers.append(CninfoAnnouncementsProvider())
         providers.append(EastmoneyF10FinancialsProvider())
     if symbol is None or symbol.market == Market.US:
         providers.append(SecCompanyFactsProvider())
+        providers.append(SecCompanyConceptsProvider())
+        if os.getenv("EDGAR_IDENTITY"):
+            providers.append(SecEdgarProvider())
     return providers
 
 

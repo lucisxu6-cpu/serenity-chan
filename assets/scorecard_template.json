@@ -3,75 +3,59 @@
   "company": "Example Co",
   "market": "CN_A",
   "as_of_date": "YYYY-MM-DD",
-  "data_quality": {
-    "symbol_resolution": 5,
-    "latest_quote": 5,
-    "price_history": 5,
-    "financials": 5,
-    "filings_announcements": 5,
-    "supply_chain_evidence": 5
+  "layer": {
+    "value_chain_bottleneck": 0,
+    "scarcity_and_entry_barrier": 0,
+    "demand_inflection_capture": 0,
+    "industry_positioning": 0
   },
-  "serenity": {
-    "demand_inflection": 0,
-    "revenue_transmission": 0,
-    "bottleneck_severity": 0,
-    "supplier_concentration": 0,
-    "qualification_difficulty": 0,
-    "capacity_constraint": 0,
-    "market_misclassification": 0,
-    "small_cap_elasticity": 0
+  "company_thesis": {
+    "bottleneck_ownership": 0,
+    "revenue_translation": 0,
+    "financial_quality": 0,
+    "management_execution": 0,
+    "durability": 0
   },
-  "evidence": {
-    "customer_quality": 0,
-    "order_or_contract_quality": 0,
-    "cross_validation": 0,
-    "source_strength": 0,
-    "falsification_clarity": 0
+  "evidence_confidence": {
+    "primary_source_coverage": 0,
+    "financial_statement_verification": 0,
+    "claim_traceability": 0,
+    "cross_source_consistency": 0,
+    "freshness": 0
   },
-  "fundamentals": {
-    "revenue_growth_quality": 0,
-    "gross_margin_quality": 0,
-    "cash_flow_conversion": 0,
-    "working_capital_quality": 0,
-    "balance_sheet_strength": 0,
-    "dilution_control": 0
+  "market_payoff": {
+    "valuation_discount": 0,
+    "implied_growth_vs_evidence": 0,
+    "upside_downside": 0,
+    "liquidity_capacity": 0,
+    "crowding_control": 0
   },
-  "valuation": {
-    "intrinsic_growth_vs_implied": 0,
-    "tam_runway": 0,
-    "quality_factor": 0,
-    "scenario_upside_downside": 0,
-    "valuation_crowding": 0
-  },
-  "technical": {
+  "technical_timing": {
     "monthly_trend": 0,
     "weekly_structure": 0,
     "daily_buy_point": 0,
-    "overheat_control": 0,
-    "risk_reward_position": 0
+    "gf_dma_alignment": 0,
+    "drawdown_position": 0
   },
-  "risk": {
-    "competition_substitution": 0,
-    "customer_concentration_risk": 0,
-    "cycle_macro_risk": 0,
-    "governance_accounting_risk": 0,
-    "liquidity_event_risk": 0
+  "risk_controls": {
+    "falsification_clarity": 0,
+    "governance_accounting_risk_control": 0,
+    "balance_sheet_dilution_control": 0,
+    "cycle_policy_risk_control": 0,
+    "liquidity_event_risk_control": 0
   },
-  "penalties": {
-    "only_weak_evidence": false,
-    "missing_latest_quote": false,
-    "missing_price_history": false,
-    "missing_latest_financials": false,
-    "l3_financials_without_l0_l1_verification": false,
-    "financial_sector_without_industry_specific_statements": false,
-    "unverified_customer_claim": false,
-    "price_source_conflict_gt_2pct": false,
-    "major_dilution_or_governance_red_flag": false,
-    "technical_escape_overheat": false,
-    "h4_h5_without_strong_evidence": false,
-    "market_implied_growth_exceeds_evidence": false,
-    "fundamental_falsified": false
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "NOT_REQUESTED",
+      "price_history_adjusted": "NOT_REQUESTED",
+      "financials": "NOT_REQUESTED",
+      "filings_announcements": "NOT_REQUESTED"
+    },
+    "data_gaps": [],
+    "research_debt": [],
+    "manual_retrieval_tasks": []
   },
+  "blockers": [],
   "evidence_notes": [
     {
       "claim": "",
