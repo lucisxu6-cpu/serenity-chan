@@ -20,6 +20,7 @@ try:
         _serenity_layer,
         _symbol,
         _technical_summary,
+        _valuation_input_row,
         _valuation_payload,
     )
 except ModuleNotFoundError:  # pragma: no cover
@@ -33,6 +34,7 @@ except ModuleNotFoundError:  # pragma: no cover
         _serenity_layer,
         _symbol,
         _technical_summary,
+        _valuation_input_row,
         _valuation_payload,
     )
 
@@ -70,6 +72,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     growth = _growth_hypothesis(manifest, financial, {})
     research_debt = _research_debt_rows(manifest, capital, financial, technical, layer_seed, growth)
     valuation_inputs = dict(_valuation_payload(manifest))
+    valuation_input_matrix_row = _valuation_input_row(manifest)
     acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
     ai_questions = [
         "Identify the value-chain layer and the concrete bottleneck this company may control.",
@@ -92,10 +95,12 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
         },
         "source_artifacts": _result_summaries(manifest),
         "valuation_inputs": valuation_inputs,
+        "valuation_input_matrix_row": valuation_input_matrix_row,
         "open_research_debt": research_debt,
         "deterministic_matrices": {
             "data_summary": data_summary,
             "financial_quality": financial,
+            "valuation_input": valuation_input_matrix_row,
             "technical_timing": technical,
             "capital_actions": capital,
             "growth_hypothesis": growth,
@@ -117,6 +122,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
                 "ai_confidence",
             ],
             "score_scale": "serenity_fit is 0-1; layer_score/company_fit are 0-100 when supplied.",
+            "growth_contract": "market_implied_growth is produced by deterministic valuation matrices; overlay supplies evidence_supported_growth when research evidence supports a growth tier.",
         },
     }
 

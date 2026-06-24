@@ -1,0 +1,55 @@
+name: real-data-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_set:
+        description: "Smoke case set to run"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - core
+          - upstream
+          - a-share
+          - hk
+  schedule:
+    - cron: "0 2 * * 1"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT || 'serenity-chan real-data-smoke contact@example.com' }}
+      CASE_SET: ${{ github.event.inputs.case_set || 'all' }}
+      OUT_ROOT: /tmp/serenity-chan-real-data-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install declared dependencies
+        run: |
+          if grep -Ev '^\s*(#|$)' requirements.txt >/dev/null; then
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
+          else
+            echo "No required third-party dependencies declared."
+          fi
+      - name: Run real data smoke
+        id: smoke
+        run: |
+          set -o pipefail
+          mkdir -p "$OUT_ROOT"
+          python scripts/run_real_data_smoke.py \
+            --case-set "$CASE_SET" \
+            --out-root "$OUT_ROOT" \
+            --sec-user-agent "$SEC_USER_AGENT" \
+            --json | tee "$OUT_ROOT/summary.json"
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-data-smoke-${{ github.run_id }}
+          path: /tmp/serenity-chan-real-data-smoke

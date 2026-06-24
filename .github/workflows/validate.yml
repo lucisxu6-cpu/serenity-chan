@@ -32,11 +32,14 @@ jobs:
         run: python scripts/validate_skill.py .
       - name: Validate JSON assets
         run: |
-          python -m json.tool assets/scorecard.schema.json >/dev/null
-          python -m json.tool assets/output_contract.schema.json >/dev/null
-          python -m json.tool assets/falsification_dashboard.schema.json >/dev/null
-          python -m json.tool assets/scorecard_template.json >/dev/null
-          python -m json.tool evals/static_cases.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for root in [Path("assets"), Path("evals"), Path("examples")]:
+              for path in sorted(root.rglob("*.json")):
+                  json.loads(path.read_text(encoding="utf-8"))
+          PY
       - name: Smoke test routing
         run: |
           python scripts/data_router.py resolve 688019

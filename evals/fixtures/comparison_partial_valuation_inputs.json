@@ -1,0 +1,17 @@
+{
+  "symbol": "688019.SH",
+  "name": "安集科技",
+  "currency": "CNY",
+  "exchange": "SH",
+  "as_of_date": "2026-06-23",
+  "regular_market_price": 249.0,
+  "total_shares": 174994396,
+  "float_shares": 174994396,
+  "source_basis": "quote_derived_preflight",
+  "share_count_basis": "fixture partial shares retained for audit",
+  "market_cap_basis": "total_market_cap missing; retain fetched price/share fields for audit",
+  "requires_l0_l1_verification": true,
+  "warnings": [
+    "total_market_cap missing; market-implied growth must remain UNKNOWN."
+  ]
+}

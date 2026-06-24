@@ -1,0 +1,27 @@
+{
+  "symbol": "688322.SH",
+  "as_of_date": "2026-06-23",
+  "layer": "3D vision sensing module adoption",
+  "bottleneck_reason": "Filings show improving revenue, but the robotics and 3D-vision bottleneck claim still needs customer, order, and segment proof.",
+  "revenue_transmission": "Revenue transmits through module shipments, robotics/customer adoption, gross-margin recovery, and validated product mix.",
+  "serenity_fit": 0.58,
+  "evidence_supported_growth": "H2",
+  "required_next_evidence": "Verify robotics/customer revenue split, order durability, dilution impact, and cash-flow conversion before upgrading payoff claims.",
+  "posterior_basis": "Official report evidence supports H2 evidence-supported growth until L0/L1 business-line proof covers customer, order, and cash-flow conversion.",
+  "key_evidence_refs": [
+    {
+      "claim": "Revenue is improving, while cash-flow and valuation evidence remain incomplete for H5 support.",
+      "source_ref": "CNINFO annual report line extraction",
+      "source_level": "L0",
+      "confidence": 0.72
+    }
+  ],
+  "contrary_evidence": [
+    "Operating cash flow, private-placement dilution, and robotics revenue split remain pressure points."
+  ],
+  "research_questions": [
+    "Verify robotics/customer revenue split and order durability.",
+    "Quantify private-placement dilution and buyback execution before treating the candidate as action-ready."
+  ],
+  "ai_confidence": "MEDIUM"
+}

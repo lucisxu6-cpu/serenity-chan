@@ -1,0 +1,17 @@
+{
+  "workflow": [
+    "python scripts/build_ai_review_packet.py evals/fixtures/comparison_688019_manifest.json --out /tmp/688019_packet.json",
+    "python scripts/validate_ai_overlay.py examples/comparison_688019_688322/ai_overlay_688019.json",
+    "python scripts/validate_ai_overlay.py examples/comparison_688019_688322/ai_overlay_688322.json",
+    "python scripts/merge_ai_research_overlay.py evals/fixtures/comparison_688019_manifest.json evals/fixtures/comparison_688322_manifest.json --overlay 688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json --overlay 688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json --format both"
+  ],
+  "assertions": {
+    "serenity_layer_matrix.0.layer": "CMP slurry and wet-process materials bottleneck",
+    "serenity_layer_matrix.1.layer": "3D vision sensing module adoption",
+    "valuation_input_matrix.0.status": "OK",
+    "growth_hypothesis_matrix.0.valuation_input_ref": "valuation_input_matrix:688019.SH",
+    "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
+    "candidate_priority_ranking.0.symbol": "688019.SH",
+    "final_decision.decision_mode": "clear_top_candidate"
+  }
+}

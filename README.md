@@ -2,7 +2,7 @@
 
 Language: [中文](#中文) | [English](#english)
 
-`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research. It turns a theme, ticker, or candidate pool into an auditable research workflow with market-specific source routing, real-data acquisition, valuation inputs, AI research overlays, research-debt tracking, candidate scoring, action gates, and falsification triggers.
+`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research. It turns a theme, ticker, or candidate pool into an auditable research workflow with market-specific source routing, real-data acquisition, valuation input matrices, AI research overlays, research-debt tracking, candidate scoring, action gates, and falsification triggers.
 
 Scope: research workflow, evidence discipline, rating limits, candidate prioritization, and follow-up tracking. It does not provide personalized investment advice, promise returns, or execute trades.
 
@@ -15,7 +15,7 @@ Scope: research workflow, evidence discipline, rating limits, candidate prioriti
 把“这条主线/这家公司值不值得继续研究？”转成一份可以复核、可以补数、可以比较优先级的研究结果。
 
 ```text
-先取真实数据 → 记录取数账本 → 补齐估值输入 → 标出研究债务
+先取真实数据 → 记录取数账本 → 补齐估值输入矩阵 → 标出研究债务
 → AI 研究覆盖层 → 判断产业链瓶颈 → 验证财务兑现
 → 检查估值赔率 → 观察技术位置 → 输出研究优先级与行动门控
 ```
@@ -27,7 +27,7 @@ flowchart LR
   C --> D["取数账本<br/>attempt_ledger"]
   D --> E["数据缺口<br/>data_gaps"]
   E --> F["研究债务<br/>research_debt"]
-  F --> G["估值输入<br/>股本 / 市值 / PE / PS"]
+  F --> G["估值输入矩阵<br/>价格 / 股本 / 市值 / 口径"]
   G --> H["AI 研究覆盖层<br/>层级 / 卡点 / 证据"]
   H --> I["特征矩阵<br/>财务 / 技术 / 资本动作"]
   I --> J["三镜头研究<br/>Serenity / Fundamentals / Chan"]
@@ -40,7 +40,7 @@ flowchart LR
 |---|---|
 | 报告很完整，真实数据没有取到 | 每个数据集都有取数尝试、状态、缺口类型和下一步补数任务 |
 | A 股、美股、港股源混用 | 先解析市场，再走市场专属披露源、行情源和禁用源规则 |
-| 股本、市值、PE/PS 需要决策约束 | `valuation_inputs` 默认取当前价格、总股本、总市值、货币、日期和来源口径；缺估值输入进入 `DATA_ACQUISITION` 门控，估值证据不足进入 `RESEARCH_VALIDATION` 门控 |
+| 股本、市值、PE/PS 需要决策约束 | `valuation_inputs` 默认取当前价格、总股本、总市值、货币、日期和来源口径；候选对比用 `valuation_input_matrix` 暴露估值输入，缺估值输入进入 `VALUATION_GATED` 且 `primary_gate_class=DATA_ACQUISITION`，估值证据不足进入 `VALUATION_GATED` 且 `primary_gate_class=RESEARCH_VALIDATION` |
 | 热点题材直接映射股票 | 先排产业链层级和瓶颈，再排公司候选 |
 | 财务数据来源强度不够 | A 股优先抽取 CNINFO L0 官方报告 PDF 核心财务行；仅 F10 预检会生成财报验证债务并封顶到 B |
 | 平均分掩盖关键证据缺口 | 决策矩阵用非线性门控压低优先级，并区分数据获取、研究验证和行动时机 |
@@ -54,7 +54,7 @@ flowchart LR
 | 合同层 | 统一市场、数据状态、缺口类型、评级上限、取数记录 | `scripts/data_contracts.py` |
 | 取数层 | 供应商适配、原始数据保存、基础校验 | `scripts/data_layer.py` |
 | 路由层 | 生成 manifest、attempt ledger、data gaps、research debt、manual tasks | `scripts/data_router.py` |
-| 特征层 | 技术健康、A 股资本动作、财务质量、预检级市值/PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py` |
+| 特征层 | 技术健康、A 股资本动作、财务质量、估值输入矩阵、预检级 PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py` |
 | AI 覆盖层 | 生成 AI 审阅包、校验 AI 研究 overlay、合并到候选对比 | `scripts/build_ai_review_packet.py`, `scripts/validate_ai_overlay.py`, `scripts/merge_ai_research_overlay.py` |
 | 决策层 | Thesis Quality、Evidence Confidence、Market Payoff、Action Readiness | `scripts/serenity_chan_scorecard.py` |
 | 对比层 | 多候选研究债务、层级、财务、增长、技术、资本动作和优先级 | `scripts/build_comparison_report.py` |
@@ -79,6 +79,7 @@ flowchart LR
 | `data_acquisition.research_debt` | 影响评级或行动的待补证据 |
 | `data_acquisition.manual_retrieval_tasks` | 自动取数无法完成时的人工/agent 补数任务 |
 | `valuation_inputs` | 当前价格、总股本、总市值、货币、日期和来源口径；流通股和流通市值在源可得时记录 |
+| `valuation_input_matrix` | 候选对比中的估值输入审计表，逐候选暴露价格、股本、市值、来源、口径、验证需求和 warning |
 | `data_quality` | 当前请求和完整研究的评级上限 |
 | `ai_review` | 需要 AI 判断的源强度、行业口径、warning 和升级条件 |
 | `ai_research_overlay` | AI 对产业层级、卡点、收入传导、反证和下一步问题的结构化判断 |
@@ -104,7 +105,9 @@ flowchart LR
 
 `CORE_CANDIDATE`, `STRONG_OBSERVE`, `CANDIDATE_POOL`, `WAIT_FOR_BUY_POINT`, `DATA_GATED`, `RESEARCH_GATED`, `LEAD_TRACKING`, `ELIMINATE`, `OBSERVE_ONLY`
 
-候选对比会把正式评级上限、研究优先级、行动优先级和行动门控拆开呈现。行动门控同时输出 `primary_gate` 与 `primary_gate_class`：缺数据使用 `DATA_ACQUISITION`，证据验证使用 `RESEARCH_VALIDATION`，买点等待使用 `ACTION_TIMING`。同样是 `rating_cap=B` 时，财务质量、资本动作、技术健康、产业链层级和补证任务仍会形成不同的优先级。
+候选对比会把正式评级上限、研究优先级、行动优先级和行动门控拆开呈现。行动门控同时输出 `primary_gate` 与 `primary_gate_class`：缺数据使用 `DATA_ACQUISITION`，证据验证使用 `RESEARCH_VALIDATION`，买点等待使用 `ACTION_TIMING`。同样是 `rating_cap=B` 时，财务质量、资本动作、技术健康、产业链层级和补证任务仍会形成不同的优先级。最终结论还会输出 `decision_mode`、与第二名分差和候选池数量提示，避免候选差距很小时过度确定。
+
+AI overlay 提交产业链映射、证据支持增长、反证和下一步问题；`market_implied_growth` 由 `valuation_input_matrix`、PE/PS 和同币种财务口径生成。
 
 ### 快速开始
 
@@ -162,6 +165,8 @@ python scripts/merge_ai_research_overlay.py \
   --format both
 ```
 
+可参考 `examples/comparison_688019_688322/` 中的 AI overlay benchmark。
+
 交付前门禁：
 
 ```bash
@@ -216,7 +221,7 @@ cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
 
 ```text
 Resolve market → fetch real data → record attempts → classify gaps
-→ create research debt → add valuation inputs → apply AI research overlay
+→ create research debt → add valuation input matrix → apply AI research overlay
 → score research/action priority → rank candidates → deliver guarded output
 ```
 
@@ -227,7 +232,7 @@ flowchart LR
   C --> D["Attempt Ledger"]
   D --> E["Data Gaps"]
   E --> F["Research Debt"]
-  F --> G["Valuation Inputs"]
+  F --> G["Valuation Input Matrix"]
   G --> H["AI Research Overlay"]
   H --> I["Feature Matrices"]
   I --> J["Research Lenses"]
@@ -238,12 +243,14 @@ flowchart LR
 
 | Principle | Meaning |
 |---|---|
-| No Data, No Guess | Missing critical data must create explicit limits and tasks |
+| No Data, No Guess, Exhaust Retrieval First | Critical data is routed through market-specific acquisition ladders before rating limits or action gates are set |
 | Market-Specific Routing | A-share, US, and HK sources are isolated by market |
 | Evidence Before Rating | L0/L1 evidence controls high-conviction ratings |
 | Debt Before Action | Critical research debt blocks core-candidate action states |
 | AI With Evidence | AI overlays need source references, confidence, contrary evidence, and research questions |
+| Deterministic Market-Implied Growth | Market-implied growth is derived from complete valuation inputs and computable PE/PS |
 | Ranking Over Average | Candidate priority reflects usefulness, not a neutral average |
+| Decision Clarity | Final decisions classify clear top, tentative top, and candidate cluster states |
 
 ### Key Outputs
 
@@ -255,10 +262,11 @@ flowchart LR
 | `research_debt.json` | Evidence debt that limits rating or action |
 | `manual_retrieval_tasks.json` | Concrete retrieval tasks for unresolved gaps |
 | `valuation_inputs.json` | Current price, total shares, total market cap, currency, as-of date, share-count basis, market-cap basis; float shares and float market cap when available |
+| `valuation_input_matrix` | Comparison-level audit table for price, shares, market cap, source, basis, verification need, and warnings |
 | AI review packet / overlay | Structured bridge between deterministic data and domain research judgment |
 | Official report PDFs | Downloaded CNINFO/HKEX report artifacts with `pdf_hash`; A-share and HK reports include extracted core financial lines when PDF text is readable; A-share financial-sector reports include bank, securities, or insurance profiles when required fields are extracted |
 | Scorecard result | Research rating, evidence confidence, action readiness, candidate priority |
-| Comparison report | Candidate-level acquisition, layer, financial, growth, technical, capital-action, debt, and priority matrices |
+| Comparison report | Candidate-level acquisition, layer, financial, valuation-input, growth, technical, capital-action, debt, and priority matrices |
 
 ### Key Commands
 
@@ -272,6 +280,7 @@ python scripts/validate_ai_overlay.py ai_overlay.json
 python scripts/merge_ai_research_overlay.py manifest_a.json manifest_b.json --overlay TICKER=ai_overlay.json --format both
 python scripts/validate_output_contract_json.py <contract.json>
 python scripts/run_static_evals.py
+python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-chan-real-data-smoke
 ```
 
 ### Key Files

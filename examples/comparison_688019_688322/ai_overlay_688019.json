@@ -1,0 +1,27 @@
+{
+  "symbol": "688019.SH",
+  "as_of_date": "2026-06-23",
+  "layer": "CMP slurry and wet-process materials bottleneck",
+  "bottleneck_reason": "Official filings connect product qualification, domestic substitution, revenue growth, and margin resilience to a semiconductor-materials bottleneck.",
+  "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, fab utilization, and repeat consumables demand.",
+  "serenity_fit": 0.74,
+  "evidence_supported_growth": "H3",
+  "required_next_evidence": "Verify customer contribution, capacity utilization, and product-line mix in the next L0 filing cycle.",
+  "posterior_basis": "Official report evidence supports H3 evidence-supported growth while customer and order reconciliation remain active research tasks.",
+  "key_evidence_refs": [
+    {
+      "claim": "Revenue and margin expansion are visible in official financial-report extraction.",
+      "source_ref": "CNINFO annual report line extraction",
+      "source_level": "L0",
+      "confidence": 0.82
+    }
+  ],
+  "contrary_evidence": [
+    "Customer concentration, gross-margin durability, and capacity utilization still require next-cycle tracking."
+  ],
+  "research_questions": [
+    "Verify customer/order contribution and capacity utilization in the next filing cycle.",
+    "Separate CMP slurry, wet chemicals, and adjacent materials revenue contribution before any S/A upgrade."
+  ],
+  "ai_confidence": "HIGH"
+}

@@ -116,3 +116,15 @@ Expected:
 - The real-data manifest must include `attempt_ledger`, `data_gaps`, `research_debt`, `manual_retrieval_tasks`, and `ai_review` guidance so the AI explains source level, industry reporting fit, validation warnings, and exact L0/L1 upgrade requirements.
 - A-share financial-sector cases must use dedicated industry profiles. Bank financials require net interest, deposit, loan, asset-quality, provision, and capital metrics; securities firms require net capital and risk-control ratios; insurers require insurance service revenue, insurance contract liabilities, and solvency metrics from official reports before `financials=OK` can unlock S/A eligibility.
 - HK current quote and adjusted history must be fetched when Yahoo L2 supports the symbol; HKEXnews announcements and annual/interim report PDFs must be fetched for HK issuers that resolve in the HKEX stock list; HK financials are `OK` when core report line items are extracted and `PARTIAL` only when PDF text extraction or core field coverage is incomplete.
+
+## 15. 候选对比必须暴露估值输入、精确门控和结论确定性
+User: 对比 688019 和 688322，并判断谁更值得优先研究。
+Expected:
+- `valuation_input_matrix` contains one row per candidate with price, total shares, total market cap, currency, source, basis, verification need, warnings, and errors.
+- `growth_hypothesis_matrix[*].valuation_input_ref` points back to the candidate's valuation-input row.
+- A `PARTIAL` valuation row keeps fetched audit fields such as price, shares, currency, source, and warnings, while market-implied growth stays `UNKNOWN` until complete valuation inputs are verified.
+- Cross-symbol `valuation_input_ref` values are invalid even when they use the correct `valuation_input_matrix:` prefix.
+- AI overlay supplies `evidence_supported_growth`; `market_implied_growth` is generated from valuation inputs and PE/PS.
+- Missing valuation inputs create `VALUATION_GATED`; if a lower-level quote/history blocker exists, `DATA_GATED` can remain primary while `VALUATION_GATED` stays visible as a secondary gate.
+- `final_decision` includes `decision_mode`, `score_gap_to_runner_up`, and candidate-count warning so close candidate clusters are not overstated as durable top picks.
+- AI overlay examples under `examples/comparison_688019_688322/` must validate before they can change layer mapping, evidence-supported growth, or ranking context.

@@ -22,10 +22,16 @@ REQUIRED_FIELDS = {
     "research_questions",
     "ai_confidence",
 }
+ALLOWED_FIELDS = REQUIRED_FIELDS | {
+    "layer_score",
+    "company_fit",
+    "evidence_supported_growth",
+    "required_next_evidence",
+    "posterior_basis",
+}
 SOURCE_LEVELS = {"L0", "L1", "L2", "L3", "L4"}
 AI_CONFIDENCE = {"LOW", "MEDIUM", "HIGH"}
 GROWTH = {"H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"}
-GROWTH_ORDER = {"H0": 0, "H1": 1, "H2": 2, "H3": 3, "H4": 4, "H5": 5, "UNKNOWN": -1}
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -46,10 +52,23 @@ def _string_list(value: Any, label: str, errors: list[str]) -> list[str]:
     if not isinstance(value, list):
         errors.append(f"{label} must be an array")
         return []
-    result = [str(item).strip() for item in value if str(item).strip()]
-    if len(result) != len(value):
-        errors.append(f"{label} must contain only non-empty strings")
+    result: list[str] = []
+    for item in value:
+        if not _is_non_empty_string(item):
+            errors.append(f"{label} must contain only non-empty strings")
+            continue
+        result.append(item.strip())
     return result
+
+
+def _optional_score(payload: Mapping[str, Any], key: str, errors: list[str]) -> Optional[float]:
+    if key not in payload or payload.get(key) is None:
+        return None
+    score = _as_float(payload.get(key))
+    if score is None or score < 0 or score > 100:
+        errors.append(f"{key} must be a number between 0 and 100")
+        return None
+    return round(float(score), 2)
 
 
 def validate_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -58,10 +77,16 @@ def validate_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
     missing = sorted(REQUIRED_FIELDS - set(payload))
     if missing:
         errors.append(f"overlay missing required keys: {', '.join(missing)}")
+    unsupported = sorted(set(payload) - ALLOWED_FIELDS)
+    if unsupported:
+        errors.append(f"overlay contains unsupported keys: {', '.join(unsupported)}")
 
     for key in ["symbol", "as_of_date", "layer", "bottleneck_reason", "revenue_transmission"]:
         if key in payload and not _is_non_empty_string(payload.get(key)):
             errors.append(f"{key} must be a non-empty string")
+    for key in ["required_next_evidence", "posterior_basis"]:
+        if key in payload and payload.get(key) is not None and not _is_non_empty_string(payload.get(key)):
+            errors.append(f"{key} must be a non-empty string when supplied")
 
     serenity_fit = _as_float(payload.get("serenity_fit"))
     if serenity_fit is None or serenity_fit < 0 or serenity_fit > 1:
@@ -106,23 +131,21 @@ def validate_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
     if (serenity_fit >= 0.72 or ai_confidence == "HIGH") and strong_primary_refs == 0:
         errors.append("high-fit or high-confidence overlay requires at least one L0/L1 evidence reference with confidence >= 0.65")
 
-    implied = payload.get("market_implied_growth")
     supported = payload.get("evidence_supported_growth")
-    if implied is not None and str(implied) not in GROWTH:
-        errors.append(f"market_implied_growth must be one of {sorted(GROWTH)}")
     if supported is not None and str(supported) not in GROWTH:
         errors.append(f"evidence_supported_growth must be one of {sorted(GROWTH)}")
-    if implied is not None and supported is not None:
-        implied_order = GROWTH_ORDER.get(str(implied), -1)
-        supported_order = GROWTH_ORDER.get(str(supported), -1)
-        if implied_order >= 4 and supported_order < implied_order and payload.get("h4_h5_evidence_bar_met") is not False:
-            errors.append("H4/H5 market-implied growth above evidence-supported growth requires h4_h5_evidence_bar_met=false")
+    layer_score = _optional_score(payload, "layer_score", errors)
+    company_fit = _optional_score(payload, "company_fit", errors)
 
     normalized = dict(payload)
     normalized["serenity_fit"] = round(float(serenity_fit or 0.0), 4)
-    if normalized.get("layer_score") is None:
+    if layer_score is not None:
+        normalized["layer_score"] = layer_score
+    elif normalized.get("layer_score") is None:
         normalized["layer_score"] = round(normalized["serenity_fit"] * 100.0, 2)
-    if normalized.get("company_fit") is None:
+    if company_fit is not None:
+        normalized["company_fit"] = company_fit
+    elif normalized.get("company_fit") is None:
         normalized["company_fit"] = round(normalized["serenity_fit"] * 100.0, 2)
 
     if errors:

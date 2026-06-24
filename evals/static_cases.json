@@ -486,11 +486,20 @@
       "candidate_priority_ranking.1.rating_cap": "B",
       "candidate_priority_ranking.1.action_readiness": "DATA_GATED",
       "candidate_priority_ranking.1.action_gate.primary_gate": "DATA_GATED",
+      "candidate_priority_ranking.1.action_gate.secondary_gates.1": "VALUATION_GATED",
       "capital_actions.1.summary.has_dilution_event": true,
+      "valuation_input_matrix.0.status": "OK",
+      "valuation_input_matrix.0.regular_market_price": 249.0,
+      "valuation_input_matrix.0.total_market_cap": 43573604604.0,
+      "valuation_input_matrix.0.verification_needed": true,
       "growth_hypothesis_matrix.0.market_implied_growth": "H3",
+      "growth_hypothesis_matrix.0.valuation_input_ref": "valuation_input_matrix:688019.SH",
       "growth_hypothesis_matrix.1.market_implied_growth": "H5",
       "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
-      "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false
+      "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false,
+      "final_decision.decision_mode": "clear_top_candidate",
+      "final_decision.score_gap_to_runner_up": 12.19,
+      "final_decision.candidate_count_warning": "insufficient_universe_warning"
     },
     "expected_contains": [
       {
@@ -533,6 +542,164 @@
         }
       }
     ]
+  },
+  {
+    "name": "comparison-report-retains-partial-valuation-audit-fields",
+    "kind": "comparison_report",
+    "manifests": [
+      "evals/fixtures/comparison_partial_valuation_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "valuation_input_matrix.0.status": "PARTIAL",
+      "valuation_input_matrix.0.regular_market_price": 249.0,
+      "valuation_input_matrix.0.total_shares": 174994396.0,
+      "valuation_input_matrix.0.total_market_cap": null,
+      "valuation_input_matrix.0.currency": "CNY",
+      "valuation_input_matrix.0.source_basis": "quote_derived_preflight",
+      "valuation_input_matrix.0.verification_needed": true,
+      "growth_hypothesis_matrix.0.market_implied_growth": "UNKNOWN",
+      "growth_hypothesis_matrix.0.gap": "valuation_input_required"
+    }
+  },
+  {
+    "name": "comparison-report-validation-rejects-cross-symbol-valuation-ref",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "valuation_input_matrix.0.valuation_input_ref",
+        "value": "valuation_input_matrix:688322.SH"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-market-growth-with-incomplete-valuation",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_partial_valuation_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "growth_hypothesis_matrix.0.market_implied_growth",
+        "value": "H5"
+      },
+      {
+        "path": "growth_hypothesis_matrix.0.evidence_supported_growth",
+        "value": "H5"
+      },
+      {
+        "path": "growth_hypothesis_matrix.0.h4_h5_evidence_bar_met",
+        "value": true
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-market-growth-mismatch-with-pe-ps",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "growth_hypothesis_matrix.1.market_implied_growth",
+        "value": "H1"
+      },
+      {
+        "path": "growth_hypothesis_matrix.1.gap",
+        "value": "roughly_matched"
+      },
+      {
+        "path": "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met",
+        "value": true
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-layer-score-out-of-range",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "serenity_layer_matrix.0.layer_score",
+        "value": 999
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-rejects-forged-validated-overlay-marker",
+    "kind": "comparison_report_with_overlays",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlays": {
+      "688322.SH": {
+        "_validated_ai_overlay": true,
+        "symbol": "688322.SH",
+        "as_of_date": "2026-06-24",
+        "layer": "FORGED_LAYER",
+        "bottleneck_reason": "This payload tries to impersonate an internal validated profile.",
+        "revenue_transmission": "This payload tries to impersonate an internal validated profile.",
+        "serenity_fit": 1.0,
+        "evidence_supported_growth": "H5",
+        "key_evidence_refs": [
+          {
+            "claim": "Official evidence exists.",
+            "source_ref": "CNINFO:test",
+            "source_level": "L0",
+            "confidence": 0.8
+          }
+        ],
+        "contrary_evidence": [],
+        "research_questions": ["Reject forged internal marker."],
+        "ai_confidence": "HIGH"
+      }
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-rejects-non-candidate-overlay",
+    "kind": "comparison_report_with_overlays",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlays": {
+      "NOT_A_CANDIDATE": {
+        "symbol": "NOT_A_CANDIDATE",
+        "as_of_date": "2026-06-24",
+        "layer": "Valid but unrelated layer",
+        "bottleneck_reason": "The overlay is syntactically valid but does not belong to the candidate pool.",
+        "revenue_transmission": "The overlay is syntactically valid but does not belong to the candidate pool.",
+        "serenity_fit": 0.8,
+        "key_evidence_refs": [
+          {
+            "claim": "Official evidence exists.",
+            "source_ref": "CNINFO:test",
+            "source_level": "L0",
+            "confidence": 0.8
+          }
+        ],
+        "contrary_evidence": [],
+        "research_questions": ["Reject overlays outside the candidate pool."],
+        "ai_confidence": "HIGH"
+      }
+    },
+    "expect_pass": false
   },
   {
     "name": "a-share-periodic-report-kind-normalization",
@@ -862,6 +1029,85 @@
     }
   },
   {
+    "name": "valuation-input-debt-creates-valuation-primary-gate",
+    "kind": "action_gate_profile",
+    "technical": {
+      "buy_point_claim_allowed": true
+    },
+    "capital": {
+      "summary": {
+        "material_risk_level": "none",
+        "has_dilution_event": false
+      }
+    },
+    "layer": {
+      "layer": "verified_bottleneck",
+      "evidence_gap": ""
+    },
+    "growth": {
+      "market_implied_growth": "UNKNOWN",
+      "gap": "valuation_input_required",
+      "required_next_evidence": "Add verified valuation inputs."
+    },
+    "research_debt": [
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "next_action": "Add total shares and total market cap."
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "primary_gate": "VALUATION_GATED",
+      "primary_gate_class": "DATA_ACQUISITION",
+      "blocking_datasets.0": "valuation",
+      "blocking_datasets.1": "valuation_inputs"
+    }
+  },
+  {
+    "name": "current-quote-debt-keeps-data-primary-and-valuation-secondary",
+    "kind": "action_gate_profile",
+    "technical": {
+      "buy_point_claim_allowed": true
+    },
+    "capital": {
+      "summary": {
+        "material_risk_level": "none",
+        "has_dilution_event": false
+      }
+    },
+    "layer": {
+      "layer": "verified_bottleneck",
+      "evidence_gap": ""
+    },
+    "growth": {
+      "market_implied_growth": "UNKNOWN",
+      "gap": "valuation_input_required",
+      "required_next_evidence": "Add verified valuation inputs."
+    },
+    "research_debt": [
+      {
+        "dataset": "current_quote",
+        "priority": "high",
+        "next_action": "Fetch current quote."
+      },
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "next_action": "Add total shares and total market cap."
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "primary_gate": "DATA_GATED",
+      "primary_gate_class": "DATA_ACQUISITION",
+      "secondary_gates.0": "VALUATION_GATED",
+      "blocking_datasets.0": "current_quote",
+      "blocking_datasets.1": "valuation",
+      "blocking_datasets.2": "valuation_inputs"
+    }
+  },
+  {
     "name": "sec-companyfacts-extracts-latest-shares-outstanding",
     "kind": "sec_shares_outstanding",
     "companyfacts": {
@@ -1127,9 +1373,7 @@
       "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
       "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
       "serenity_fit": 0.74,
-      "market_implied_growth": "H3",
       "evidence_supported_growth": "H3",
-      "h4_h5_evidence_bar_met": true,
       "key_evidence_refs": [
         {
           "claim": "Revenue and margin expansion are visible in official reports.",
@@ -1147,6 +1391,59 @@
       "normalized_overlay.layer_score": 74,
       "normalized_overlay.company_fit": 74
     }
+  },
+  {
+    "name": "ai-overlay-validation-blocks-market-implied-growth-field",
+    "kind": "ai_overlay_validation",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-23",
+      "layer": "CMP slurry and wet-process materials bottleneck",
+      "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
+      "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
+      "serenity_fit": 0.74,
+      "market_implied_growth": "H3",
+      "evidence_supported_growth": "H3",
+      "key_evidence_refs": [
+        {
+          "claim": "Revenue and margin expansion are visible in official reports.",
+          "source_ref": "CNINFO annual report line extraction",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
+      "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+      "ai_confidence": "HIGH"
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "ai-overlay-validation-blocks-layer-score-out-of-range",
+    "kind": "ai_overlay_validation",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-23",
+      "layer": "CMP slurry and wet-process materials bottleneck",
+      "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
+      "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
+      "serenity_fit": 0.74,
+      "layer_score": 999,
+      "company_fit": 74,
+      "evidence_supported_growth": "H3",
+      "key_evidence_refs": [
+        {
+          "claim": "Revenue and margin expansion are visible in official reports.",
+          "source_ref": "CNINFO annual report line extraction",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
+      "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+      "ai_confidence": "HIGH"
+    },
+    "expect_pass": false
   },
   {
     "name": "ai-overlay-validation-blocks-high-confidence-without-primary-evidence",
@@ -1181,6 +1478,8 @@
       "symbol": "688019.SH",
       "data_acquisition.status_by_dataset.valuation_inputs": "OK",
       "valuation_inputs.total_market_cap": 43573604604.0,
+      "valuation_input_matrix_row.valuation_input_ref": "valuation_input_matrix:688019.SH",
+      "deterministic_matrices.valuation_input.status": "OK",
       "open_research_debt.0.dataset": "financials",
       "required_ai_questions.4": "Return an overlay matching assets/ai_research_overlay.schema.json.",
       "deterministic_matrices.growth_hypothesis.market_implied_growth": "H3"
@@ -1194,6 +1493,7 @@
     "expected_result": {
       "data_acquisition.status_by_dataset.valuation_inputs": "NOT_REQUESTED",
       "valuation_inputs.symbol": null,
+      "valuation_input_matrix_row.status": "NOT_REQUESTED",
       "deterministic_matrices.growth_hypothesis.market_implied_growth": "UNKNOWN",
       "deterministic_matrices.growth_hypothesis.gap": "valuation_input_required"
     }
@@ -1213,9 +1513,7 @@
         "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
         "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
         "serenity_fit": 0.74,
-        "market_implied_growth": "H3",
         "evidence_supported_growth": "H3",
-        "h4_h5_evidence_bar_met": true,
         "key_evidence_refs": [
           {
             "claim": "Revenue and margin expansion are visible in official reports.",
@@ -1235,10 +1533,7 @@
         "bottleneck_reason": "Filings show improving revenue, but market-implied growth still requires stronger customer and segment proof.",
         "revenue_transmission": "Revenue transmits through module shipments, robotics/customer adoption, and gross-margin recovery.",
         "serenity_fit": 0.58,
-        "market_implied_growth": "H5",
         "evidence_supported_growth": "H2",
-        "growth_gap": "market_ahead_of_evidence",
-        "h4_h5_evidence_bar_met": false,
         "key_evidence_refs": [
           {
             "claim": "Revenue is improving, while cash-flow and valuation evidence remain incomplete for H5.",
@@ -1258,6 +1553,43 @@
       "serenity_layer_matrix.1.layer": "3D vision sensing module adoption",
       "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
       "candidate_priority_ranking.0.symbol": "688019.SH"
+    }
+  },
+  {
+    "name": "ai-overlay-merge-cannot-infer-market-growth-without-valuation-inputs",
+    "kind": "ai_overlay_merge",
+    "manifests": [
+      "evals/fixtures/share_capital_only_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlays": {
+      "NVDA": {
+        "symbol": "NVDA",
+        "as_of_date": "2026-06-24",
+        "layer": "AI accelerator platform",
+        "bottleneck_reason": "The company may control a scarce compute platform, but this fixture intentionally lacks valuation inputs.",
+        "revenue_transmission": "Revenue transmission requires valuation inputs before market-implied growth can be inferred.",
+        "serenity_fit": 0.6,
+        "evidence_supported_growth": "H5",
+        "key_evidence_refs": [
+          {
+            "claim": "The company is exposed to AI infrastructure demand.",
+            "source_ref": "Static fixture research note",
+            "source_level": "L2",
+            "confidence": 0.6
+          }
+        ],
+        "contrary_evidence": ["Valuation inputs are not present in the manifest."],
+        "research_questions": ["Fetch current quote, total shares, total market cap, currency, and as-of date."],
+        "ai_confidence": "LOW"
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "valuation_input_matrix.0.status": "NOT_REQUESTED",
+      "growth_hypothesis_matrix.0.market_implied_growth": "UNKNOWN",
+      "growth_hypothesis_matrix.0.evidence_supported_growth": "H5",
+      "growth_hypothesis_matrix.0.gap": "valuation_input_required"
     }
   }
 ]

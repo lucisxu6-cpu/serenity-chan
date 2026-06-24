@@ -14,9 +14,11 @@ from typing import Any, Mapping, Optional, Sequence
 try:
     from a_share_capital_actions import analyze_announcements
     from technical_health import analyze_price_csv
+    from validate_ai_overlay import validate_overlay
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.build_comparison_report
     from scripts.a_share_capital_actions import analyze_announcements
     from scripts.technical_health import analyze_price_csv
+    from scripts.validate_ai_overlay import validate_overlay
 
 
 RATING_SCORE_LIMIT = {"S": 100.0, "A": 84.0, "B": 72.0, "C": 55.0, "D": 35.0, "OBSERVE_ONLY": 25.0}
@@ -35,6 +37,7 @@ ACTION_GATE_TYPES = {
     "CAPITAL_ACTION_GATED",
 }
 ACTION_GATE_CLASSES = {"NONE", "DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"}
+DECISION_MODES = {"single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster"}
 ACTION_BLOCKING_DEBT_DATASETS = {
     "current_quote",
     "price_history_adjusted",
@@ -145,6 +148,63 @@ def _valuation_payload(manifest: Mapping[str, Any]) -> Mapping[str, Any]:
     if isinstance(payload, Mapping):
         return payload
     return {}
+
+
+def _valuation_audit_payload(manifest: Mapping[str, Any]) -> Mapping[str, Any]:
+    payload = _load_result_json(manifest, "valuation_inputs")
+    if isinstance(payload, Mapping):
+        return payload
+    return {}
+
+
+def _dataset_status(manifest: Mapping[str, Any], dataset: str) -> str:
+    acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
+    status_by_dataset = acquisition.get("status_by_dataset") if isinstance(acquisition.get("status_by_dataset"), Mapping) else {}
+    data_quality = manifest.get("data_quality") if isinstance(manifest.get("data_quality"), Mapping) else {}
+    result = _result_for_dataset(manifest, dataset)
+    return str(status_by_dataset.get(dataset) or data_quality.get(dataset) or result.get("status") or "NOT_REQUESTED")
+
+
+def _list_field(payload: Mapping[str, Any], key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]
+
+
+def _valuation_input_row(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    symbol = _symbol(manifest)
+    result = _result_for_dataset(manifest, "valuation_inputs")
+    payload = _valuation_audit_payload(manifest)
+    status = _dataset_status(manifest, "valuation_inputs")
+    source_level = str(result.get("source_level") or payload.get("source_level") or "")
+    warnings = _list_field(result, "warnings") + _list_field(payload, "warnings")
+    errors = _list_field(result, "errors") + _list_field(payload, "errors")
+    verification_needed = bool(
+        payload.get("requires_l0_l1_verification")
+        or (status != "OK")
+        or (source_level and not source_level.startswith(("L0", "L1")))
+    )
+    return {
+        "symbol": symbol,
+        "valuation_input_ref": f"valuation_input_matrix:{symbol}",
+        "status": status,
+        "regular_market_price": _round(_as_float(payload.get("regular_market_price"))),
+        "total_shares": _round(_as_float(payload.get("total_shares"))),
+        "float_shares": _round(_as_float(payload.get("float_shares"))),
+        "total_market_cap": _round(_as_float(payload.get("total_market_cap"))),
+        "float_market_cap": _round(_as_float(payload.get("float_market_cap"))),
+        "currency": _currency_code(payload.get("currency")),
+        "as_of_date": str(payload.get("as_of_date") or result.get("as_of_date") or ""),
+        "source_name": str(result.get("source") or payload.get("source") or ""),
+        "source_level": source_level,
+        "source_basis": str(payload.get("source_basis") or ""),
+        "share_count_basis": str(payload.get("share_count_basis") or ""),
+        "market_cap_basis": str(payload.get("market_cap_basis") or ""),
+        "verification_needed": verification_needed,
+        "warnings": warnings,
+        "errors": errors,
+    }
 
 
 def _symbol(manifest: Mapping[str, Any]) -> str:
@@ -447,6 +507,49 @@ def _capital_summary(manifest: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _profile_from_overlay(symbol: str, overlay: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(overlay, Mapping):
+        raise ValueError(f"{symbol} overlay must be a JSON object")
+    validated = validate_overlay(overlay)["normalized_overlay"]
+    overlay_symbol = str(validated.get("symbol") or "")
+    if overlay_symbol != symbol:
+        raise ValueError(f"overlay assignment {symbol} does not match overlay.symbol {overlay_symbol}")
+    profile = {
+        "layer": validated["layer"],
+        "bottleneck_reason": validated["bottleneck_reason"],
+        "layer_score": validated["layer_score"],
+        "company_fit": validated["company_fit"],
+        "serenity_fit": validated["serenity_fit"],
+        "revenue_transmission": validated["revenue_transmission"],
+        "evidence_gap": "; ".join(validated.get("research_questions", [])) or "AI overlay supplied evidence-backed layer mapping.",
+        "ai_confidence": validated["ai_confidence"],
+        "key_evidence_refs": validated.get("key_evidence_refs", []),
+        "contrary_evidence": validated.get("contrary_evidence", []),
+        "research_questions": validated.get("research_questions", []),
+    }
+    for key in ["evidence_supported_growth", "required_next_evidence", "posterior_basis"]:
+        if key in validated:
+            profile[key] = validated[key]
+    return profile
+
+
+def _overlay_profiles(manifests: Sequence[Mapping[str, Any]], overlays: Optional[Mapping[str, Mapping[str, Any]]]) -> dict[str, dict[str, Any]]:
+    if overlays is None:
+        return {}
+    if not isinstance(overlays, Mapping):
+        raise ValueError("overlays must be a mapping from candidate symbol to overlay JSON object")
+    candidate_symbols = {_symbol(manifest) for manifest in manifests}
+    normalized_overlays = {str(symbol): overlay for symbol, overlay in overlays.items()}
+    overlay_symbols = set(normalized_overlays)
+    unknown = sorted(overlay_symbols - candidate_symbols)
+    if unknown:
+        raise ValueError(f"overlay supplied for non-candidate symbol(s): {', '.join(unknown)}")
+    return {
+        symbol: _profile_from_overlay(symbol, normalized_overlays[symbol])
+        for symbol in sorted(overlay_symbols)
+    }
+
+
 def _serenity_layer(manifest: Mapping[str, Any], profile: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     profile = profile or {}
     layer = str(profile.get("layer") or "AI_REVIEW_REQUIRED")
@@ -516,8 +619,9 @@ def _growth_hypothesis(manifest: Mapping[str, Any], financial: Mapping[str, Any]
     currency_mismatch = bool(financial_currency and valuation_currency and financial_currency != valuation_currency)
     pe = None if currency_mismatch else market_cap / net_income if market_cap is not None and net_income and net_income > 0 else None
     ps = None if currency_mismatch else market_cap / revenue if market_cap is not None and revenue and revenue > 0 else None
-    market_implied = str(profile.get("market_implied_growth") or ("UNKNOWN" if currency_mismatch else _growth_level_from_valuation(pe, ps)))
-    if currency_mismatch and not profile.get("market_implied_growth"):
+    valuation_can_infer_growth = bool(valuation_payload) and not currency_mismatch and market_cap is not None and (pe is not None or ps is not None)
+    market_implied = _growth_level_from_valuation(pe, ps) if valuation_can_infer_growth else "UNKNOWN"
+    if currency_mismatch:
         gap = "valuation_currency_reconciliation_required"
         required = f"Convert valuation market cap from {valuation_currency} to the financial reporting currency {financial_currency}, or provide a verified same-currency valuation basis."
     elif market_implied == "UNKNOWN":
@@ -527,23 +631,29 @@ def _growth_hypothesis(manifest: Mapping[str, Any], financial: Mapping[str, Any]
         implied_order = GROWTH_ORDER.get(market_implied, -1)
         supported_order = GROWTH_ORDER.get(supported, -1)
         if supported_order >= implied_order and implied_order >= 0:
-            gap = str(profile.get("growth_gap") or "roughly_matched")
+            gap = "roughly_matched"
         elif implied_order >= 4 and supported_order < implied_order:
-            gap = str(profile.get("growth_gap") or "market_ahead_of_evidence")
+            gap = "market_ahead_of_evidence"
         else:
-            gap = str(profile.get("growth_gap") or "requires_ai_review")
+            gap = "requires_ai_review"
         required = str(profile.get("required_next_evidence") or "Verify share capital, segment revenue, orders, capacity, and valuation with L0/L1 evidence.")
     implied_order = GROWTH_ORDER.get(market_implied, -1)
     supported_order = GROWTH_ORDER.get(supported, -1)
-    h4_h5_bar_met = bool(profile.get("h4_h5_evidence_bar_met", implied_order < 4 or supported_order >= implied_order))
+    h4_h5_bar_met = implied_order < 4 or supported_order >= implied_order
+    posterior_basis = (
+        "Preliminary valuation from current quote, total shares, total market cap, revenue, and net income; verify valuation and financial lines with L0/L1 evidence."
+        if valuation_can_infer_growth
+        else "Market-implied growth is blocked until complete valuation inputs and same-currency financial bases are available."
+    )
     return {
         "symbol": str(financial.get("symbol") or ""),
+        "valuation_input_ref": f"valuation_input_matrix:{financial.get('symbol') or ''}",
         "market_implied_growth": market_implied,
         "evidence_supported_growth": supported,
         "gap": gap,
         "h4_h5_evidence_bar_met": h4_h5_bar_met,
         "required_next_evidence": required,
-        "posterior_basis": str(profile.get("posterior_basis") or "Preliminary valuation from current quote, total shares, total market cap, revenue, and net income; verify valuation and financial lines with L0/L1 evidence."),
+        "posterior_basis": str(profile.get("posterior_basis") or posterior_basis),
         "total_market_cap": _round(market_cap),
         "total_shares": _round(total_shares),
         "financial_currency": financial_currency,
@@ -552,8 +662,7 @@ def _growth_hypothesis(manifest: Mapping[str, Any], financial: Mapping[str, Any]
         "pe_preflight": _round(pe),
         "ps_preflight": _round(ps),
         "valuation_basis": str(
-            profile.get("valuation_basis")
-            or valuation_payload.get("market_cap_basis")
+            valuation_payload.get("market_cap_basis")
             or valuation_payload.get("share_count_basis")
             or ""
         ),
@@ -790,6 +899,35 @@ def _priority_score(
     return round(combined_score, 2), round(research_score, 2), round(action_score, 2), action, reason, gate
 
 
+def _final_decision(ranked: Sequence[Mapping[str, Any]], next_actions: Sequence[str]) -> dict[str, Any]:
+    top = ranked[0] if ranked else {}
+    top_symbol = str(top.get("symbol") or "")
+    top_score = _as_float(top.get("priority_score"))
+    runner_up_score = _as_float(ranked[1].get("priority_score")) if len(ranked) > 1 else None
+    score_gap = _round(top_score - runner_up_score) if top_score is not None and runner_up_score is not None else None
+    if score_gap is None:
+        decision_mode = "single_candidate"
+        decision = f"Use {top_symbol} as the research object and keep action constrained by open gates."
+    elif score_gap >= 10.0:
+        decision_mode = "clear_top_candidate"
+        decision = f"Use {top_symbol} as the first research object; the priority gap is clear, while rating and action remain constrained by open gates."
+    elif score_gap >= 5.0:
+        decision_mode = "tentative_top_candidate"
+        decision = f"Start with {top_symbol}, then resolve the runner-up evidence gap before treating the ranking as durable."
+    else:
+        decision_mode = "candidate_cluster"
+        decision = "Treat the leading names as a candidate cluster and resolve differentiating research debt before naming a durable top candidate."
+    candidate_count_warning = "insufficient_universe_warning" if len(ranked) < 3 else ""
+    return {
+        "top_candidate": top_symbol,
+        "decision_mode": decision_mode,
+        "score_gap_to_runner_up": score_gap,
+        "candidate_count_warning": candidate_count_warning,
+        "decision": decision,
+        "next_research_actions": list(next_actions)[:12],
+    }
+
+
 def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     required = {
@@ -798,6 +936,7 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
         "data_acquisition_summary",
         "serenity_layer_matrix",
         "financial_quality_matrix",
+        "valuation_input_matrix",
         "growth_hypothesis_matrix",
         "technical_timing_matrix",
         "capital_actions",
@@ -808,14 +947,60 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     missing = sorted(required - set(report))
     if missing:
         errors.append(f"comparison report missing keys: {', '.join(missing)}")
+    final_decision = report.get("final_decision")
+    if not isinstance(final_decision, Mapping):
+        errors.append("final_decision must be an object")
+    else:
+        for field in ["top_candidate", "decision_mode", "score_gap_to_runner_up", "candidate_count_warning", "decision", "next_research_actions"]:
+            if field not in final_decision:
+                errors.append(f"final_decision missing {field}")
+        if str(final_decision.get("decision_mode") or "") not in DECISION_MODES:
+            errors.append("final_decision.decision_mode is unknown")
+        gap = final_decision.get("score_gap_to_runner_up")
+        if gap is not None and _as_float(gap) is None:
+            errors.append("final_decision.score_gap_to_runner_up must be numeric or null")
+        if not isinstance(final_decision.get("next_research_actions", []), list):
+            errors.append("final_decision.next_research_actions must be an array")
     candidates = report.get("candidates", [])
     if not isinstance(candidates, list) or len(candidates) < 2:
         errors.append("comparison report requires at least two candidates")
     symbols = {str(item.get("symbol")) for item in candidates if isinstance(item, Mapping)}
-    for key in ["data_acquisition_summary", "serenity_layer_matrix", "financial_quality_matrix", "growth_hypothesis_matrix", "technical_timing_matrix", "capital_actions"]:
+    for key in ["data_acquisition_summary", "serenity_layer_matrix", "financial_quality_matrix", "valuation_input_matrix", "growth_hypothesis_matrix", "technical_timing_matrix", "capital_actions"]:
         rows = report.get(key, [])
         if not isinstance(rows, list) or {str(item.get("symbol")) for item in rows if isinstance(item, Mapping)} != symbols:
             errors.append(f"{key} must contain one row per candidate")
+    for row in report.get("serenity_layer_matrix", []) if isinstance(report.get("serenity_layer_matrix"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        for field in ["layer_score", "company_fit"]:
+            value = row.get(field)
+            if value is None:
+                continue
+            score = _as_float(value)
+            if score is None or score < 0 or score > 100:
+                errors.append(f"{row.get('symbol')} serenity_layer_matrix.{field} must be 0-100 or null")
+    for row in report.get("valuation_input_matrix", []) if isinstance(report.get("valuation_input_matrix"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        status = str(row.get("status") or "")
+        expected_ref = f"valuation_input_matrix:{row.get('symbol')}"
+        if row.get("valuation_input_ref") != expected_ref:
+            errors.append(f"{row.get('symbol')} valuation input row requires valuation_input_ref={expected_ref}")
+        if status == "OK":
+            for field in [
+                "regular_market_price",
+                "total_shares",
+                "total_market_cap",
+                "currency",
+                "as_of_date",
+                "source_name",
+                "source_level",
+                "source_basis",
+                "share_count_basis",
+                "market_cap_basis",
+            ]:
+                if row.get(field) in (None, ""):
+                    errors.append(f"{row.get('symbol')} valuation_input_matrix OK row missing {field}")
     ranking = report.get("candidate_priority_ranking", [])
     if not isinstance(ranking, list) or len(ranking) != len(symbols):
         errors.append("candidate_priority_ranking must contain one row per candidate")
@@ -888,6 +1073,46 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
             errors.append(f"{row.get('symbol')} market_implied_growth is unknown: {implied}")
         if supported not in GROWTH_ORDER:
             errors.append(f"{row.get('symbol')} evidence_supported_growth is unknown: {supported}")
+        if row.get("valuation_input_ref") != f"valuation_input_matrix:{row.get('symbol')}":
+            errors.append(f"{row.get('symbol')} growth row must reference valuation_input_matrix")
+        valuation_rows = report.get("valuation_input_matrix", [])
+        valuation_row = next(
+            (
+                item for item in valuation_rows
+                if isinstance(item, Mapping) and item.get("symbol") == row.get("symbol")
+            ),
+            {},
+        ) if isinstance(valuation_rows, list) else {}
+        valuation_complete = (
+            isinstance(valuation_row, Mapping)
+            and valuation_row.get("status") == "OK"
+            and valuation_row.get("total_market_cap") is not None
+            and bool(str(valuation_row.get("currency") or "").strip())
+            and (row.get("pe_preflight") is not None or row.get("ps_preflight") is not None)
+        )
+        if implied != "UNKNOWN" and not valuation_complete:
+            errors.append(f"{row.get('symbol')} market_implied_growth requires complete valuation inputs and computed PE/PS")
+        expected_implied = _growth_level_from_valuation(_as_float(row.get("pe_preflight")), _as_float(row.get("ps_preflight"))) if valuation_complete else "UNKNOWN"
+        if implied != expected_implied:
+            errors.append(f"{row.get('symbol')} market_implied_growth must match valuation-derived PE/PS tier {expected_implied}")
+        if not isinstance(row.get("h4_h5_evidence_bar_met"), bool):
+            errors.append(f"{row.get('symbol')} h4_h5_evidence_bar_met must be boolean")
+        else:
+            expected_bar = GROWTH_ORDER.get(implied, -1) < 4 or GROWTH_ORDER.get(supported, -1) >= GROWTH_ORDER.get(implied, -1)
+            if row.get("h4_h5_evidence_bar_met") is not expected_bar:
+                errors.append(f"{row.get('symbol')} h4_h5_evidence_bar_met must match market/evidence growth tiers")
+        if row.get("valuation_currency_match") is False:
+            expected_gap = "valuation_currency_reconciliation_required"
+        elif implied == "UNKNOWN":
+            expected_gap = "valuation_input_required"
+        elif GROWTH_ORDER.get(supported, -1) >= GROWTH_ORDER.get(implied, -1) and GROWTH_ORDER.get(implied, -1) >= 0:
+            expected_gap = "roughly_matched"
+        elif GROWTH_ORDER.get(implied, -1) >= 4 and GROWTH_ORDER.get(supported, -1) < GROWTH_ORDER.get(implied, -1):
+            expected_gap = "market_ahead_of_evidence"
+        else:
+            expected_gap = "requires_ai_review"
+        if row.get("gap") != expected_gap:
+            errors.append(f"{row.get('symbol')} growth gap must be {expected_gap}")
         if implied in {"H4", "H5"} and GROWTH_ORDER.get(supported, -1) < GROWTH_ORDER[implied]:
             if row.get("h4_h5_evidence_bar_met") is not False:
                 errors.append(f"{row.get('symbol')} H4/H5 valuation gap requires h4_h5_evidence_bar_met=false")
@@ -928,16 +1153,17 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     return errors
 
 
-def build_comparison_report(manifest_paths: Sequence[Path], profiles: Optional[Mapping[str, Mapping[str, Any]]] = None) -> dict[str, Any]:
+def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[Mapping[str, Mapping[str, Any]]] = None) -> dict[str, Any]:
     manifests = [_load_manifest(path) for path in manifest_paths]
     if len(manifests) < 2:
         raise ValueError("comparison requires at least two manifest paths")
-    profiles = profiles or {}
+    profiles = _overlay_profiles(manifests, overlays)
 
     candidates = []
     data_rows = []
     layer_rows = []
     financial_rows = []
+    valuation_rows = []
     growth_rows = []
     technical_rows = []
     capital_rows = []
@@ -949,6 +1175,7 @@ def build_comparison_report(manifest_paths: Sequence[Path], profiles: Optional[M
         profile = profiles.get(symbol, {})
         data_summary = _data_summary(manifest)
         financial = _financial_quality(manifest)
+        valuation = _valuation_input_row(manifest)
         technical = _technical_summary(manifest)
         capital = _capital_summary(manifest)
         layer = _serenity_layer(manifest, profile)
@@ -967,6 +1194,7 @@ def build_comparison_report(manifest_paths: Sequence[Path], profiles: Optional[M
         data_rows.append(data_summary)
         layer_rows.append(layer)
         financial_rows.append(financial)
+        valuation_rows.append(valuation)
         growth_rows.append(growth)
         technical_rows.append(technical)
         capital_rows.append(capital)
@@ -1002,16 +1230,13 @@ def build_comparison_report(manifest_paths: Sequence[Path], profiles: Optional[M
         "data_acquisition_summary": data_rows,
         "serenity_layer_matrix": layer_rows,
         "financial_quality_matrix": financial_rows,
+        "valuation_input_matrix": valuation_rows,
         "growth_hypothesis_matrix": growth_rows,
         "technical_timing_matrix": technical_rows,
         "capital_actions": capital_rows,
         "research_debt": debt_rows,
         "candidate_priority_ranking": ranked,
-        "final_decision": {
-            "top_candidate": ranked[0]["symbol"],
-            "decision": "Use the top-ranked candidate as the first research object, while keeping rating and action constrained by open research debt.",
-            "next_research_actions": next_actions[:12],
-        },
+        "final_decision": _final_decision(ranked, next_actions),
     }
     errors = validate_comparison_report(report)
     if errors:
@@ -1027,6 +1252,10 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     ]
     decision = report.get("final_decision", {}) if isinstance(report.get("final_decision"), Mapping) else {}
     lines.append(f"- 优先候选：{decision.get('top_candidate', '')}")
+    lines.append(f"- 决策模式：{decision.get('decision_mode', '')}")
+    lines.append(f"- 与第二名分差：{decision.get('score_gap_to_runner_up', '')}")
+    if decision.get("candidate_count_warning"):
+        lines.append(f"- 候选池提示：{decision.get('candidate_count_warning')}")
     lines.append(f"- 决策说明：{decision.get('decision', '')}")
     lines.extend(["", "## 1. 候选优先级", "| Rank | Symbol | Research | Action | Priority | Gate | Readiness | Reason |", "|---:|---|---:|---:|---:|---|---|---|"])
     for row in report.get("candidate_priority_ranking", []):
@@ -1049,15 +1278,20 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     for row in report.get("financial_quality_matrix", []):
         if isinstance(row, Mapping):
             lines.append(f"| {row.get('symbol')} | {row.get('score')} | {row.get('revenue_growth_pct')} | {row.get('net_margin_pct')} | {row.get('ocf_to_net_income_pct')} | {row.get('debt_to_assets_pct')} | {row.get('label', '')} |")
-    lines.extend(["", "## 4. 市场隐含增长 vs 证据支持增长", "| Symbol | Market Implied | Evidence Supported | Gap | Required Evidence |", "|---|---|---|---|---|"])
+    lines.extend(["", "## 4. 估值输入矩阵", "| Symbol | Status | Price | Shares | Market Cap | Currency | Source | Basis | Verify |", "|---|---|---:|---:|---:|---|---|---|---|"])
+    for row in report.get("valuation_input_matrix", []):
+        if isinstance(row, Mapping):
+            basis = row.get("market_cap_basis") or row.get("share_count_basis") or row.get("source_basis")
+            lines.append(f"| {row.get('symbol')} | {row.get('status')} | {row.get('regular_market_price')} | {row.get('total_shares')} | {row.get('total_market_cap')} | {row.get('currency')} | {row.get('source_name')} | {basis} | {row.get('verification_needed')} |")
+    lines.extend(["", "## 5. 市场隐含增长 vs 证据支持增长", "| Symbol | Valuation Ref | Market Implied | Evidence Supported | Gap | Required Evidence |", "|---|---|---|---|---|---|"])
     for row in report.get("growth_hypothesis_matrix", []):
         if isinstance(row, Mapping):
-            lines.append(f"| {row.get('symbol')} | {row.get('market_implied_growth')} | {row.get('evidence_supported_growth')} | {row.get('gap')} | {row.get('required_next_evidence')} |")
-    lines.extend(["", "## 5. 技术健康与缠论动作", "| Symbol | Trend State | Chan Action | Buy Point Claim | Note |", "|---|---|---|---|---|"])
+            lines.append(f"| {row.get('symbol')} | {row.get('valuation_input_ref')} | {row.get('market_implied_growth')} | {row.get('evidence_supported_growth')} | {row.get('gap')} | {row.get('required_next_evidence')} |")
+    lines.extend(["", "## 6. 技术健康与缠论动作", "| Symbol | Trend State | Chan Action | Buy Point Claim | Note |", "|---|---|---|---|---|"])
     for row in report.get("technical_timing_matrix", []):
         if isinstance(row, Mapping):
             lines.append(f"| {row.get('symbol')} | {row.get('trend_state')} | {row.get('chan_action')} | {row.get('buy_point_claim_allowed')} | {row.get('decision_note')} |")
-    lines.extend(["", "## 6. A 股资本动作", "| Symbol | Risk | Action Types | Research Debt |", "|---|---|---|---|"])
+    lines.extend(["", "## 7. A 股资本动作", "| Symbol | Risk | Action Types | Research Debt |", "|---|---|---|---|"])
     for row in report.get("capital_actions", []):
         if isinstance(row, Mapping):
             summary = row.get("summary", {}) if isinstance(row.get("summary"), Mapping) else {}
@@ -1066,27 +1300,13 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _load_profiles(values: Sequence[str]) -> dict[str, Mapping[str, Any]]:
-    profiles: dict[str, Mapping[str, Any]] = {}
-    for value in values:
-        if "=" not in value:
-            raise ValueError("--profile must use SYMBOL=path")
-        symbol, path_text = value.split("=", 1)
-        loaded = _load_json(Path(path_text))
-        if not isinstance(loaded, Mapping):
-            raise ValueError(f"profile for {symbol} must be a JSON object")
-        profiles[symbol] = loaded
-    return profiles
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build Serenity + Chan candidate comparison report")
     parser.add_argument("manifests", nargs="+", help="fetch manifest JSON paths")
-    parser.add_argument("--profile", action="append", default=[], help="Optional SYMBOL=profile.json qualitative layer/growth inputs")
     parser.add_argument("--format", choices=["json", "md", "both"], default="json")
     args = parser.parse_args(argv)
     try:
-        report = build_comparison_report([Path(path) for path in args.manifests], _load_profiles(args.profile))
+        report = build_comparison_report([Path(path) for path in args.manifests])
         if args.format == "json":
             print(json.dumps(report, ensure_ascii=False, indent=2))
         elif args.format == "md":

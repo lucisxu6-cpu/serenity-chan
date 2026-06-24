@@ -8,6 +8,7 @@
     "data_acquisition_summary",
     "serenity_layer_matrix",
     "financial_quality_matrix",
+    "valuation_input_matrix",
     "growth_hypothesis_matrix",
     "technical_timing_matrix",
     "capital_actions",
@@ -66,8 +67,8 @@
           "symbol": { "type": "string" },
           "layer": { "type": "string" },
           "bottleneck_reason": { "type": "string" },
-          "layer_score": { "type": ["number", "null"] },
-          "company_fit": { "type": ["number", "null"] },
+          "layer_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+          "company_fit": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
           "revenue_transmission": { "type": "string" },
           "evidence_gap": { "type": "string" }
         },
@@ -79,6 +80,61 @@
       "minItems": 2,
       "items": { "$ref": "#/$defs/candidate_table_row" }
     },
+    "valuation_input_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "valuation_input_ref",
+          "status",
+          "regular_market_price",
+          "total_shares",
+          "total_market_cap",
+          "currency",
+          "as_of_date",
+          "source_name",
+          "source_level",
+          "source_basis",
+          "share_count_basis",
+          "market_cap_basis",
+          "verification_needed",
+          "warnings",
+          "errors"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "valuation_input_ref": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+          },
+          "regular_market_price": { "type": ["number", "null"] },
+          "total_shares": { "type": ["number", "null"] },
+          "float_shares": { "type": ["number", "null"] },
+          "total_market_cap": { "type": ["number", "null"] },
+          "float_market_cap": { "type": ["number", "null"] },
+          "currency": { "type": "string" },
+          "as_of_date": { "type": "string" },
+          "source_name": { "type": "string" },
+          "source_level": { "type": "string" },
+          "source_basis": { "type": "string" },
+          "share_count_basis": { "type": "string" },
+          "market_cap_basis": { "type": "string" },
+          "verification_needed": { "type": "boolean" },
+          "warnings": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "errors": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
     "growth_hypothesis_matrix": {
       "type": "array",
       "minItems": 2,
@@ -86,6 +142,7 @@
         "type": "object",
         "required": [
           "symbol",
+          "valuation_input_ref",
           "market_implied_growth",
           "evidence_supported_growth",
           "gap",
@@ -94,6 +151,7 @@
         ],
         "properties": {
           "symbol": { "type": "string" },
+          "valuation_input_ref": { "type": "string" },
           "market_implied_growth": {
             "type": "string",
             "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"]
@@ -160,9 +218,22 @@
     },
     "final_decision": {
       "type": "object",
-      "required": ["top_candidate", "decision", "next_research_actions"],
+      "required": [
+        "top_candidate",
+        "decision_mode",
+        "score_gap_to_runner_up",
+        "candidate_count_warning",
+        "decision",
+        "next_research_actions"
+      ],
       "properties": {
         "top_candidate": { "type": "string" },
+        "decision_mode": {
+          "type": "string",
+          "enum": ["single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster"]
+        },
+        "score_gap_to_runner_up": { "type": ["number", "null"] },
+        "candidate_count_warning": { "type": "string" },
         "decision": { "type": "string" },
         "next_research_actions": {
           "type": "array",

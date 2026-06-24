@@ -23,10 +23,7 @@
     "serenity_fit": { "type": "number", "minimum": 0, "maximum": 1 },
     "layer_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
     "company_fit": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
-    "market_implied_growth": { "type": "string", "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"] },
     "evidence_supported_growth": { "type": "string", "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"] },
-    "growth_gap": { "type": "string" },
-    "h4_h5_evidence_bar_met": { "type": "boolean" },
     "required_next_evidence": { "type": "string" },
     "posterior_basis": { "type": "string" },
     "ai_confidence": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
@@ -56,5 +53,5 @@
       "additionalProperties": true
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

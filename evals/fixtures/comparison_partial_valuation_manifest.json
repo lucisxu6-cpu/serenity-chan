@@ -1,0 +1,88 @@
+{
+  "symbol": {
+    "input_value": "688019",
+    "symbol": "688019.SH",
+    "market": "CN_A",
+    "exchange": "SH",
+    "currency": "CNY"
+  },
+  "out_dir": "evals/fixtures",
+  "retrieved_at": "2026-06-23T00:00:00+00:00",
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "OK",
+      "price_history_adjusted": "NOT_REQUESTED",
+      "valuation_inputs": "PARTIAL",
+      "financials": "OK",
+      "filings_announcements": "NOT_REQUESTED"
+    },
+    "attempt_ledger": [],
+    "data_gaps": [
+      {
+        "dataset": "valuation_inputs",
+        "status": "PARTIAL",
+        "gap_type": "EVIDENCE_DEPTH_LIMIT",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Market-implied growth remains blocked until total market cap is verified.",
+        "next_action": "Recover complete total market cap and valuation basis before market-implied growth.",
+        "source_name": "Tencent_Quote_Kline_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE"
+      }
+    ],
+    "research_debt": [
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "gap_type": "EVIDENCE_DEPTH_LIMIT",
+        "decision_impact": "ACTION_IMPACT",
+        "rating_impact": "Market-implied growth remains blocked until total market cap is verified.",
+        "next_action": "Recover complete total market cap and valuation basis before market-implied growth.",
+        "source_name": "Tencent_Quote_Kline_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE"
+      }
+    ],
+    "manual_retrieval_tasks": [],
+    "attempt_count": 3,
+    "gap_count": 1,
+    "research_debt_count": 1,
+    "manual_task_count": 0,
+    "full_research_ready": false
+  },
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "OK",
+    "adjusted_history": "NOT_REQUESTED",
+    "valuation_inputs": "PARTIAL",
+    "financials": "OK",
+    "filings": "NOT_REQUESTED",
+    "requested_data_rating_cap": "B",
+    "full_research_rating_cap": "B",
+    "rating_cap": "B"
+  },
+  "results": [
+    {
+      "dataset": "current_quote",
+      "status": "OK",
+      "source": "Yahoo_Chart_L2",
+      "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+      "data_path": "evals/fixtures/comparison_688019_quote.json"
+    },
+    {
+      "dataset": "valuation_inputs",
+      "status": "PARTIAL",
+      "source": "Tencent_Quote_Kline_L2",
+      "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+      "data_path": "evals/fixtures/comparison_partial_valuation_inputs.json",
+      "warnings": [
+        "Tencent quote supplied price and shares but total market cap requires verification."
+      ]
+    },
+    {
+      "dataset": "financials",
+      "status": "OK",
+      "source": "Eastmoney_F10_Financials_L3",
+      "source_level": "L3_MEDIA_F10_RESEARCH",
+      "data_path": "evals/fixtures/comparison_688019_financials.json"
+    }
+  ]
+}

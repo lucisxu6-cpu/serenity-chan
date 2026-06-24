@@ -11,10 +11,8 @@ from typing import Any, Mapping, Optional, Sequence
 
 try:
     from build_comparison_report import build_comparison_report, to_markdown
-    from validate_ai_overlay import validate_overlay
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_comparison_report import build_comparison_report, to_markdown
-    from scripts.validate_ai_overlay import validate_overlay
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
@@ -24,46 +22,17 @@ def _load_json(path: Path) -> Mapping[str, Any]:
     return payload
 
 
-def overlay_to_profile(overlay: Mapping[str, Any]) -> dict[str, Any]:
-    validated = validate_overlay(overlay)["normalized_overlay"]
-    profile = {
-        "layer": validated["layer"],
-        "bottleneck_reason": validated["bottleneck_reason"],
-        "layer_score": validated["layer_score"],
-        "company_fit": validated["company_fit"],
-        "serenity_fit": validated["serenity_fit"],
-        "revenue_transmission": validated["revenue_transmission"],
-        "evidence_gap": "; ".join(validated.get("research_questions", [])) or "AI overlay supplied evidence-backed layer mapping.",
-        "ai_confidence": validated["ai_confidence"],
-        "key_evidence_refs": validated.get("key_evidence_refs", []),
-        "contrary_evidence": validated.get("contrary_evidence", []),
-        "research_questions": validated.get("research_questions", []),
-    }
-    for key in [
-        "market_implied_growth",
-        "evidence_supported_growth",
-        "growth_gap",
-        "h4_h5_evidence_bar_met",
-        "required_next_evidence",
-        "posterior_basis",
-    ]:
-        if key in validated:
-            profile[key] = validated[key]
-    return profile
-
-
-def load_overlay_profiles(values: Sequence[str]) -> dict[str, Mapping[str, Any]]:
-    profiles: dict[str, Mapping[str, Any]] = {}
+def load_overlays(values: Sequence[str]) -> dict[str, Mapping[str, Any]]:
+    overlays: dict[str, Mapping[str, Any]] = {}
     for value in values:
         if "=" not in value:
             raise ValueError("--overlay must use SYMBOL=path")
         symbol, path_text = value.split("=", 1)
+        if symbol in overlays:
+            raise ValueError(f"duplicate overlay assignment for {symbol}")
         overlay = _load_json(Path(path_text))
-        overlay_symbol = str(overlay.get("symbol") or "")
-        if overlay_symbol and overlay_symbol != symbol:
-            raise ValueError(f"overlay assignment {symbol} does not match overlay.symbol {overlay_symbol}")
-        profiles[symbol] = overlay_to_profile(overlay)
-    return profiles
+        overlays[symbol] = overlay
+    return overlays
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -73,7 +42,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--format", choices=["json", "md", "both"], default="json")
     args = parser.parse_args(argv)
     try:
-        report = build_comparison_report([Path(path) for path in args.manifests], load_overlay_profiles(args.overlay))
+        report = build_comparison_report([Path(path) for path in args.manifests], load_overlays(args.overlay))
         if args.format == "json":
             print(json.dumps(report, ensure_ascii=False, indent=2))
         elif args.format == "md":

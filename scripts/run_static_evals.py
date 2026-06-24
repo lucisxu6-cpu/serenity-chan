@@ -17,10 +17,9 @@ try:
     from data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt
     from build_falsification_dashboard import build_from_output_contract
     from a_share_capital_actions import analyze_announcements
-    from build_comparison_report import build_comparison_report
+    from build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile
     from build_ai_review_packet import build_ai_review_packet
     from candidate_ranker import rank_candidates
-    from merge_ai_research_overlay import overlay_to_profile
     from serenity_chan_scorecard import score
     from technical_health import analyze_price_rows
     from validate_ai_overlay import validate_overlay
@@ -32,10 +31,9 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt
     from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.a_share_capital_actions import analyze_announcements
-    from scripts.build_comparison_report import build_comparison_report
+    from scripts.build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile
     from scripts.build_ai_review_packet import build_ai_review_packet
     from scripts.candidate_ranker import rank_candidates
-    from scripts.merge_ai_research_overlay import overlay_to_profile
     from scripts.serenity_chan_scorecard import score
     from scripts.technical_health import analyze_price_rows
     from scripts.validate_ai_overlay import validate_overlay
@@ -55,6 +53,25 @@ def _get_path(payload: Any, path: str) -> Any:
         else:
             return None
     return current
+
+
+def _set_path(payload: Any, path: str, value: Any) -> None:
+    current = payload
+    parts = path.split(".")
+    for part in parts[:-1]:
+        if isinstance(current, list):
+            current = current[int(part)]
+        elif isinstance(current, dict):
+            current = current[part]
+        else:
+            raise ValueError(f"cannot traverse mutation path: {path}")
+    last = parts[-1]
+    if isinstance(current, list):
+        current[int(last)] = value
+    elif isinstance(current, dict):
+        current[last] = value
+    else:
+        raise ValueError(f"cannot set mutation path: {path}")
 
 
 def _contains_mapping(payload: Any, path: str, expected: dict[str, Any]) -> bool:
@@ -322,6 +339,55 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "action_gate_profile":
+            debt_rows = case.get("research_debt", [])
+            if not isinstance(debt_rows, list):
+                raise ValueError("action_gate_profile static eval requires research_debt array")
+            try:
+                result_payload = _action_gate_profile(
+                    case.get("technical", {}) if isinstance(case.get("technical", {}), dict) else {},
+                    case.get("capital", {}) if isinstance(case.get("capital", {}), dict) else {},
+                    case.get("layer", {}) if isinstance(case.get("layer", {}), dict) else {},
+                    case.get("growth", {}) if isinstance(case.get("growth", {}), dict) else {},
+                    _debt_gate_profile([row for row in debt_rows if isinstance(row, dict)]),
+                )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "comparison_report_validation":
+            manifests = case.get("manifests", [])
+            mutations = case.get("mutations", [])
+            if not isinstance(manifests, list) or len(manifests) < 2:
+                raise ValueError("comparison_report_validation static eval requires at least two manifests")
+            if not isinstance(mutations, list):
+                raise ValueError("comparison_report_validation static eval requires mutations array")
+            report = build_comparison_report([root / str(path) for path in manifests])
+            for mutation in mutations:
+                if not isinstance(mutation, dict) or "path" not in mutation:
+                    raise ValueError("comparison_report_validation mutation requires path")
+                _set_path(report, str(mutation["path"]), mutation.get("value"))
+            errors = validate_comparison_report(report)
+            result_payload = {"ok": not errors, "errors": errors}
+            actual_pass = not errors
+            if errors:
+                findings = errors
+        elif kind == "comparison_report_with_overlays":
+            manifests = case.get("manifests", [])
+            overlays = case.get("overlays", {})
+            if not isinstance(manifests, list) or len(manifests) < 2:
+                raise ValueError("comparison_report_with_overlays static eval requires at least two manifests")
+            if not isinstance(overlays, dict):
+                raise ValueError("comparison_report_with_overlays static eval requires overlays object")
+            try:
+                result_payload = build_comparison_report(
+                    [root / str(path) for path in manifests],
+                    {str(symbol): overlay for symbol, overlay in overlays.items() if isinstance(overlay, dict)},
+                )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "ai_overlay_validation":
             payload = case.get("payload", {})
             if not isinstance(payload, dict):
@@ -350,12 +416,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if not isinstance(overlays, dict):
                 raise ValueError("ai_overlay_merge static eval requires overlays object")
             try:
-                profiles = {
-                    str(symbol): overlay_to_profile(overlay)
-                    for symbol, overlay in overlays.items()
-                    if isinstance(overlay, dict)
-                }
-                result_payload = build_comparison_report([root / str(path) for path in manifests], profiles)
+                result_payload = build_comparison_report(
+                    [root / str(path) for path in manifests],
+                    {str(symbol): overlay for symbol, overlay in overlays.items() if isinstance(overlay, dict)},
+                )
                 actual_pass = True
             except Exception as exc:
                 actual_pass = False
