@@ -449,6 +449,70 @@ def validate_financials(path: Path) -> ValidationReport:
     return report
 
 
+def validate_valuation_inputs(path: Path) -> ValidationReport:
+    report = ValidationReport(dataset="valuation_inputs", status=DataStatus.OK, stats={"path": str(path)})
+    if not path.exists():
+        report.status = DataStatus.FAILED
+        report.errors.append(f"File not found: {path}")
+        return report
+    data = load_json(path)
+    if not isinstance(data, Mapping):
+        report.status = DataStatus.FAILED
+        report.errors.append("Valuation inputs JSON must be an object.")
+        return report
+
+    price = _parse_float(data.get("regular_market_price"))
+    total_shares = _parse_float(data.get("total_shares"))
+    total_market_cap = _parse_float(data.get("total_market_cap"))
+    float_shares = _parse_float(data.get("float_shares"))
+    float_market_cap = _parse_float(data.get("float_market_cap"))
+    currency = str(data.get("currency") or "").strip()
+    as_of_date = str(data.get("as_of_date") or "").strip()
+    source_basis = str(data.get("source_basis") or "").strip()
+    share_count_basis = str(data.get("share_count_basis") or "").strip()
+    market_cap_basis = str(data.get("market_cap_basis") or "").strip()
+
+    missing: List[str] = []
+    if price is None or price <= 0:
+        missing.append("regular_market_price")
+    if total_shares is None or total_shares <= 0:
+        missing.append("total_shares")
+    if total_market_cap is None or total_market_cap <= 0:
+        missing.append("total_market_cap")
+    for field_name, value in {
+        "currency": currency,
+        "as_of_date": as_of_date,
+        "source_basis": source_basis,
+        "share_count_basis": share_count_basis,
+        "market_cap_basis": market_cap_basis,
+    }.items():
+        if not value:
+            missing.append(field_name)
+
+    report.stats.update({
+        "has_regular_market_price": price is not None and price > 0,
+        "has_total_shares": total_shares is not None and total_shares > 0,
+        "has_total_market_cap": total_market_cap is not None and total_market_cap > 0,
+        "has_float_shares": float_shares is not None and float_shares > 0,
+        "has_float_market_cap": float_market_cap is not None and float_market_cap > 0,
+        "source_basis": source_basis,
+    })
+    if price and total_shares and total_market_cap:
+        implied_market_cap = price * total_shares
+        diff = abs(implied_market_cap - total_market_cap) / max(abs(total_market_cap), 1.0)
+        report.stats["implied_total_market_cap"] = implied_market_cap
+        report.stats["market_cap_diff_ratio"] = diff
+        if diff > 0.08:
+            report.status = DataStatus.PARTIAL
+            report.warnings.append(f"total_market_cap differs from regular_market_price * total_shares by {diff:.2%}; verify valuation basis.")
+    if missing:
+        report.status = DataStatus.PARTIAL
+        report.warnings.append("Valuation inputs are incomplete: " + ", ".join(missing) + ".")
+    if (float_shares is None or float_shares <= 0) or (float_market_cap is None or float_market_cap <= 0):
+        report.warnings.append("Float-share or float-market-cap basis is unavailable; liquidity/free-float analysis must stay explicit.")
+    return report
+
+
 def _default_fetch_dir(symbol: str) -> Path:
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     root = Path(os.getenv("SERENITY_DATA_DIR", "/tmp/serenity-chan-data"))
@@ -570,8 +634,8 @@ def _decision_impact_for_dataset(dataset: CanonicalDataset | str) -> DecisionImp
         return DecisionImpact.ACTION_IMPACT
     if value in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value, CanonicalDataset.CUSTOMER_EVIDENCE.value}:
         return DecisionImpact.EVIDENCE_IMPACT
-    if value in {CanonicalDataset.PEER_VALUATION.value, CanonicalDataset.ESTIMATES.value}:
-        return DecisionImpact.THESIS_IMPACT
+    if value in {CanonicalDataset.SHARE_CAPITAL.value, CanonicalDataset.VALUATION_INPUTS.value, CanonicalDataset.PEER_VALUATION.value, CanonicalDataset.ESTIMATES.value}:
+        return DecisionImpact.VALUATION_IMPACT
     return DecisionImpact.NO_IMPACT
 
 
@@ -763,6 +827,8 @@ def _fetch_with_attempt_ledger(
 def _rating_impact_for_gap(dataset: str, status: str, gap_type: str) -> str:
     if gap_type == DataGapType.NOT_MACHINE_READABLE.value and dataset == CanonicalDataset.FINANCIALS.value:
         return "S/A research ratings require L0/L1 verification of key financial statements."
+    if dataset in {CanonicalDataset.SHARE_CAPITAL.value, CanonicalDataset.VALUATION_INPUTS.value, CanonicalDataset.PEER_VALUATION.value, CanonicalDataset.ESTIMATES.value}:
+        return "Market payoff, valuation multiples, market-implied growth, and action priority are gated until valuation inputs are complete."
     if gap_type == DataGapType.ADJUSTMENT_BASIS_UNVERIFIED.value:
         return "Price history exists, but the adjustment basis is unverified; Chan, moving-average, and current action conclusions are capped."
     if gap_type == DataGapType.EVIDENCE_DEPTH_LIMIT.value:
@@ -789,6 +855,10 @@ def _next_action_for_gap(dataset: str, gap_type: str) -> str:
         return "Fetch official filings or announcement metadata from the market-primary disclosure venue."
     if dataset == CanonicalDataset.CURRENT_QUOTE.value:
         return "Fetch a current market quote from a market-appropriate source before making current price or valuation claims."
+    if dataset in {CanonicalDataset.SHARE_CAPITAL.value, CanonicalDataset.VALUATION_INPUTS.value}:
+        return "Fetch total shares, float shares, total market cap, and float market cap from a market-appropriate source before inferring valuation or market-implied growth."
+    if dataset in {CanonicalDataset.PEER_VALUATION.value, CanonicalDataset.ESTIMATES.value}:
+        return "Fetch market-appropriate valuation comparables or estimates before upgrading payoff claims."
     if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED.value:
         if gap_type == DataGapType.ADJUSTMENT_BASIS_UNVERIFIED.value:
             return "Fetch or reconstruct adjusted daily history with explicit forward/backward adjustment basis and corporate-action evidence."
@@ -808,6 +878,30 @@ def _manual_task_for_gap(gap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     gap_type = str(gap.get("gap_type") or "")
     if impact == DecisionImpact.NO_IMPACT.value:
         return None
+    if gap_type in {
+        DataGapType.SCOPE_NOT_REQUESTED.value,
+        DataGapType.SOURCE_NOT_IMPLEMENTED.value,
+        DataGapType.SOURCE_UNAVAILABLE.value,
+        DataGapType.ACCESS_FAILURE.value,
+        DataGapType.STALE_DATA.value,
+    } and dataset in {
+        CanonicalDataset.SHARE_CAPITAL.value,
+        CanonicalDataset.VALUATION_INPUTS.value,
+        CanonicalDataset.PEER_VALUATION.value,
+        CanonicalDataset.ESTIMATES.value,
+    }:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="high",
+            target_source="Exchange, official filings, licensed vendor, or validated quote-derived market-cap source",
+            objective="Recover valuation inputs before inferring market-implied growth, payoff quality, or action priority.",
+            acceptance_criteria=[
+                "Total shares and float shares are explicit, or market cap and latest price can derive the share basis.",
+                "Total market cap, float market cap, currency, and as-of date are recorded.",
+                "Source basis is labeled as official, licensed, or quote-derived preflight.",
+                "Stale or conflicting share-count bases remain valuation-gated until reconciled.",
+            ],
+        ).to_dict()
     if gap_type == DataGapType.ADJUSTMENT_BASIS_UNVERIFIED.value and dataset in _PRICE_HISTORY_DATASETS:
         return ManualRetrievalTask(
             dataset=dataset,
@@ -943,6 +1037,8 @@ def _build_data_gaps(
     for dataset in critical_datasets:
         if dataset in requested_set:
             continue
+        if statuses.get(dataset) == DataStatus.OK.value:
+            continue
         key = (dataset, DataStatus.NOT_REQUESTED.value, DataGapType.SCOPE_NOT_REQUESTED.value)
         if key in seen_keys:
             continue
@@ -1063,6 +1159,10 @@ def _build_ai_review_guidance(
         if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value} and status in {DataStatus.PARTIAL.value, DataStatus.FAILED.value, DataStatus.STALE.value}:
             blockers.append(f"{dataset} status is {status}; do not issue a current entry/buy-point conclusion.")
             upgrade_requirements.append("Fetch market-appropriate current quote and adjusted history before making current price, valuation, or buy-point claims.")
+
+        if dataset == CanonicalDataset.VALUATION_INPUTS.value and status != DataStatus.OK.value:
+            blockers.append(f"valuation_inputs status is {status}; do not upgrade payoff, market-implied growth, or action priority.")
+            upgrade_requirements.append("Fetch a complete valuation input set with current price, total shares, total market cap, currency, as-of date, share-count basis, and market-cap basis.")
 
         if dataset == CanonicalDataset.FILINGS.value and status != DataStatus.OK.value:
             blockers.append(f"Filing/announcement status is {status}; customer/order/capacity claims remain unverified leads.")
@@ -1197,6 +1297,10 @@ def fetch_real_data(
                     elif source_level_value.startswith("L4_"):
                         validation_caps.append(RatingCap.B.value)
                         result.warnings.append("Financials are from unverified L4 source; high-conviction conclusions are not allowed.")
+                elif dataset == CanonicalDataset.VALUATION_INPUTS:
+                    validation = validate_valuation_inputs(json_path)
+                    status = validation.status.value
+                    validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
 
         statuses[dataset.value] = status
         result_items.append({
@@ -1217,39 +1321,54 @@ def fetch_real_data(
             "validation": validation_payload,
         })
 
-    critical_datasets = [
+    effective_statuses = dict(statuses)
+
+    rating_critical_datasets = [
         CanonicalDataset.CURRENT_QUOTE.value,
         CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
         CanonicalDataset.FINANCIALS.value,
         CanonicalDataset.FILINGS.value,
     ]
+    full_research_required_datasets = [
+        *rating_critical_datasets,
+        CanonicalDataset.VALUATION_INPUTS.value,
+    ]
+    rating_cap_exempt_datasets = {
+        CanonicalDataset.SHARE_CAPITAL.value,
+        CanonicalDataset.VALUATION_INPUTS.value,
+    }
+    rating_requested_dataset_values = [
+        dataset for dataset in requested_dataset_values
+        if dataset not in rating_cap_exempt_datasets
+    ]
     requested_cap = _cap_for_statuses(
-        statuses,
+        effective_statuses,
         validation_caps,
-        required_datasets=requested_dataset_values,
+        required_datasets=rating_requested_dataset_values,
         downgrade_not_requested=False,
     )
     full_research_cap = _cap_for_statuses(
-        statuses,
+        effective_statuses,
         validation_caps,
-        required_datasets=critical_datasets,
+        required_datasets=rating_critical_datasets,
         downgrade_not_requested=True,
     )
     data_quality = {
         "market_resolution": "OK" if symbol.market != CanonicalMarket.UNKNOWN else "FAILED",
-        "current_price": statuses.get(CanonicalDataset.CURRENT_QUOTE.value, DataStatus.NOT_REQUESTED.value),
-        "adjusted_history": statuses.get(CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, DataStatus.NOT_REQUESTED.value),
-        "financials": statuses.get(CanonicalDataset.FINANCIALS.value, DataStatus.NOT_REQUESTED.value),
-        "filings": statuses.get(CanonicalDataset.FILINGS.value, DataStatus.NOT_REQUESTED.value),
+        "current_price": effective_statuses.get(CanonicalDataset.CURRENT_QUOTE.value, DataStatus.NOT_REQUESTED.value),
+        "adjusted_history": effective_statuses.get(CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, DataStatus.NOT_REQUESTED.value),
+        "valuation_inputs": effective_statuses.get(CanonicalDataset.VALUATION_INPUTS.value, DataStatus.NOT_REQUESTED.value),
+        "financials": effective_statuses.get(CanonicalDataset.FINANCIALS.value, DataStatus.NOT_REQUESTED.value),
+        "filings": effective_statuses.get(CanonicalDataset.FILINGS.value, DataStatus.NOT_REQUESTED.value),
         "requested_data_rating_cap": requested_cap.value,
         "full_research_rating_cap": full_research_cap.value,
         "rating_cap": full_research_cap.value,
     }
     data_gaps = _build_data_gaps(
         result_items,
-        statuses,
+        effective_statuses,
         requested_dataset_values=requested_dataset_values,
-        critical_datasets=critical_datasets,
+        critical_datasets=full_research_required_datasets,
     )
     research_debt = _build_research_debt(data_gaps)
     manual_retrieval_tasks: List[Dict[str, Any]] = []
@@ -1267,8 +1386,8 @@ def fetch_real_data(
     data_acquisition = {
         "policy": "assets/data_acquisition_policy.json",
         "status_by_dataset": {
-            dataset: statuses.get(dataset, DataStatus.NOT_REQUESTED.value)
-            for dataset in critical_datasets
+            dataset: effective_statuses.get(dataset, DataStatus.NOT_REQUESTED.value)
+            for dataset in full_research_required_datasets
         },
         "requested_dataset_statuses": dict(statuses),
         "attempt_ledger": attempt_ledger,
@@ -1290,7 +1409,7 @@ def fetch_real_data(
     manifest = {
         "symbol": symbol.__dict__,
         "requested_datasets": requested_dataset_values,
-        "full_research_required_datasets": critical_datasets,
+        "full_research_required_datasets": full_research_required_datasets,
         "out_dir": str(destination),
         "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "data_acquisition": data_acquisition,
@@ -1351,6 +1470,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
             CanonicalDataset.FINANCIALS.value,
             CanonicalDataset.FILINGS.value,
+            CanonicalDataset.VALUATION_INPUTS.value,
         ],
     )
     p_fetch.add_argument("--out-dir", help="output directory; defaults to /tmp/serenity-chan-data/<symbol>/<timestamp>")

@@ -25,12 +25,12 @@ GROWTH = {"H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"}
 GROWTH_ORDER = {"H0": 0, "H1": 1, "H2": 2, "H3": 3, "H4": 4, "H5": 5, "UNKNOWN": -1}
 ACTIONS = {"观察", "等待买点", "等待二买", "等待三买", "小仓试错", "核心候选", "强观察", "剔除", "不参与", "数据不足"}
 GAP_TYPES = {"ACCESS_FAILURE", "SCOPE_NOT_REQUESTED", "SOURCE_NOT_IMPLEMENTED", "SOURCE_UNAVAILABLE", "ISSUER_NON_DISCLOSURE", "NOT_MACHINE_READABLE", "CONFLICTING_SOURCES", "STALE_DATA", "EVIDENCE_DEPTH_LIMIT", "ADJUSTMENT_BASIS_UNVERIFIED", "NOT_MATERIAL", "POLICY_BLOCKED"}
-DECISION_IMPACTS = {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"}
-ACTION_READINESS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "WAIT_FOR_BUY_POINT", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
-WATCHLIST_BUCKETS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
+DECISION_IMPACTS = {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "VALUATION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"}
+ACTION_READINESS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "WAIT_FOR_BUY_POINT", "DATA_GATED", "RESEARCH_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
+WATCHLIST_BUCKETS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "DATA_GATED", "RESEARCH_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
 REQUIRED_ROOT = {"market_route", "data_quality", "data_acquisition", "decision_matrix", "rating", "rating_cap", "evidence", "falsification", "action", "uncertainty"}
-REQUIRED_DATA_QUALITY = {"market_resolution", "current_price", "adjusted_history", "financials", "filings"}
-REQUIRED_DATA_ACQUISITION_STATUS = {"current_quote", "price_history_adjusted", "financials", "filings_announcements"}
+REQUIRED_DATA_QUALITY = {"market_resolution", "current_price", "adjusted_history", "valuation_inputs", "financials", "filings"}
+REQUIRED_DATA_ACQUISITION_STATUS = {"current_quote", "price_history_adjusted", "valuation_inputs", "financials", "filings_announcements"}
 REQUIRED_DATA_GAP = {"dataset", "status", "gap_type", "decision_impact", "rating_impact", "next_action"}
 REQUIRED_RESEARCH_DEBT = {"dataset", "priority", "gap_type", "decision_impact", "next_action"}
 REQUIRED_MANUAL_TASK = {"dataset", "priority", "target_source", "objective"}
@@ -159,7 +159,7 @@ def validate_contract(data: Mapping[str, Any]) -> dict[str, Any]:
             errors.append(f"{label}.gap_type must be one of {sorted(GAP_TYPES)}")
         if gap.get("decision_impact") and gap.get("decision_impact") not in DECISION_IMPACTS:
             errors.append(f"{label}.decision_impact must be one of {sorted(DECISION_IMPACTS)}")
-        if gap.get("decision_impact") in {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT"}:
+        if gap.get("decision_impact") in {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "VALUATION_IMPACT"}:
             material_gap_count += 1
             if str(gap.get("dataset", "")).strip():
                 material_gap_datasets.add(str(gap.get("dataset")))
@@ -218,6 +218,11 @@ def validate_contract(data: Mapping[str, Any]) -> dict[str, Any]:
         errors.append("current_price unavailable requires rating_cap B or lower")
     if statuses.get("adjusted_history") in UNAVAILABLE_STATUSES and rating_cap in RATINGS and _rating_above(rating_cap, "B"):
         errors.append("adjusted_history unavailable requires rating_cap B or lower")
+    if statuses.get("valuation_inputs") in UNAVAILABLE_STATUSES:
+        if action in {"核心候选", "小仓试错"}:
+            errors.append("valuation_inputs unavailable cannot use core/test-position action")
+        if action_readiness == "CORE_CANDIDATE":
+            errors.append("valuation_inputs unavailable cannot use CORE_CANDIDATE action readiness")
     if statuses.get("financials") in UNAVAILABLE_STATUSES:
         if rating in RATINGS and _rating_above(rating, "B"):
             errors.append("financials unavailable cannot support S/A rating")

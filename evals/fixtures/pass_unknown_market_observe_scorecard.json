@@ -25,6 +25,7 @@
     "status_by_dataset": {
       "current_quote": "NOT_REQUESTED",
       "price_history_adjusted": "NOT_REQUESTED",
+      "valuation_inputs": "NOT_REQUESTED",
       "financials": "NOT_REQUESTED",
       "filings_announcements": "NOT_REQUESTED"
     },

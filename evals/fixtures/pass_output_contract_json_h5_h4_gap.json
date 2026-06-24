@@ -15,6 +15,7 @@
     "market_resolution": "OK",
     "current_price": "OK",
     "adjusted_history": "PENDING",
+    "valuation_inputs": "OK",
     "financials": "OK",
     "filings": "OK",
     "supply_chain_evidence": "PARTIAL"
@@ -23,6 +24,7 @@
     "status_by_dataset": {
       "current_quote": "OK",
       "price_history_adjusted": "PENDING",
+      "valuation_inputs": "OK",
       "financials": "OK",
       "filings_announcements": "OK"
     },

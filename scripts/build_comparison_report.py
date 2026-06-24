@@ -24,15 +24,33 @@ STATUS_SCORE = {"OK": 100.0, "PARTIAL": 70.0, "STALE": 55.0, "PENDING": 45.0, "N
 CAPITAL_RISK_SCORE = {"none": 0.0, "supportive": -2.0, "low": 3.0, "medium": 8.0, "medium_high": 12.0, "high": 18.0}
 GROWTH_ORDER = {"H0": 0, "H1": 1, "H2": 2, "H3": 3, "H4": 4, "H5": 5, "UNKNOWN": -1}
 RATING_CAPS = set(RATING_SCORE_LIMIT)
-ACTION_READINESS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "WAIT_FOR_BUY_POINT", "DATA_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
+ACTION_READINESS = {"CORE_CANDIDATE", "STRONG_OBSERVE", "CANDIDATE_POOL", "WAIT_FOR_BUY_POINT", "DATA_GATED", "RESEARCH_GATED", "LEAD_TRACKING", "ELIMINATE", "OBSERVE_ONLY"}
+ACTION_GATE_TYPES = {
+    "NONE",
+    "DATA_GATED",
+    "EVIDENCE_GATED",
+    "VALUATION_GATED",
+    "AI_REVIEW_GATED",
+    "BUY_POINT_GATED",
+    "CAPITAL_ACTION_GATED",
+}
+ACTION_GATE_CLASSES = {"NONE", "DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"}
 ACTION_BLOCKING_DEBT_DATASETS = {
     "current_quote",
     "price_history_adjusted",
     "financials",
+    "filings_announcements",
     "valuation",
+    "valuation_currency",
     "valuation_growth",
+    "share_capital",
+    "valuation_inputs",
+    "peer_valuation",
+    "consensus_estimates",
     "serenity_layer",
 }
+VALUATION_DATA_DEBT_DATASETS = {"valuation", "valuation_currency", "share_capital", "valuation_inputs", "peer_valuation", "consensus_estimates"}
+VALUATION_RESEARCH_DEBT_DATASETS = {"valuation_growth"}
 
 
 def _load_json(path: Path) -> Any:
@@ -50,6 +68,10 @@ def _load_manifest(path: Path) -> Mapping[str, Any]:
 
 def _round(value: Optional[float], digits: int = 2) -> Optional[float]:
     return None if value is None else round(value, digits)
+
+
+def _currency_code(value: Any) -> str:
+    return str(value or "").strip().upper()
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -110,6 +132,19 @@ def _load_result_json(manifest: Mapping[str, Any], dataset: str) -> Any:
     if not path:
         return None
     return _load_json(path)
+
+
+def _valuation_payload(manifest: Mapping[str, Any]) -> Mapping[str, Any]:
+    acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
+    status_by_dataset = acquisition.get("status_by_dataset") if isinstance(acquisition.get("status_by_dataset"), Mapping) else {}
+    data_quality = manifest.get("data_quality") if isinstance(manifest.get("data_quality"), Mapping) else {}
+    valuation_status = str(status_by_dataset.get("valuation_inputs") or data_quality.get("valuation_inputs") or "")
+    if valuation_status != "OK":
+        return {}
+    payload = _load_result_json(manifest, "valuation_inputs")
+    if isinstance(payload, Mapping):
+        return payload
+    return {}
 
 
 def _symbol(manifest: Mapping[str, Any]) -> str:
@@ -225,8 +260,26 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
     receivables = _as_float(latest_annual.get("accounts_receivable"))
     inventory = _as_float(latest_annual.get("inventory"))
     rd_expense = _as_float(latest_annual.get("research_expense"))
-    latest_row = max(rows, key=lambda row: str(row.get("period"))) if rows else latest_annual
-    share_capital = _as_float(latest_row.get("share_capital")) or _as_float(latest_annual.get("share_capital"))
+    valuation_payload = _valuation_payload(manifest)
+    quote = _load_result_json(manifest, "current_quote")
+    regular_market_price = (
+        _as_float(valuation_payload.get("regular_market_price"))
+        or (_as_float(quote.get("regular_market_price")) if isinstance(quote, Mapping) else None)
+    )
+    total_market_cap = _as_float(valuation_payload.get("total_market_cap"))
+    float_market_cap = _as_float(valuation_payload.get("float_market_cap"))
+    total_shares = _as_float(valuation_payload.get("total_shares"))
+    financial_currency = _currency_code(
+        (financials or {}).get("currency")
+        or (financials or {}).get("unit")
+        or latest_annual.get("revenue_unit")
+        or latest_annual.get("net_income_unit")
+    )
+    valuation_currency = _currency_code(
+        valuation_payload.get("currency")
+        or (quote.get("currency") if isinstance(quote, Mapping) else "")
+    )
+    valuation_currency_match = bool(financial_currency and valuation_currency and financial_currency == valuation_currency)
     q1_revenue_growth = _pct_change(_as_float(latest_q1.get("revenue")) if latest_q1 else None, _as_float(previous_q1.get("revenue")) if previous_q1 else None)
     q1_net_income_growth = _pct_change(_as_float(latest_q1.get("net_income") or latest_q1.get("net_profit")) if latest_q1 else None, _as_float(previous_q1.get("net_income") or previous_q1.get("net_profit")) if previous_q1 else None)
     q1_ocf_to_ni = _ratio(
@@ -296,7 +349,16 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "inventory_to_revenue_pct": _round(inventory_to_revenue),
         "debt_to_assets_pct": _round(debt_to_assets),
         "rd_to_revenue_pct": _round(rd_to_revenue),
-        "share_capital": _round(share_capital),
+        "regular_market_price": _round(regular_market_price),
+        "total_shares": _round(total_shares),
+        "total_market_cap": _round(total_market_cap),
+        "float_market_cap": _round(float_market_cap),
+        "financial_currency": financial_currency,
+        "valuation_currency": valuation_currency,
+        "valuation_currency_match": valuation_currency_match,
+        "valuation_source_basis": str(valuation_payload.get("source_basis") or ""),
+        "share_count_basis": str(valuation_payload.get("share_count_basis") or ""),
+        "market_cap_basis": str(valuation_payload.get("market_cap_basis") or ""),
         "q1_revenue_growth_pct": _round(q1_revenue_growth),
         "q1_net_income_growth_pct": _round(q1_net_income_growth),
         "q1_ocf_to_net_income_pct": _round(q1_ocf_to_ni),
@@ -337,10 +399,11 @@ def _data_readiness_score(summary: Mapping[str, Any]) -> float:
     if not statuses:
         return 25.0
     weights = {
-        "current_quote": 0.20,
-        "price_history_adjusted": 0.25,
-        "financials": 0.30,
-        "filings_announcements": 0.25,
+        "current_quote": 0.18,
+        "price_history_adjusted": 0.22,
+        "financials": 0.26,
+        "filings_announcements": 0.22,
+        "valuation_inputs": 0.12,
     }
     return sum(STATUS_SCORE.get(str(statuses.get(key) or "NOT_REQUESTED"), 25.0) * weight for key, weight in weights.items())
 
@@ -387,14 +450,25 @@ def _capital_summary(manifest: Mapping[str, Any]) -> dict[str, Any]:
 def _serenity_layer(manifest: Mapping[str, Any], profile: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     profile = profile or {}
     layer = str(profile.get("layer") or "AI_REVIEW_REQUIRED")
+    serenity_fit = _as_float(profile.get("serenity_fit"))
+    layer_score = _as_float(profile.get("layer_score"))
+    company_fit = _as_float(profile.get("company_fit"))
+    if layer_score is None and serenity_fit is not None:
+        layer_score = serenity_fit * 100.0 if serenity_fit <= 1.0 else serenity_fit
+    if company_fit is None and serenity_fit is not None:
+        company_fit = serenity_fit * 100.0 if serenity_fit <= 1.0 else serenity_fit
     return {
         "symbol": _symbol(manifest),
         "layer": layer,
         "bottleneck_reason": str(profile.get("bottleneck_reason") or "Map the company to a value-chain bottleneck before final thesis grading."),
-        "layer_score": _as_float(profile.get("layer_score")),
-        "company_fit": _as_float(profile.get("company_fit")),
+        "layer_score": _round(layer_score),
+        "company_fit": _round(company_fit),
         "revenue_transmission": str(profile.get("revenue_transmission") or "Requires product-to-financial-line mapping from filings or company disclosure."),
         "evidence_gap": str(profile.get("evidence_gap") or "Layer mapping is an AI/domain-review task; do not infer it from ticker data alone."),
+        "ai_confidence": str(profile.get("ai_confidence") or "NOT_PROVIDED"),
+        "key_evidence_refs": profile.get("key_evidence_refs", []) if isinstance(profile.get("key_evidence_refs", []), list) else [],
+        "contrary_evidence": profile.get("contrary_evidence", []) if isinstance(profile.get("contrary_evidence", []), list) else [],
+        "research_questions": profile.get("research_questions", []) if isinstance(profile.get("research_questions", []), list) else [],
     }
 
 
@@ -427,18 +501,28 @@ def _growth_hypothesis(manifest: Mapping[str, Any], financial: Mapping[str, Any]
         supported = "H0"
     else:
         supported = "UNKNOWN"
+    supported = str(profile.get("evidence_supported_growth") or supported)
     quote = _load_result_json(manifest, "current_quote")
+    valuation_payload = _valuation_payload(manifest)
     price = _as_float(quote.get("regular_market_price")) if isinstance(quote, Mapping) else None
-    share_capital = _as_float(financial.get("share_capital"))
+    total_shares = _as_float(valuation_payload.get("total_shares"))
     revenue = _as_float(financial.get("revenue"))
     net_income = _as_float(financial.get("net_income"))
-    market_cap = price * share_capital if price is not None and share_capital is not None else None
-    pe = market_cap / net_income if market_cap is not None and net_income and net_income > 0 else None
-    ps = market_cap / revenue if market_cap is not None and revenue and revenue > 0 else None
-    market_implied = str(profile.get("market_implied_growth") or _growth_level_from_valuation(pe, ps))
-    if market_implied == "UNKNOWN":
+    market_cap = _as_float(valuation_payload.get("total_market_cap"))
+    if valuation_payload and market_cap is None and price is not None and total_shares is not None:
+        market_cap = price * total_shares
+    financial_currency = _currency_code(financial.get("financial_currency"))
+    valuation_currency = _currency_code(financial.get("valuation_currency") or valuation_payload.get("currency"))
+    currency_mismatch = bool(financial_currency and valuation_currency and financial_currency != valuation_currency)
+    pe = None if currency_mismatch else market_cap / net_income if market_cap is not None and net_income and net_income > 0 else None
+    ps = None if currency_mismatch else market_cap / revenue if market_cap is not None and revenue and revenue > 0 else None
+    market_implied = str(profile.get("market_implied_growth") or ("UNKNOWN" if currency_mismatch else _growth_level_from_valuation(pe, ps)))
+    if currency_mismatch and not profile.get("market_implied_growth"):
+        gap = "valuation_currency_reconciliation_required"
+        required = f"Convert valuation market cap from {valuation_currency} to the financial reporting currency {financial_currency}, or provide a verified same-currency valuation basis."
+    elif market_implied == "UNKNOWN":
         gap = "valuation_input_required"
-        required = "Add share capital, market cap, valuation multiples, and peer/DCF basis to infer market-implied growth."
+        required = "Add total shares, total market cap, valuation multiples, and peer/DCF basis to infer market-implied growth."
     else:
         implied_order = GROWTH_ORDER.get(market_implied, -1)
         supported_order = GROWTH_ORDER.get(supported, -1)
@@ -459,10 +543,20 @@ def _growth_hypothesis(manifest: Mapping[str, Any], financial: Mapping[str, Any]
         "gap": gap,
         "h4_h5_evidence_bar_met": h4_h5_bar_met,
         "required_next_evidence": required,
-        "posterior_basis": "Preliminary valuation from current quote, share capital, revenue, and net income; verify share capital and financial lines with L0/L1 evidence.",
-        "market_cap": _round(market_cap),
+        "posterior_basis": str(profile.get("posterior_basis") or "Preliminary valuation from current quote, total shares, total market cap, revenue, and net income; verify valuation and financial lines with L0/L1 evidence."),
+        "total_market_cap": _round(market_cap),
+        "total_shares": _round(total_shares),
+        "financial_currency": financial_currency,
+        "valuation_currency": valuation_currency,
+        "valuation_currency_match": not currency_mismatch if financial_currency and valuation_currency else None,
         "pe_preflight": _round(pe),
         "ps_preflight": _round(ps),
+        "valuation_basis": str(
+            profile.get("valuation_basis")
+            or valuation_payload.get("market_cap_basis")
+            or valuation_payload.get("share_count_basis")
+            or ""
+        ),
     }
 
 
@@ -496,7 +590,9 @@ def _research_debt_rows(
         })
     if layer.get("layer") == "AI_REVIEW_REQUIRED":
         rows.append({"symbol": symbol, "dataset": "serenity_layer", "priority": "high", "next_action": str(layer.get("evidence_gap"))})
-    if growth.get("market_implied_growth") == "UNKNOWN":
+    if growth.get("gap") == "valuation_currency_reconciliation_required":
+        rows.append({"symbol": symbol, "dataset": "valuation_currency", "priority": "high", "next_action": str(growth.get("required_next_evidence"))})
+    elif growth.get("market_implied_growth") == "UNKNOWN":
         rows.append({"symbol": symbol, "dataset": "valuation", "priority": "high", "next_action": str(growth.get("required_next_evidence"))})
     elif growth.get("h4_h5_evidence_bar_met") is False or growth.get("gap") == "market_ahead_of_evidence":
         rows.append({
@@ -535,9 +631,10 @@ def _debt_gate_profile(debt_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]
         drag += 6.0
     elif critical_datasets:
         drag += 5.0
+    valuation_high = high_datasets & {"valuation", "share_capital", "valuation_inputs", "peer_valuation", "consensus_estimates"}
     if "valuation_growth" in high_datasets:
         drag += 6.0
-    if "valuation" in high_datasets:
+    if valuation_high:
         drag += 4.0
     if "serenity_layer" in high_datasets:
         drag += 4.0
@@ -547,7 +644,7 @@ def _debt_gate_profile(debt_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]
         drag += 4.0
     if "price_history_adjusted" in high_datasets:
         drag += 4.0
-    other_high = high_datasets - {"valuation_growth", "valuation", "serenity_layer", "capital_actions", "current_quote", "price_history_adjusted"}
+    other_high = high_datasets - {"valuation_growth", "valuation", "share_capital", "valuation_inputs", "peer_valuation", "consensus_estimates", "serenity_layer", "capital_actions", "current_quote", "price_history_adjusted"}
     drag += min(4.0, 2.0 * len(other_high))
 
     return {
@@ -558,14 +655,102 @@ def _debt_gate_profile(debt_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]
     }
 
 
+def _action_gate_profile(
+    technical: Mapping[str, Any],
+    capital: Mapping[str, Any],
+    layer: Mapping[str, Any],
+    growth: Mapping[str, Any],
+    debt_profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    gate_order = [
+        "DATA_GATED",
+        "EVIDENCE_GATED",
+        "VALUATION_GATED",
+        "CAPITAL_ACTION_GATED",
+        "AI_REVIEW_GATED",
+        "BUY_POINT_GATED",
+    ]
+    gates: list[str] = []
+    reasons: list[str] = []
+    blocking_datasets: set[str] = set()
+    gate_classes: dict[str, str] = {}
+
+    def add(gate: str, reason: str, dataset: str = "", gate_class: str = "RESEARCH_VALIDATION") -> None:
+        if gate not in gates:
+            gates.append(gate)
+            gate_classes[gate] = gate_class
+        if reason and reason not in reasons:
+            reasons.append(reason)
+        if dataset:
+            blocking_datasets.add(dataset)
+
+    high_or_blocking = set(debt_profile.get("blocking_datasets") or []) | set(debt_profile.get("high_datasets") or [])
+    for dataset in sorted(high_or_blocking):
+        if dataset in {"current_quote", "price_history_adjusted"}:
+            add("DATA_GATED", f"{dataset} is incomplete; current valuation or timing claims are blocked.", dataset, "DATA_ACQUISITION")
+        elif dataset in {"financials", "filings_announcements"}:
+            add("EVIDENCE_GATED", f"{dataset} evidence is incomplete; high-conviction research claims are blocked.", dataset, "DATA_ACQUISITION")
+        elif dataset in VALUATION_DATA_DEBT_DATASETS | VALUATION_RESEARCH_DEBT_DATASETS:
+            if dataset in VALUATION_RESEARCH_DEBT_DATASETS:
+                add("VALUATION_GATED", "Market-implied growth is ahead of evidence-supported growth; AI/domain validation is required.", dataset, "RESEARCH_VALIDATION")
+            else:
+                add("VALUATION_GATED", "Valuation inputs are incomplete; market-implied growth and payoff claims are blocked.", dataset, "DATA_ACQUISITION")
+        elif dataset == "serenity_layer":
+            add("AI_REVIEW_GATED", "Industry layer, bottleneck, and revenue-transmission mapping require AI/domain review.", dataset, "RESEARCH_VALIDATION")
+        elif dataset == "capital_actions":
+            add("CAPITAL_ACTION_GATED", "Capital actions require dilution, buyback, listing, or reduction impact review.", dataset, "RESEARCH_VALIDATION")
+
+    if growth.get("market_implied_growth") == "UNKNOWN" or growth.get("gap") == "valuation_input_required":
+        add("VALUATION_GATED", str(growth.get("required_next_evidence") or "Valuation inputs are required."), "valuation", "DATA_ACQUISITION")
+    if layer.get("layer") == "AI_REVIEW_REQUIRED":
+        add("AI_REVIEW_GATED", str(layer.get("evidence_gap") or "AI/domain review is required."), "serenity_layer", "RESEARCH_VALIDATION")
+
+    risk_level = str((capital.get("summary") or {}).get("material_risk_level") or "none") if isinstance(capital.get("summary"), Mapping) else "none"
+    has_dilution = bool((capital.get("summary") or {}).get("has_dilution_event")) if isinstance(capital.get("summary"), Mapping) else False
+    if risk_level in {"medium_high", "high"} or has_dilution:
+        add("CAPITAL_ACTION_GATED", f"Capital-action risk is {risk_level}; dilution/liquidity effects must be quantified.", "capital_actions", "RESEARCH_VALIDATION")
+
+    if technical.get("buy_point_claim_allowed") is not True:
+        action = str(technical.get("chan_action") or "")
+        if action in {"WAIT_FOR_SECOND_BUY", "WAIT_FOR_THIRD_BUY", "WAIT_FOR_STRUCTURE_CONFIRMATION", "DATA_REQUIRED"}:
+            add("BUY_POINT_GATED", str(technical.get("decision_note") or "No confirmed Chan buy point is available."), "price_history_adjusted", "ACTION_TIMING")
+
+    ordered = [gate for gate in gate_order if gate in gates]
+    primary = ordered[0] if ordered else "NONE"
+    primary_class = gate_classes.get(primary, "NONE") if primary != "NONE" else "NONE"
+    return {
+        "state": "ACTIONABLE_WATCH" if primary == "NONE" else "NOT_ACTIONABLE",
+        "primary_gate": primary,
+        "primary_gate_class": primary_class,
+        "gate_classes": {gate: gate_classes.get(gate, "RESEARCH_VALIDATION") for gate in ordered},
+        "secondary_gates": ordered[1:],
+        "blocking_datasets": sorted(blocking_datasets),
+        "blocking_reasons": reasons,
+    }
+
+
+def _readiness_from_gate(primary_gate: str, gate: Mapping[str, Any], action_score: float) -> str:
+    gate_class = str(gate.get("primary_gate_class") or "")
+    if primary_gate in {"DATA_GATED", "EVIDENCE_GATED"}:
+        return "DATA_GATED"
+    if primary_gate == "VALUATION_GATED":
+        return "DATA_GATED" if gate_class == "DATA_ACQUISITION" else "RESEARCH_GATED"
+    if primary_gate in {"CAPITAL_ACTION_GATED", "AI_REVIEW_GATED"}:
+        return "RESEARCH_GATED"
+    if primary_gate == "BUY_POINT_GATED":
+        return "WAIT_FOR_BUY_POINT"
+    return "STRONG_OBSERVE" if action_score >= 68 else "CANDIDATE_POOL" if action_score >= 55 else "LEAD_TRACKING"
+
+
 def _priority_score(
     data_summary: Mapping[str, Any],
     financial: Mapping[str, Any],
     technical: Mapping[str, Any],
     capital: Mapping[str, Any],
     layer: Mapping[str, Any],
+    growth: Mapping[str, Any],
     research_debt: Sequence[Mapping[str, Any]],
-) -> tuple[float, str, str]:
+) -> tuple[float, float, float, str, str, dict[str, Any]]:
     financial_score = _as_float(financial.get("score")) or 35.0
     data_score = _data_readiness_score(data_summary)
     technical_score = _as_float(technical.get("readiness_score")) or 25.0
@@ -575,26 +760,34 @@ def _priority_score(
     capital_drag = CAPITAL_RISK_SCORE.get(risk_level, 0.0)
     debt_profile = _debt_gate_profile(research_debt)
     debt_drag = _as_float(debt_profile.get("debt_drag")) or 0.0
-    score = thesis_proxy * 0.42 + data_score * 0.24 + financial_score * 0.18 + technical_score * 0.12 + 8.0
-    score -= capital_drag
-    score -= debt_drag
+    research_score = thesis_proxy * 0.48 + data_score * 0.18 + financial_score * 0.24 + 8.0
+    research_score -= min(8.0, debt_drag * 0.45)
+    action_score = technical_score * 0.34 + data_score * 0.18 + financial_score * 0.12 + research_score * 0.16 + 18.0
+    action_score -= capital_drag
+    action_score -= debt_drag
     cap = str(data_summary.get("rating_cap") or "OBSERVE_ONLY")
     if cap in {"C", "D", "OBSERVE_ONLY"}:
-        score = min(score, RATING_SCORE_LIMIT.get(cap, 25.0))
-    score = max(0.0, min(100.0, score))
-    has_blocking_debt = bool(debt_profile.get("blocking_datasets"))
-    has_high_debt = bool(debt_profile.get("high_datasets"))
-    if data_summary.get("research_debt_count") or has_blocking_debt:
-        action = "DATA_GATED"
-    elif technical.get("chan_action") in {"WAIT_FOR_SECOND_BUY", "WAIT_FOR_THIRD_BUY", "WAIT_FOR_STRUCTURE_CONFIRMATION"}:
-        action = "WAIT_FOR_BUY_POINT"
-    elif has_high_debt:
-        action = "CANDIDATE_POOL"
-    else:
-        action = "STRONG_OBSERVE" if score >= 68 else "CANDIDATE_POOL" if score >= 55 else "LEAD_TRACKING"
+        research_score = min(research_score, RATING_SCORE_LIMIT.get(cap, 25.0))
+        action_score = min(action_score, RATING_SCORE_LIMIT.get(cap, 25.0))
+    gate = _action_gate_profile(technical, capital, layer, growth, debt_profile)
+    primary_gate = str(gate.get("primary_gate") or "NONE")
+    if primary_gate in {"DATA_GATED", "EVIDENCE_GATED"}:
+        action_score = min(action_score, 48.0)
+    elif primary_gate == "VALUATION_GATED":
+        action_score = min(action_score, 58.0)
+    elif primary_gate == "CAPITAL_ACTION_GATED":
+        action_score = min(action_score, 55.0)
+    elif primary_gate == "AI_REVIEW_GATED":
+        action_score = min(action_score, 62.0)
+    elif primary_gate == "BUY_POINT_GATED":
+        action_score = min(action_score, 62.0)
+    research_score = max(0.0, min(100.0, research_score))
+    action_score = max(0.0, min(100.0, action_score))
+    combined_score = research_score * 0.72 + action_score * 0.28
+    action = _readiness_from_gate(primary_gate, gate, action_score)
     debt_label = ",".join(debt_profile.get("blocking_datasets") or debt_profile.get("high_datasets") or [])
-    reason = f"financial={financial_score:.1f}, data={data_score:.1f}, technical={technical_score:.1f}, capital_risk={risk_level}, debt_drag={debt_drag:.1f}, debt={debt_label or 'none'}, cap={cap}"
-    return round(score, 2), action, reason
+    reason = f"research={research_score:.1f}, action={action_score:.1f}, financial={financial_score:.1f}, data={data_score:.1f}, technical={technical_score:.1f}, capital_risk={risk_level}, primary_gate={primary_gate}, debt={debt_label or 'none'}, cap={cap}"
+    return round(combined_score, 2), round(research_score, 2), round(action_score, 2), action, reason, gate
 
 
 def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
@@ -646,13 +839,46 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
             elif last_score is not None and score > last_score:
                 errors.append("candidate_priority_ranking must be sorted by descending priority_score")
             last_score = score
+            for field in ["research_priority_score", "action_priority_score"]:
+                field_score = _as_float(item.get(field))
+                if field_score is None or field_score < 0 or field_score > 100:
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].{field} must be 0-100")
             if str(item.get("rating_cap")) not in RATING_CAPS:
                 errors.append(f"candidate_priority_ranking[{idx - 1}].rating_cap is unknown")
             if str(item.get("action_readiness")) not in ACTION_READINESS:
                 errors.append(f"candidate_priority_ranking[{idx - 1}].action_readiness is unknown")
-            debt_profile = _debt_gate_profile(debt_by_symbol.get(str(item.get("symbol")), []))
-            if debt_profile.get("blocking_datasets") and item.get("action_readiness") != "DATA_GATED":
-                errors.append(f"{item.get('symbol')} blocking research debt requires DATA_GATED action_readiness")
+            action_gate = item.get("action_gate")
+            if not isinstance(action_gate, Mapping):
+                errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate must be an object")
+            else:
+                primary_gate = str(action_gate.get("primary_gate") or "")
+                if primary_gate not in ACTION_GATE_TYPES:
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.primary_gate is unknown")
+                if not isinstance(action_gate.get("secondary_gates", []), list):
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.secondary_gates must be an array")
+                if not isinstance(action_gate.get("blocking_datasets", []), list):
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.blocking_datasets must be an array")
+                if not isinstance(action_gate.get("blocking_reasons", []), list):
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.blocking_reasons must be an array")
+                readiness = str(item.get("action_readiness") or "")
+                primary_gate_class = str(action_gate.get("primary_gate_class") or "")
+                gate_classes = action_gate.get("gate_classes")
+                if primary_gate_class not in ACTION_GATE_CLASSES:
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.primary_gate_class is unknown")
+                if not isinstance(gate_classes, Mapping):
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.gate_classes must be an object")
+                elif primary_gate != "NONE" and gate_classes.get(primary_gate) != primary_gate_class:
+                    errors.append(f"candidate_priority_ranking[{idx - 1}].action_gate.gate_classes must include the primary gate class")
+                if primary_gate in {"DATA_GATED", "EVIDENCE_GATED"} and readiness != "DATA_GATED":
+                    errors.append(f"{item.get('symbol')} {primary_gate} requires DATA_GATED action_readiness")
+                if primary_gate == "VALUATION_GATED":
+                    expected = "DATA_GATED" if primary_gate_class == "DATA_ACQUISITION" else "RESEARCH_GATED"
+                    if readiness != expected:
+                        errors.append(f"{item.get('symbol')} VALUATION_GATED requires {expected} action_readiness")
+                if primary_gate in {"CAPITAL_ACTION_GATED", "AI_REVIEW_GATED"} and readiness != "RESEARCH_GATED":
+                    errors.append(f"{item.get('symbol')} {primary_gate} requires RESEARCH_GATED action_readiness")
+                if primary_gate == "BUY_POINT_GATED" and readiness != "WAIT_FOR_BUY_POINT":
+                    errors.append(f"{item.get('symbol')} BUY_POINT_GATED requires WAIT_FOR_BUY_POINT action_readiness")
     for row in report.get("growth_hypothesis_matrix", []) if isinstance(report.get("growth_hypothesis_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
@@ -728,7 +954,7 @@ def build_comparison_report(manifest_paths: Sequence[Path], profiles: Optional[M
         layer = _serenity_layer(manifest, profile)
         growth = _growth_hypothesis(manifest, financial, profile)
         candidate_debt = _research_debt_rows(manifest, capital, financial, technical, layer, growth)
-        score, action_readiness, reason = _priority_score(data_summary, financial, technical, capital, layer, candidate_debt)
+        score, research_score, action_score, action_readiness, reason, action_gate = _priority_score(data_summary, financial, technical, capital, layer, growth, candidate_debt)
 
         candidates.append({
             "symbol": symbol,
@@ -748,8 +974,11 @@ def build_comparison_report(manifest_paths: Sequence[Path], profiles: Optional[M
         ranking_seed.append({
             "symbol": symbol,
             "priority_score": score,
+            "research_priority_score": research_score,
+            "action_priority_score": action_score,
             "rating_cap": data_summary["rating_cap"],
             "action_readiness": action_readiness,
+            "action_gate": action_gate,
             "key_reason": reason,
         })
 
@@ -799,10 +1028,19 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     decision = report.get("final_decision", {}) if isinstance(report.get("final_decision"), Mapping) else {}
     lines.append(f"- 优先候选：{decision.get('top_candidate', '')}")
     lines.append(f"- 决策说明：{decision.get('decision', '')}")
-    lines.extend(["", "## 1. 候选优先级", "| Rank | Symbol | Priority | Rating Cap | Action | Reason |", "|---:|---|---:|---|---|---|"])
+    lines.extend(["", "## 1. 候选优先级", "| Rank | Symbol | Research | Action | Priority | Gate | Readiness | Reason |", "|---:|---|---:|---:|---:|---|---|---|"])
     for row in report.get("candidate_priority_ranking", []):
         if isinstance(row, Mapping):
-            lines.append(f"| {row.get('rank')} | {row.get('symbol')} | {row.get('priority_score')} | {row.get('rating_cap')} | {row.get('action_readiness')} | {row.get('key_reason')} |")
+            gate = row.get("action_gate") if isinstance(row.get("action_gate"), Mapping) else {}
+            lines.append(f"| {row.get('rank')} | {row.get('symbol')} | {row.get('research_priority_score')} | {row.get('action_priority_score')} | {row.get('priority_score')} | {gate.get('primary_gate', '')} | {row.get('action_readiness')} | {row.get('key_reason')} |")
+    lines.extend(["", "## 1.1 行动门控", "| Symbol | Primary Gate | Secondary Gates | Blocking Datasets | Reasons |", "|---|---|---|---|---|"])
+    for row in report.get("candidate_priority_ranking", []):
+        if isinstance(row, Mapping):
+            gate = row.get("action_gate") if isinstance(row.get("action_gate"), Mapping) else {}
+            secondary = ", ".join(str(item) for item in gate.get("secondary_gates", []) if item) if isinstance(gate.get("secondary_gates", []), list) else ""
+            datasets = ", ".join(str(item) for item in gate.get("blocking_datasets", []) if item) if isinstance(gate.get("blocking_datasets", []), list) else ""
+            reasons = "; ".join(str(item) for item in gate.get("blocking_reasons", []) if item) if isinstance(gate.get("blocking_reasons", []), list) else ""
+            lines.append(f"| {row.get('symbol')} | {gate.get('primary_gate', '')} | {secondary} | {datasets} | {reasons} |")
     lines.extend(["", "## 2. 数据追索与研究债务", "| Symbol | Dataset | Priority | Next Action |", "|---|---|---|---|"])
     for row in report.get("research_debt", []):
         if isinstance(row, Mapping):

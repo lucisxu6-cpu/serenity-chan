@@ -30,6 +30,7 @@ class Dataset(str, Enum):
     PRICE_HISTORY_RAW = "price_history_raw"
     PRICE_HISTORY_ADJUSTED = "price_history_adjusted"
     SHARE_CAPITAL = "share_capital"
+    VALUATION_INPUTS = "valuation_inputs"
     FINANCIALS = "financials"
     FILINGS = "filings_announcements"
     CUSTOMER_EVIDENCE = "customer_order_capacity_evidence"
@@ -76,6 +77,7 @@ class DecisionImpact(str, Enum):
     THESIS_IMPACT = "THESIS_IMPACT"
     EVIDENCE_IMPACT = "EVIDENCE_IMPACT"
     ACTION_IMPACT = "ACTION_IMPACT"
+    VALUATION_IMPACT = "VALUATION_IMPACT"
     ENGINEERING_GAP = "ENGINEERING_GAP"
     NO_IMPACT = "NO_IMPACT"
 

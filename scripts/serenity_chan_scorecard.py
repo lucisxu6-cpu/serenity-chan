@@ -144,10 +144,11 @@ def _data_readiness(data_acquisition: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(statuses, Mapping):
         raise ValueError("data_acquisition.status_by_dataset must be an object")
     weights = {
-        "current_quote": 0.20,
-        "price_history_adjusted": 0.25,
-        "financials": 0.30,
-        "filings_announcements": 0.25,
+        "current_quote": 0.18,
+        "price_history_adjusted": 0.22,
+        "valuation_inputs": 0.12,
+        "financials": 0.26,
+        "filings_announcements": 0.22,
     }
     score = 0.0
     details: Dict[str, Any] = {}
@@ -197,7 +198,7 @@ def _validate_gap_debt_links(data_acquisition: Mapping[str, Any]) -> None:
         str(item.get("dataset"))
         for item in gaps
         if isinstance(item, Mapping)
-        and item.get("decision_impact") in {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT"}
+        and item.get("decision_impact") in {"THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "VALUATION_IMPACT"}
     }
     debt_datasets = {
         str(item.get("dataset"))
@@ -237,7 +238,7 @@ def _gap_controls(data_acquisition: Mapping[str, Any]) -> Dict[str, Any]:
             raise ValueError(f"data_acquisition.data_gaps[{idx}].gap_type unknown: {gap_type!r}")
         impact = str(item.get("decision_impact") or "")
         dataset = str(item.get("dataset") or "")
-        if impact in {"EVIDENCE_IMPACT", "ACTION_IMPACT", "THESIS_IMPACT"}:
+        if impact in {"EVIDENCE_IMPACT", "ACTION_IMPACT", "THESIS_IMPACT", "VALUATION_IMPACT"}:
             material_gaps.append(dict(item))
         if dataset in {"financials", "filings_announcements"} and gap_type in {
             DataGapType.SCOPE_NOT_REQUESTED.value,

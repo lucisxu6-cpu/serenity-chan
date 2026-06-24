@@ -474,6 +474,8 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
             Dataset.CURRENT_QUOTE: SourcePolicy(market, dataset, ["Exchange/vendor"], ["Wind", "Choice", "Tushare Pro"], ["Eastmoney", "Tencent", "AKShare", "Sina"], ["SEC EDGAR"], "Latest A-share trading day required."),
             Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["Eastmoney", "Tencent", "AKShare"], ["SEC EDGAR"], "Use qfq/front-adjusted for technical."),
             Dataset.PRICE_HISTORY_RAW: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["Eastmoney", "Tencent", "AKShare"], ["SEC EDGAR"], "Use raw for actual current/reference price."),
+            Dataset.SHARE_CAPITAL: SourcePolicy(market, dataset, ["CNINFO/exchange capital disclosures"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["Tencent quote market-cap fields", "Eastmoney capital structure"], ["SEC EDGAR"], "Total and float shares are required for valuation and market-implied growth."),
+            Dataset.VALUATION_INPUTS: SourcePolicy(market, dataset, ["CNINFO/exchange capital disclosures"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["Tencent quote market-cap fields", "Eastmoney capital structure"], ["SEC EDGAR"], "Market cap, float market cap, and share count are required for valuation preflight."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["CNINFO/SSE/SZSE/BSE as applicable"], ["Wind/Choice/CSMAR/Tushare"], ["AKShare/Eastmoney"], ["SEC EDGAR"]))
 
@@ -483,6 +485,8 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
             Dataset.FINANCIALS: SourcePolicy(market, dataset, ["SEC XBRL", "SEC filings"], ["FactSet", "Koyfin", "TIKR", "Visible Alpha"], ["yfinance", "FMP"], ["CNINFO"], "Separate reported facts from estimates."),
             Dataset.CURRENT_QUOTE: SourcePolicy(market, dataset, ["exchange/vendor"], ["FactSet", "Koyfin", "Bloomberg"], ["yfinance", "Nasdaq/Yahoo"], ["CNINFO"], "Check split/dividend adjustments."),
             Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["exchange/vendor"], ["FactSet", "Koyfin", "Bloomberg"], ["yfinance", "Stooq"], ["CNINFO"], "Use adjusted series consistently."),
+            Dataset.SHARE_CAPITAL: SourcePolicy(market, dataset, ["SEC companyfacts / company filings"], ["FactSet", "Koyfin", "TIKR"], ["company IR"], ["CNINFO"], "Share count basis must be explicit before market-cap-derived valuation."),
+            Dataset.VALUATION_INPUTS: SourcePolicy(market, dataset, ["SEC companyfacts / company filings"], ["FactSet", "Koyfin", "TIKR"], ["current quote plus SEC share count"], ["CNINFO"], "Market cap can be derived from current quote and SEC share count when direct market cap is unavailable."),
             Dataset.ESTIMATES: SourcePolicy(market, dataset, ["company guidance"], ["FactSet", "Visible Alpha", "Koyfin", "TIKR"], ["SeekingAlpha", "Yahoo Analysis"], ["CNINFO"], "Consensus is not reported fact."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["SEC/Company IR"], ["FactSet/Koyfin/TIKR"], ["yfinance"], ["CNINFO"]))
@@ -494,6 +498,8 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
             Dataset.CURRENT_QUOTE: SourcePolicy(market, dataset, ["HKEX market data", "licensed vendor"], ["Wind", "Choice", "Bloomberg"], ["yfinance", "AAStocks"], ["SEC EDGAR unless ADR/dual-listed"], "HK quote must use HK ticker, currency, lot size, and latest trading day."),
             Dataset.PRICE_HISTORY_RAW: SourcePolicy(market, dataset, ["HKEX market data", "licensed vendor"], ["Wind", "Choice", "Bloomberg"], ["yfinance", "AAStocks"], ["SEC EDGAR unless ADR/dual-listed"], "Use HK ticker and HKD history; do not substitute ADR history."),
             Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["licensed vendor"], ["Wind", "Choice", "Bloomberg"], ["yfinance", "AAStocks"], ["SEC EDGAR unless ADR/dual-listed"], "Use adjusted HK series consistently for Chan/GF-DMA."),
+            Dataset.SHARE_CAPITAL: SourcePolicy(market, dataset, ["HKEX announcements / annual reports"], ["Wind", "Choice", "Bloomberg"], ["company IR"], ["SEC EDGAR unless ADR/dual-listed"], "Share count and currency basis must follow HK line-item disclosures."),
+            Dataset.VALUATION_INPUTS: SourcePolicy(market, dataset, ["HKEX announcements / annual reports"], ["Wind", "Choice", "Bloomberg"], ["HK quote plus official share count"], ["SEC EDGAR unless ADR/dual-listed"], "HKD market-cap and share-count basis must be explicit."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["HKEXnews", "Company IR"], ["Wind", "Choice", "Bloomberg"], ["yfinance", "AAStocks"], ["SEC EDGAR unless ADR/dual-listed"], "Watch liquidity, placing, connected transactions."))
 
@@ -785,6 +791,7 @@ def build_data_fetch_plan(symbol_or_theme: str, *, horizon: str = "12M") -> Dict
         Dataset.PRICE_HISTORY_RAW,
         Dataset.PRICE_HISTORY_ADJUSTED,
         Dataset.SHARE_CAPITAL,
+        Dataset.VALUATION_INPUTS,
         Dataset.FINANCIALS,
         Dataset.FILINGS,
         Dataset.CUSTOMER_EVIDENCE,
@@ -1101,7 +1108,7 @@ class TencentQuoteKlineProvider:
     name = "Tencent_Quote_Kline_L2"
     level = SourceLevel.L2
     markets = [Market.CN_A]
-    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_ADJUSTED]
+    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_ADJUSTED, Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
     user_agent = "Mozilla/5.0"
     quote_url = "https://qt.gtimg.cn/q="
     kline_url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
@@ -1112,6 +1119,11 @@ class TencentQuoteKlineProvider:
             if not alias:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
             return self._fetch_quote(symbol, dataset, alias, raw_dir=kwargs.get("raw_dir"))
+        if dataset in {Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS}:
+            alias = _tencent_quote_alias(symbol)
+            if not alias:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
+            return self._fetch_valuation_inputs(symbol, dataset, alias, raw_dir=kwargs.get("raw_dir"))
         if dataset == Dataset.PRICE_HISTORY_ADJUSTED:
             alias = _tencent_kline_alias(symbol)
             if not alias:
@@ -1211,6 +1223,99 @@ class TencentQuoteKlineProvider:
             raw_hash=raw_hash,
             currency=data["currency"],
         )
+
+    def _fetch_valuation_inputs(self, symbol: SymbolInfo, dataset: Dataset, alias: str, *, raw_dir: Optional[str | Path]) -> DataResult:
+        url = self.quote_url + urllib.parse.quote(alias)
+        try:
+            raw = self._read_bytes(url)
+            text = raw.decode("gb18030", errors="replace")
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
+
+        match = re.search(rf"v_{re.escape(alias)}=\"([^\"]*)\"", text)
+        if not match:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote returned no matching symbol data")
+        fields = match.group(1).split("~")
+        if len(fields) < 46:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"Tencent quote returned too few fields for valuation inputs: {len(fields)}")
+
+        price = _safe_float(fields[3])
+        float_market_cap = self._tencent_market_cap(fields, 44)
+        total_market_cap = self._tencent_market_cap(fields, 45)
+        float_shares = _safe_float(fields[72] if len(fields) > 72 else None)
+        total_shares = _safe_float(fields[73] if len(fields) > 73 else None)
+        if total_shares is None and total_market_cap is not None and price and price > 0:
+            total_shares = total_market_cap / price
+        if float_shares is None and float_market_cap is not None and price and price > 0:
+            float_shares = float_market_cap / price
+
+        if total_shares is None and total_market_cap is None:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote missing share count and market-cap fields")
+        if total_market_cap is not None and float_market_cap is not None and float_market_cap > total_market_cap * 1.02:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent valuation fields are internally inconsistent: float market cap exceeds total market cap")
+        if total_shares is not None and float_shares is not None and float_shares > total_shares * 1.02:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent valuation fields are internally inconsistent: float shares exceed total shares")
+
+        warnings: List[str] = []
+        if price and price > 0 and total_market_cap is not None and total_shares:
+            implied_market_cap = price * total_shares
+            if implied_market_cap:
+                diff = abs(implied_market_cap - total_market_cap) / max(total_market_cap, 1.0)
+                if diff > 0.05:
+                    warnings.append(f"Total market cap differs from price * total shares by {diff:.2%}; verify share basis.")
+        if float_market_cap is not None and float_shares is None:
+            warnings.append("Float market cap is present, but float share count could not be derived.")
+
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_path, raw_hash = save_raw_json({"alias": alias, "raw_text": text}, raw_dir, f"{symbol.symbol}_{dataset.value}_tencent_quote_raw.json")
+
+        market_time = fields[30] if len(fields) > 30 else ""
+        data = {
+            "symbol": fields[2] if len(fields) > 2 else symbol.symbol.partition(".")[0],
+            "name": fields[1] if len(fields) > 1 else symbol.name,
+            "currency": symbol.currency or "CNY",
+            "exchange": symbol.exchange,
+            "as_of_date": _tencent_timestamp_to_date(market_time),
+            "regular_market_price": price,
+            "regular_market_time": market_time,
+            "total_shares": round(total_shares, 6) if total_shares is not None else None,
+            "float_shares": round(float_shares, 6) if float_shares is not None else None,
+            "total_market_cap": round(total_market_cap, 6) if total_market_cap is not None else None,
+            "float_market_cap": round(float_market_cap, 6) if float_market_cap is not None else None,
+            "source_basis": "quote_derived_preflight",
+            "share_count_basis": "Tencent quote fields 73 total shares and 72 float shares, with market-cap-derived secondary basis when share fields are absent.",
+            "market_cap_basis": "Tencent quote fields 45 total market cap and 44 float market cap in CNY hundred-millions, normalized to CNY.",
+            "requires_l0_l1_verification": True,
+            "raw_field_indices": {
+                "price": 3,
+                "float_market_cap_100m": 44,
+                "total_market_cap_100m": 45,
+                "float_shares": 72,
+                "total_shares": 73,
+            },
+        }
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=data["as_of_date"],
+            data=data,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=data["currency"],
+            warnings=warnings,
+        )
+
+    @staticmethod
+    def _tencent_market_cap(fields: Sequence[str], index: int) -> Optional[float]:
+        value = _safe_float(fields[index] if len(fields) > index else None)
+        if value is None or value <= 0:
+            return None
+        return value * 100_000_000
 
     def _fetch_kline(
         self,
@@ -1843,31 +1948,40 @@ class CninfoFinancialReportBase:
             queried_pages = 0
             seen_report_keys: set[str] = set()
             reports: List[Dict[str, Any]] = []
-            for page_num in range(1, 7):
-                payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
-                page_announcements = payload.get("announcements") or []
-                if not isinstance(page_announcements, list) or not page_announcements:
-                    break
-                queried_pages += 1
-                announcements.extend(page_announcements)
-                for item in page_announcements:
-                    if not isinstance(item, Mapping):
-                        continue
-                    record = cninfo._normalize_announcement(item)
-                    title = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
-                    if not self._is_periodic_report_title(title):
-                        continue
-                    record["title"] = title
-                    record["report_kind"] = self._report_kind(title)
-                    report_key = str(record.get("announcement_id") or record.get("pdf_url") or title)
-                    if report_key in seen_report_keys:
-                        continue
-                    seen_report_keys.add(report_key)
-                    reports.append(record)
+            issuer_name = str(listing.get("zwjc") or "")
+            for scan_attempt in range(2):
+                announcements = []
+                queried_pages = 0
+                seen_report_keys = set()
+                reports = []
+                for page_num in range(1, 7):
+                    payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
+                    page_announcements = payload.get("announcements") or []
+                    if not isinstance(page_announcements, list) or not page_announcements:
+                        break
+                    queried_pages += 1
+                    announcements.extend(page_announcements)
+                    for item in page_announcements:
+                        if not isinstance(item, Mapping):
+                            continue
+                        record = cninfo._normalize_announcement(item)
+                        title = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
+                        if not self._is_periodic_report_title(title, issuer_name=issuer_name):
+                            continue
+                        record["title"] = title
+                        record["report_kind"] = self._report_kind(title)
+                        report_key = str(record.get("announcement_id") or record.get("pdf_url") or title)
+                        if report_key in seen_report_keys:
+                            continue
+                        seen_report_keys.add(report_key)
+                        reports.append(record)
+                        if len(reports) >= 8:
+                            break
                     if len(reports) >= 8:
                         break
-                if len(reports) >= 8:
+                if reports or scan_attempt == 1:
                     break
+                time.sleep(0.75)
             if raw_dir and reports and download_limit > 0:
                 self._attach_official_report_downloads(
                     reports,
@@ -1923,12 +2037,18 @@ class CninfoFinancialReportBase:
         return re.sub(r"<[^>]+>", "", title).replace("&nbsp;", " ").strip()
 
     @staticmethod
-    def _is_periodic_report_title(title: str) -> bool:
+    def _is_periodic_report_title(title: str, *, issuer_name: str = "") -> bool:
         if not title or "摘要" in title:
             return False
         excluded = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
         if any(token in title for token in excluded):
             return False
+        if "关于披露" in title:
+            return False
+        if issuer_name and "：" in title:
+            _, _, right = title.partition("：")
+            if right and not right.startswith(issuer_name) and re.search(r"(股份有限公司|有限公司).*(年度报告|季度报告|半年度报告)", right):
+                return False
         return bool(re.search(r"(年度报告|半年度报告|第一季度报告|第三季度报告|一季度报告|三季度报告|季度报告)", title))
 
     @staticmethod
@@ -2107,7 +2227,14 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 report for report in reports
                 if report.get("download_status") == "OK" and report.get("pdf_path")
             ]
-            financial_sector_profile_required = self._requires_financial_sector_profile(evidence, reports)
+            extracted_financial_sector_profile = any(
+                isinstance(row.get("financial_sector_profile"), Mapping)
+                for row in extracted_periods
+            )
+            financial_sector_profile_required = (
+                self._requires_financial_sector_profile(evidence, reports)
+                or extracted_financial_sector_profile
+            )
             financial_sector_profile_status = self._financial_sector_profile_status(
                 extracted_periods,
                 required=financial_sector_profile_required,
@@ -3262,7 +3389,7 @@ class HkexNewsBase:
         accept: str = "application/json, text/javascript, */*; q=0.01",
         timeout: int = 30,
         curl_retries: int = 1,
-        fallback_to_urllib: bool = True,
+        use_urllib_secondary_route: bool = True,
     ) -> bytes:
         headers = self._headers(accept=accept)
         curl_error: Optional[BaseException] = None
@@ -3295,7 +3422,7 @@ class HkexNewsBase:
         except Exception as exc:
             curl_error = exc
 
-        if not fallback_to_urllib:
+        if not use_urllib_secondary_route:
             raise RuntimeError(f"HKEX fetch failed: curl={type(curl_error).__name__}: {curl_error}") from curl_error
 
         try:
@@ -4072,6 +4199,197 @@ class HkexFinancialReportsProvider(HkexNewsBase):
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"HKEX financial report fetch failed: {type(exc).__name__}: {exc}")
 
 
+class HkexValuationInputsProvider(HkexFinancialReportsProvider):
+    """HK valuation inputs from official HKEX report share count plus L2 quote price."""
+
+    name = "HKEX_Yahoo_Valuation_L0L2"
+    level = SourceLevel.L2
+    datasets = [Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if symbol.market != Market.HK:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HK valuation inputs only support HK symbols")
+        if dataset not in self.datasets:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        code = symbol.symbol.partition(".")[0].zfill(5)
+        raw_dir = Path(kwargs["raw_dir"]) if kwargs.get("raw_dir") else None
+        try:
+            listing = self._lookup_listing(code)
+            if not listing:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve HKEX stock id for {symbol.symbol}")
+            reports = self._latest_share_count_reports(str(listing["stock_id"]))
+            download_limit = int(kwargs.get("valuation_report_download_limit", 3) or 3)
+            share_evidence = self._latest_issued_shares_from_reports(
+                reports,
+                raw_dir=raw_dir / "valuation_reports" if raw_dir else None,
+                symbol=symbol.symbol,
+                download_limit=max(1, download_limit),
+            )
+            if not share_evidence:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEX reports did not expose a usable issued-share count")
+            total_shares = _safe_float(share_evidence.get("total_shares"))
+            if total_shares is None or total_shares <= 0:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEX issued-share count is not positive")
+
+            quote_result = YahooChartProvider().fetch(symbol, Dataset.CURRENT_QUOTE, raw_dir=raw_dir)
+            quote = quote_result.data if quote_result.ok and isinstance(quote_result.data, Mapping) else {}
+            price = _safe_float(quote.get("regular_market_price"))
+            warnings: List[str] = []
+            if not quote_result.ok:
+                warnings.extend(quote_result.errors)
+            if dataset == Dataset.VALUATION_INPUTS and (price is None or price <= 0):
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Yahoo current quote did not expose a usable HK regular market price")
+
+            total_market_cap = price * total_shares if price is not None and price > 0 else None
+            data = {
+                "symbol": symbol.symbol,
+                "name": quote.get("name") or listing.get("stock_name") or symbol.name,
+                "currency": quote.get("currency") or symbol.currency or "HKD",
+                "exchange": symbol.exchange,
+                "as_of_date": quote_result.as_of_date or share_evidence.get("as_of_date"),
+                "regular_market_price": round(price, 6) if price is not None else None,
+                "regular_market_time": str(quote.get("regular_market_time") or ""),
+                "total_shares": round(total_shares, 6),
+                "float_shares": None,
+                "total_market_cap": round(total_market_cap, 6) if total_market_cap is not None else None,
+                "float_market_cap": None,
+                "source_basis": "quote_derived_preflight",
+                "share_count_basis": str(share_evidence.get("basis") or "HKEX official annual/interim report issued-share disclosure."),
+                "market_cap_basis": "Yahoo HK regular_market_price * HKEX official issued shares; listing currency HKD.",
+                "requires_l0_l1_verification": True,
+                "official_share_evidence": share_evidence,
+            }
+            raw_path = raw_hash = None
+            if raw_dir:
+                raw_path, raw_hash = save_raw_json(
+                    {"reports": reports, "share_evidence": share_evidence, "quote": quote},
+                    raw_dir,
+                    f"{symbol.symbol}_{dataset.value}_hkex_yahoo_valuation_raw.json",
+                )
+            return DataResult(
+                True,
+                dataset,
+                symbol.symbol,
+                self.name,
+                self.level,
+                utc_now(),
+                as_of_date=str(data.get("as_of_date") or ""),
+                data=data,
+                raw_path=raw_path,
+                raw_hash=raw_hash,
+                currency=str(data["currency"]),
+                warnings=warnings,
+            )
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"HK valuation input fetch failed: {type(exc).__name__}: {exc}")
+
+    def _latest_share_count_reports(self, stock_id: str) -> List[Dict[str, Any]]:
+        from_date, to_date = self._date_window(years=3)
+        reports: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for title in ["Annual Report", "Interim Report"]:
+            try:
+                payload = self._query_title_search(
+                    stock_id=stock_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    title=title,
+                    row_range=20,
+                )
+            except Exception:
+                continue
+            for record in self._records_from_payload(payload):
+                key = str(record.get("news_id") or record.get("file_link") or "")
+                if key in seen:
+                    continue
+                seen.add(key)
+                record["report_kind"] = self._report_kind(record)
+                if record["report_kind"] in {"annual", "interim"}:
+                    reports.append(record)
+        reports.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
+        return reports[:4]
+
+    def _latest_issued_shares_from_reports(
+        self,
+        reports: Sequence[Mapping[str, Any]],
+        *,
+        raw_dir: Optional[Path],
+        symbol: str = "",
+        download_limit: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        download_errors: List[str] = []
+        for report_index, report in enumerate(reports):
+            if report_index >= max(1, download_limit):
+                break
+            if raw_dir and symbol and not report.get("pdf_path"):
+                self._attach_report_downloads(
+                    [report],
+                    raw_dir=raw_dir,
+                    symbol=symbol,
+                    limit=1,
+                    errors=download_errors,
+                )
+            pdf_path = str(report.get("pdf_path") or "")
+            if not pdf_path:
+                continue
+            page_bundle = self._extract_pdf_pages(pdf_path, max_pages=220, timeout=70)
+            pages = page_bundle.get("pages", []) if isinstance(page_bundle, Mapping) else []
+            if not isinstance(pages, list) or not pages:
+                continue
+            combined_text = "\n\n".join(
+                f"--- page {page.get('page_number')} ---\n{page.get('text') or ''}"
+                for page in pages
+                if isinstance(page, Mapping)
+            )
+            text_path = text_hash = None
+            if raw_dir:
+                text_name = _safe_artifact_name(f"{Path(pdf_path).stem}_valuation_text") + ".txt"
+                text_path, text_hash = save_raw_text(combined_text, raw_dir / "extracted_text", text_name)
+            extracted = self._extract_issued_shares_from_text(combined_text)
+            if not extracted:
+                continue
+            extracted.update({
+                "report_kind": report.get("report_kind"),
+                "title": report.get("title"),
+                "announcement_date": report.get("announcement_date"),
+                "as_of_date": report.get("announcement_date"),
+                "pdf_path": pdf_path,
+                "pdf_hash": report.get("pdf_hash"),
+                "text_path": text_path,
+                "text_hash": text_hash,
+            })
+            if download_errors:
+                extracted["download_warnings"] = download_errors
+            return extracted
+        return None
+
+    @classmethod
+    def _extract_issued_shares_from_text(cls, text: str) -> Optional[Dict[str, Any]]:
+        normalized = re.sub(r"\s+", " ", text)
+        patterns = [
+            r"total\s+number\s+of\s+issued\s+shares\s+of\s+the\s+company\s+was\s+([0-9][0-9,]{5,})",
+            r"total\s+number\s+of\s+issued\s+shares\s+was\s+([0-9][0-9,]{5,})",
+            r"number\s+of\s+issued\s+shares(?:\s+of\s+the\s+company)?[^.]{0,180}?\b(?:was|were|is|are|:)\s*([0-9][0-9,]{5,})",
+            r"(?:shares\s+in\s+issue|issued\s+shares)\s+(?:as\s+at|at|on)[^.]{0,180}?\b(?:was|were|is|are|:)?\s*([0-9][0-9,]{5,})",
+            r"([0-9][0-9,]{5,})\s+(?:ordinary\s+)?shares\s+(?:in\s+issue|issued\s+and\s+fully\s+paid)",
+            r"issued\s+and\s+fully\s+paid[^.]{0,180}?([0-9][0-9,]{5,})\s+(?:ordinary\s+)?shares",
+            r"issued\s+share\s+capital[^.]{0,240}?([0-9][0-9,]{5,})\s+(?:shares|ordinary\s+shares)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, normalized, flags=re.I)
+            if not match:
+                continue
+            value = _safe_float(match.group(1).replace(",", ""))
+            if value is None or value <= 0:
+                continue
+            return {
+                "total_shares": value,
+                "basis": "HKEX official report issued-share disclosure.",
+                "matched_text": match.group(0)[:260],
+            }
+        return None
+
+
 class CninfoTencentAdjustedKlineProvider:
     """Build A-share qfq history from Tencent daily rows plus CNINFO corporate actions.
 
@@ -4353,8 +4671,8 @@ def _sec_user_agent() -> Tuple[str, List[str]]:
     if identity:
         return identity, []
     return (
-        "serenity-chan-stock-skill/0.1 (set SEC_USER_AGENT for contact)",
-        ["SEC_USER_AGENT or EDGAR_IDENTITY is not set; using generic research User-Agent."],
+        "serenity-chan-stock-skill/0.1 contact@example.com",
+        ["SEC_USER_AGENT or EDGAR_IDENTITY is not set; using bundled placeholder SEC User-Agent. Set a real contact identity for production research."],
     )
 
 
@@ -4419,6 +4737,219 @@ def _sec_identity_summary(cik: str, payload: Mapping[str, Any]) -> Dict[str, Any
         "tickers": payload.get("tickers", []),
         "exchanges": payload.get("exchanges", []),
     }
+
+
+_NUMBER_WORDS: Dict[str, float] = {
+    "one": 1.0,
+    "two": 2.0,
+    "three": 3.0,
+    "four": 4.0,
+    "five": 5.0,
+    "six": 6.0,
+    "seven": 7.0,
+    "eight": 8.0,
+    "nine": 9.0,
+    "ten": 10.0,
+    "twenty": 20.0,
+}
+
+
+def _number_token(value: str) -> Optional[float]:
+    token = re.sub(r"[^0-9A-Za-z.]+", " ", value).strip().lower()
+    if not token:
+        return None
+    numeric = re.search(r"\d+(?:\.\d+)?", token)
+    if numeric:
+        parsed = _safe_float(numeric.group(0))
+        return parsed if parsed and parsed > 0 else None
+    for word, number in _NUMBER_WORDS.items():
+        if re.search(rf"\b{re.escape(word)}\b", token):
+            return number
+    return None
+
+
+def _extract_ads_ratio_from_text(text: str) -> Optional[Dict[str, Any]]:
+    plain = re.sub(r"<[^>]+>", " ", text)
+    plain = html.unescape(re.sub(r"\s+", " ", plain))
+    patterns = [
+        r"(?i)(each|one|1)\s+(?:american\s+depositary\s+share|ads)\s+represents\s+([A-Za-z0-9().\- ]{1,60})\s+(?:common|ordinary)\s+shares?",
+        r"(?i)([A-Za-z0-9().\- ]{1,60})\s+(?:common|ordinary)\s+shares?\s+(?:per|for each)\s+(?:american\s+depositary\s+share|ads)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, plain)
+        if not match:
+            continue
+        token = match.group(2) if "represents" in pattern else match.group(1)
+        ratio = _number_token(token)
+        if ratio is None or ratio <= 0:
+            continue
+        return {
+            "ratio": ratio,
+            "basis": "SEC annual report ADS/common-share description",
+            "evidence_excerpt": match.group(0)[:280],
+        }
+    return None
+
+
+def _latest_sec_primary_document(
+    cik: str,
+    submissions_payload: Mapping[str, Any],
+    *,
+    forms: set[str],
+) -> Optional[Dict[str, str]]:
+    recent = submissions_payload.get("filings", {}).get("recent", {}) if isinstance(submissions_payload.get("filings"), Mapping) else {}
+    form_values = recent.get("form", []) or []
+    accession_numbers = recent.get("accessionNumber", []) or []
+    primary_documents = recent.get("primaryDocument", []) or []
+    filing_dates = recent.get("filingDate", []) or []
+    report_dates = recent.get("reportDate", []) or []
+    candidates: List[Dict[str, str]] = []
+    for idx, form in enumerate(form_values):
+        form_value = str(form or "").upper()
+        if form_value not in forms:
+            continue
+        accession = str(accession_numbers[idx] if idx < len(accession_numbers) else "")
+        document = str(primary_documents[idx] if idx < len(primary_documents) else "")
+        if not accession or not document:
+            continue
+        url = f"https://www.sec.gov/Archives/edgar/data/{int(str(cik))}/{accession.replace('-', '')}/{document}"
+        candidates.append({
+            "form": form_value,
+            "accession_number": accession,
+            "primary_document": document,
+            "filing_date": str(filing_dates[idx] if idx < len(filing_dates) else ""),
+            "report_date": str(report_dates[idx] if idx < len(report_dates) else ""),
+            "url": url,
+        })
+    candidates.sort(key=lambda row: (row.get("filing_date", ""), row.get("accession_number", "")))
+    return candidates[-1] if candidates else None
+
+
+def _ads_ratio_from_sec_report(
+    cik: str,
+    submissions_payload: Mapping[str, Any],
+    *,
+    user_agent: str,
+) -> Optional[Dict[str, Any]]:
+    document = _latest_sec_primary_document(cik, submissions_payload, forms={"20-F", "20-F/A", "40-F", "40-F/A"})
+    if not document:
+        return None
+    text = https_text(str(document["url"]), user_agent=user_agent, timeout=30, retries=1)
+    ratio = _extract_ads_ratio_from_text(text)
+    if not ratio:
+        return None
+    ratio.update({
+        "source": "SEC_PRIMARY_DOCUMENT",
+        "form": document.get("form"),
+        "accession_number": document.get("accession_number"),
+        "primary_document": document.get("primary_document"),
+        "url": document.get("url"),
+    })
+    return ratio
+
+
+def _ads_ratio_from_paired_otc_history(
+    symbol: SymbolInfo,
+    submissions_payload: Mapping[str, Any],
+    *,
+    raw_dir: Optional[str | Path],
+) -> Optional[Dict[str, Any]]:
+    tickers = [
+        str(ticker).strip().upper()
+        for ticker in submissions_payload.get("tickers", [])
+        if str(ticker).strip()
+    ]
+    requested = symbol.symbol.upper()
+    candidates = [ticker for ticker in tickers if ticker != requested and ticker.endswith("F")]
+    if not candidates:
+        return None
+    provider = YahooChartProvider(name="Yahoo_ADR_Ratio_History_L2")
+    requested_history = provider.fetch(symbol, Dataset.PRICE_HISTORY_ADJUSTED, raw_dir=raw_dir, range="6mo")
+    if not requested_history.ok or not isinstance(requested_history.data, list):
+        return None
+    requested_by_date = {
+        str(row.get("trade_date")): _safe_float(row.get("close"))
+        for row in requested_history.data
+        if isinstance(row, Mapping)
+    }
+    requested_by_date = {date: close for date, close in requested_by_date.items() if close and close > 0}
+    for candidate in candidates:
+        candidate_symbol = SymbolInfo(
+            input_value=candidate,
+            symbol=candidate,
+            market=Market.US,
+            exchange="US",
+            currency=symbol.currency or "USD",
+        )
+        candidate_history = provider.fetch(candidate_symbol, Dataset.PRICE_HISTORY_ADJUSTED, raw_dir=raw_dir, range="6mo")
+        if not candidate_history.ok or not isinstance(candidate_history.data, list):
+            continue
+        candidate_by_date = {
+            str(row.get("trade_date")): _safe_float(row.get("close"))
+            for row in candidate_history.data
+            if isinstance(row, Mapping)
+        }
+        candidate_by_date = {date: close for date, close in candidate_by_date.items() if close and close > 0}
+        common_dates = sorted(set(requested_by_date) & set(candidate_by_date))
+        ratios: List[float] = []
+        for date in common_dates[-20:]:
+            ratio = requested_by_date[date] / candidate_by_date[date]
+            if math.isfinite(ratio) and ratio > 0:
+                ratios.append(ratio)
+        if not ratios:
+            continue
+        ratios.sort()
+        median_ratio = ratios[len(ratios) // 2]
+        integer_ratio = round(median_ratio)
+        if integer_ratio < 1 or integer_ratio > 10:
+            continue
+        relative_error = abs(median_ratio - integer_ratio) / max(integer_ratio, 1)
+        if relative_error > 0.08:
+            continue
+        return {
+            "ratio": float(integer_ratio),
+            "basis": "same-issuer ADR/ordinary OTC adjusted-close ratio",
+            "source": "YAHOO_PAIRED_OTC_HISTORY",
+            "paired_ticker": candidate,
+            "median_price_ratio": median_ratio,
+            "relative_error": relative_error,
+            "sample_count": len(ratios),
+        }
+    return None
+
+
+def _ads_ratio_required(symbol: SymbolInfo, submissions_payload: Mapping[str, Any]) -> bool:
+    recent = submissions_payload.get("filings", {}).get("recent", {}) if isinstance(submissions_payload.get("filings"), Mapping) else {}
+    forms = {str(form or "").upper() for form in recent.get("form", []) or []}
+    return bool(forms & {"20-F", "20-F/A", "40-F", "40-F/A"})
+
+
+def _resolve_ads_ratio(
+    symbol: SymbolInfo,
+    cik: str,
+    submissions_payload: Mapping[str, Any],
+    *,
+    user_agent: str,
+    raw_dir: Optional[str | Path],
+) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    attempts: List[Dict[str, Any]] = []
+    try:
+        ratio = _ads_ratio_from_sec_report(cik, submissions_payload, user_agent=user_agent)
+        if ratio:
+            attempts.append({"source": "SEC_PRIMARY_DOCUMENT", "status": "OK"})
+            return ratio, attempts
+        attempts.append({"source": "SEC_PRIMARY_DOCUMENT", "status": "NO_RATIO"})
+    except Exception as exc:
+        attempts.append({"source": "SEC_PRIMARY_DOCUMENT", "status": "ERROR", "reason": f"{type(exc).__name__}: {exc}"})
+    try:
+        ratio = _ads_ratio_from_paired_otc_history(symbol, submissions_payload, raw_dir=raw_dir)
+        if ratio:
+            attempts.append({"source": "YAHOO_PAIRED_OTC_HISTORY", "status": "OK"})
+            return ratio, attempts
+        attempts.append({"source": "YAHOO_PAIRED_OTC_HISTORY", "status": "NO_RATIO"})
+    except Exception as exc:
+        attempts.append({"source": "YAHOO_PAIRED_OTC_HISTORY", "status": "ERROR", "reason": f"{type(exc).__name__}: {exc}"})
+    return None, attempts
 
 
 def _sec_bootstrap_path() -> Path:
@@ -4538,20 +5069,86 @@ def _sec_cik_from_ticker(ticker: str, *, user_agent: str) -> Optional[str]:
     return None
 
 
-SEC_FINANCIAL_CONCEPTS: Dict[str, List[str]] = {
-    "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
-    "gross_profit": ["GrossProfit"],
-    "net_income": ["NetIncomeLoss", "ProfitLoss"],
-    "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
-    "assets": ["Assets"],
-    "liabilities": ["Liabilities"],
-    "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
-    "accounts_receivable": ["AccountsReceivableNetCurrent"],
-    "inventory": ["InventoryNet"],
+SEC_FINANCIAL_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
+
+SEC_FINANCIAL_CONCEPT_ROUTES: Dict[str, List[Tuple[str, str]]] = {
+    "revenue": [
+        ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
+        ("us-gaap", "Revenues"),
+        ("us-gaap", "SalesRevenueNet"),
+        ("us-gaap", "SalesRevenueGoodsNet"),
+        ("us-gaap", "SalesRevenueServicesNet"),
+        ("ifrs-full", "Revenue"),
+        ("ifrs-full", "RevenueFromContractsWithCustomers"),
+        ("ifrs-full", "RevenueFromSaleOfGoods"),
+    ],
+    "gross_profit": [("us-gaap", "GrossProfit"), ("ifrs-full", "GrossProfit")],
+    "net_income": [
+        ("us-gaap", "NetIncomeLoss"),
+        ("us-gaap", "ProfitLoss"),
+        ("ifrs-full", "ProfitLoss"),
+        ("ifrs-full", "ProfitLossAttributableToOwnersOfParent"),
+    ],
+    "operating_cash_flow": [
+        ("us-gaap", "NetCashProvidedByUsedInOperatingActivities"),
+        ("us-gaap", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"),
+        ("ifrs-full", "CashFlowsFromUsedInOperatingActivities"),
+    ],
+    "assets": [("us-gaap", "Assets"), ("ifrs-full", "Assets")],
+    "liabilities": [("us-gaap", "Liabilities"), ("ifrs-full", "Liabilities")],
+    "equity": [
+        ("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"),
+        ("us-gaap", "StockholdersEquity"),
+        ("ifrs-full", "Equity"),
+        ("ifrs-full", "EquityAttributableToOwnersOfParent"),
+    ],
+    "accounts_receivable": [
+        ("us-gaap", "AccountsReceivableNetCurrent"),
+        ("us-gaap", "AccountsAndOtherReceivablesNetCurrent"),
+        ("ifrs-full", "CurrentTradeReceivables"),
+        ("ifrs-full", "TradeAndOtherCurrentReceivables"),
+    ],
+    "inventory": [("us-gaap", "InventoryNet"), ("ifrs-full", "Inventories")],
 }
 
 
-def _facts_from_concept_object(concept: str, concept_obj: Mapping[str, Any]) -> List[Dict[str, Any]]:
+SEC_FINANCIAL_CONCEPTS: Dict[str, List[str]] = {
+    field: [concept for _, concept in routes]
+    for field, routes in SEC_FINANCIAL_CONCEPT_ROUTES.items()
+}
+
+
+def _sec_concept_key(taxonomy: str, concept: str) -> str:
+    return f"{taxonomy}:{concept}"
+
+
+def _sec_concept_routes_for_names(concept_names: Sequence[str]) -> List[Tuple[str, str]]:
+    routes: List[Tuple[str, str]] = []
+    for taxonomy in ("us-gaap", "ifrs-full"):
+        for concept in concept_names:
+            route = (taxonomy, concept)
+            if route not in routes:
+                routes.append(route)
+    return routes
+
+
+def _all_sec_financial_concept_routes() -> List[Tuple[str, str]]:
+    ordered: List[Tuple[str, str]] = []
+    for routes in SEC_FINANCIAL_CONCEPT_ROUTES.values():
+        for route in routes:
+            if route not in ordered:
+                ordered.append(route)
+    return ordered
+
+
+def _facts_from_concept_object(
+    concept: str,
+    concept_obj: Mapping[str, Any],
+    *,
+    taxonomy: str = "",
+    concept_priority: int = 0,
+) -> List[Dict[str, Any]]:
     output: List[Dict[str, Any]] = []
     units = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
     unit = "USD" if "USD" in units else next(iter(units), None)
@@ -4563,12 +5160,14 @@ def _facts_from_concept_object(concept: str, concept_obj: Mapping[str, Any]) -> 
     for fact in facts:
         if not isinstance(fact, Mapping):
             continue
-        if fact.get("form") not in {"10-K", "10-Q"}:
+        if fact.get("form") not in SEC_FINANCIAL_FORMS:
             continue
         if "val" not in fact or "end" not in fact:
             continue
         output.append({
             "concept": concept,
+            "taxonomy": taxonomy,
+            "concept_priority": concept_priority,
             "label": concept_obj.get("label", concept),
             "unit": unit,
             "period": fact.get("end"),
@@ -4586,26 +5185,64 @@ def _facts_from_concept_object(concept: str, concept_obj: Mapping[str, Any]) -> 
 
 def _latest_facts_by_concept(companyfacts: Mapping[str, Any], concept_names: Sequence[str]) -> List[Dict[str, Any]]:
     facts = companyfacts.get("facts", {}) if isinstance(companyfacts.get("facts"), Mapping) else {}
-    us_gaap = facts.get("us-gaap", {}) if isinstance(facts.get("us-gaap"), Mapping) else {}
     output: List[Dict[str, Any]] = []
-    for concept in concept_names:
-        concept_obj = us_gaap.get(concept)
+    for concept_priority, (taxonomy, concept) in enumerate(_sec_concept_routes_for_names(concept_names)):
+        taxonomy_obj = facts.get(taxonomy, {}) if isinstance(facts.get(taxonomy), Mapping) else {}
+        concept_obj = taxonomy_obj.get(concept)
         if isinstance(concept_obj, Mapping):
-            output.extend(_facts_from_concept_object(concept, concept_obj))
+            output.extend(_facts_from_concept_object(concept, concept_obj, taxonomy=taxonomy, concept_priority=concept_priority))
     output.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
     return output
 
 
+def _latest_sec_shares_outstanding(companyfacts: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    facts = companyfacts.get("facts", {}) if isinstance(companyfacts.get("facts"), Mapping) else {}
+    candidates: List[Dict[str, Any]] = []
+    concept_routes = [
+        ("dei", "EntityCommonStockSharesOutstanding"),
+        ("us-gaap", "CommonStocksIncludingAdditionalPaidInCapital"),
+    ]
+    for taxonomy, concept in concept_routes:
+        taxonomy_obj = facts.get(taxonomy, {}) if isinstance(facts.get(taxonomy), Mapping) else {}
+        concept_obj = taxonomy_obj.get(concept)
+        if not isinstance(concept_obj, Mapping):
+            continue
+        units = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
+        for unit, rows in units.items():
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                value = _safe_float(row.get("val"))
+                if value is None or value <= 0:
+                    continue
+                if concept == "CommonStocksIncludingAdditionalPaidInCapital" and "share" not in str(unit).lower():
+                    continue
+                candidates.append({
+                    "concept": concept,
+                    "taxonomy": taxonomy,
+                    "unit": unit,
+                    "value": value,
+                    "period": row.get("end"),
+                    "filed": row.get("filed"),
+                    "form": row.get("form"),
+                    "accession": row.get("accn"),
+                    "frame": row.get("frame"),
+                })
+    if not candidates:
+        return None
+    candidates.sort(key=lambda row: (str(row.get("filed") or ""), str(row.get("period") or ""), str(row.get("concept") or "")))
+    return candidates[-1]
+
+
 def _period_rows_from_field_facts(field_facts: Mapping[str, Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-    rows_by_period: Dict[Tuple[str, str, str, str, str], Dict[str, Any]] = {}
+    rows_by_period: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for field, facts in field_facts.items():
         for fact in facts:
             key = (
                 str(fact.get("period") or ""),
-                str(fact.get("fy") or ""),
                 str(fact.get("fp") or ""),
-                str(fact.get("form") or ""),
-                str(fact.get("filed") or ""),
             )
             row = rows_by_period.setdefault(key, {
                 "period": fact.get("period"),
@@ -4614,9 +5251,36 @@ def _period_rows_from_field_facts(field_facts: Mapping[str, Sequence[Dict[str, A
                 "form": fact.get("form"),
                 "filed": fact.get("filed"),
             })
+            existing_priority = _safe_int(row.get(f"{field}_concept_priority"))
+            new_priority = _safe_int(fact.get("concept_priority"))
+            existing_filed = str(row.get(f"{field}_filed") or row.get("filed") or "")
+            new_filed = str(fact.get("filed") or "")
+            if field in row:
+                if existing_priority is not None and new_priority is not None:
+                    if existing_priority < new_priority:
+                        continue
+                    if existing_priority == new_priority and existing_filed > new_filed:
+                        continue
+                elif existing_filed > new_filed:
+                    continue
             row[field] = fact.get("value")
             row[f"{field}_concept"] = fact.get("concept")
-    rows = list(rows_by_period.values())
+            row[f"{field}_taxonomy"] = fact.get("taxonomy")
+            row[f"{field}_unit"] = fact.get("unit")
+            row[f"{field}_concept_priority"] = fact.get("concept_priority")
+            row[f"{field}_filed"] = fact.get("filed")
+            row[f"{field}_form"] = fact.get("form")
+            if new_filed >= str(row.get("filed") or ""):
+                row["fy"] = fact.get("fy")
+                row["fp"] = fact.get("fp")
+                row["form"] = fact.get("form")
+                row["filed"] = fact.get("filed")
+    core_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    rows = [
+        row
+        for row in rows_by_period.values()
+        if any(row.get(field) is not None for field in core_fields)
+    ]
     for row in rows:
         if "liabilities" not in row and "assets" in row and "equity" in row:
             assets = _safe_float(row.get("assets"))
@@ -4630,30 +5294,35 @@ def _period_rows_from_field_facts(field_facts: Mapping[str, Sequence[Dict[str, A
 
 def _period_rows_from_sec_facts(companyfacts: Mapping[str, Any]) -> List[Dict[str, Any]]:
     return _period_rows_from_field_facts({
-        field: _latest_facts_by_concept(companyfacts, candidates)
-        for field, candidates in SEC_FINANCIAL_CONCEPTS.items()
+        field: _latest_facts_by_concept(companyfacts, SEC_FINANCIAL_CONCEPTS[field])
+        for field in SEC_FINANCIAL_CONCEPTS
     })
 
 
 def _period_rows_from_companyconcepts(concept_payloads: Mapping[str, Mapping[str, Any]]) -> List[Dict[str, Any]]:
     field_facts: Dict[str, List[Dict[str, Any]]] = {}
-    for field, candidates in SEC_FINANCIAL_CONCEPTS.items():
+    for field, routes in SEC_FINANCIAL_CONCEPT_ROUTES.items():
         facts: List[Dict[str, Any]] = []
-        for concept in candidates:
-            payload = concept_payloads.get(concept)
+        for concept_priority, (taxonomy, concept) in enumerate(routes):
+            payload = concept_payloads.get(_sec_concept_key(taxonomy, concept))
             if isinstance(payload, Mapping):
-                facts.extend(_facts_from_concept_object(concept, payload))
+                facts.extend(_facts_from_concept_object(concept, payload, taxonomy=taxonomy, concept_priority=concept_priority))
         field_facts[field] = facts
     return _period_rows_from_field_facts(field_facts)
 
 
-def _all_sec_financial_concepts() -> List[str]:
-    ordered: List[str] = []
-    for concepts in SEC_FINANCIAL_CONCEPTS.values():
-        for concept in concepts:
-            if concept not in ordered:
-                ordered.append(concept)
-    return ordered
+def _sec_reporting_currency(periods: Sequence[Mapping[str, Any]]) -> Optional[str]:
+    core_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    for row in reversed(periods):
+        units = {
+            str(row.get(f"{field}_unit") or "").strip()
+            for field in core_fields
+            if row.get(field) is not None and row.get(f"{field}_unit")
+        }
+        units.discard("")
+        if len(units) == 1:
+            return next(iter(units))
+    return None
 
 
 class SecCompanyFactsProvider:
@@ -4662,7 +5331,7 @@ class SecCompanyFactsProvider:
     name = "SEC_Companyfacts_L0"
     level = SourceLevel.L0
     markets = [Market.US]
-    datasets = [Dataset.FINANCIALS, Dataset.FILINGS]
+    datasets = [Dataset.FINANCIALS, Dataset.FILINGS, Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
 
     def __init__(self) -> None:
         self._cik_cache: Dict[str, str] = {}
@@ -4690,9 +5359,148 @@ class SecCompanyFactsProvider:
                 return self._fetch_filings(symbol, cik, user_agent=user_agent, raw_dir=raw_dir, warnings=warnings)
             if dataset == Dataset.FINANCIALS:
                 return self._fetch_financials(symbol, cik, user_agent=user_agent, raw_dir=raw_dir, warnings=warnings)
+            if dataset in {Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS}:
+                return self._fetch_valuation_inputs(symbol, cik, dataset, user_agent=user_agent, raw_dir=raw_dir, warnings=warnings)
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"SEC JSON fetch failed: {type(exc).__name__}: {exc}")
         return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+
+    def _fetch_valuation_inputs(
+        self,
+        symbol: SymbolInfo,
+        cik: str,
+        dataset: Dataset,
+        *,
+        user_agent: str,
+        raw_dir: Optional[str | Path],
+        warnings: List[str],
+    ) -> DataResult:
+        submissions_payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error = _sec_identity_error(symbol, cik, submissions_payload)
+        if identity_error:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, identity_error)
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+        payload = https_json(url, user_agent=user_agent)
+        share_fact = _latest_sec_shares_outstanding(payload)
+        if not share_fact:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC companyfacts returned no usable common shares outstanding fact")
+        total_shares = _safe_float(share_fact.get("value"))
+        if total_shares is None or total_shares <= 0:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC companyfacts share count is not positive")
+        valuation_shares = total_shares
+        ads_ratio: Optional[Dict[str, Any]] = None
+        quote: Mapping[str, Any] = {}
+        quote_result: Optional[DataResult] = None
+        price: Optional[float] = None
+        total_market_cap: Optional[float] = None
+        ads_ratio_attempts: List[Dict[str, Any]] = []
+        source_basis = "official_disclosure"
+        market_cap_basis = "Current market-cap fields were not requested for share_capital."
+        valuation_warnings = list(warnings)
+        if dataset == Dataset.VALUATION_INPUTS:
+            quote_result = YahooChartProvider().fetch(symbol, Dataset.CURRENT_QUOTE, raw_dir=raw_dir)
+            if not quote_result.ok:
+                reason = "; ".join(quote_result.errors) or "Yahoo current quote did not return usable data"
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"SEC share count resolved, but current quote is unavailable for valuation inputs: {reason}")
+            quote = quote_result.data if isinstance(quote_result.data, Mapping) else {}
+            price = _safe_float(quote.get("regular_market_price"))
+            if price is None or price <= 0:
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC share count resolved, but current quote price is not positive")
+            if _ads_ratio_required(symbol, submissions_payload):
+                ads_ratio, ads_ratio_attempts = _resolve_ads_ratio(symbol, cik, submissions_payload, user_agent=user_agent, raw_dir=raw_dir)
+                ratio_value = _safe_float(ads_ratio.get("ratio") if isinstance(ads_ratio, Mapping) else None)
+                if ratio_value is None or ratio_value <= 0:
+                    attempt_summary = "; ".join(
+                        f"{item.get('source')}={item.get('status')}{': ' + str(item.get('reason')) if item.get('reason') else ''}"
+                        for item in ads_ratio_attempts
+                    ) or "no ADS-ratio source attempted"
+                    return DataResult.failed(
+                        dataset,
+                        symbol.symbol,
+                        self.name,
+                        self.level,
+                        "SEC share count appears to be underlying ordinary shares for an ADR/foreign issuer; "
+                        f"ADS ratio is required before deriving market cap from the US quote. Attempts: {attempt_summary}",
+                    )
+                valuation_shares = total_shares / ratio_value
+                valuation_warnings.append(
+                    f"ADR valuation uses ADS-equivalent shares derived from SEC underlying shares divided by ADS ratio {ratio_value:g}."
+                )
+            total_market_cap = price * valuation_shares
+            source_basis = "quote_derived_preflight"
+            market_cap_basis = "Yahoo regular_market_price * SEC official shares outstanding; listing currency USD."
+            if ads_ratio:
+                market_cap_basis = "Yahoo regular_market_price * SEC shares outstanding adjusted to ADS-equivalent shares by resolved ADS ratio."
+            if quote_result.source_level == SourceLevel.L2:
+                valuation_warnings.append("US valuation_inputs combine SEC official share count with an L2 current quote; verify before final valuation claims.")
+
+        share_count_basis = f"SEC {share_fact.get('taxonomy')}:{share_fact.get('concept')} filed={share_fact.get('filed')} form={share_fact.get('form')}"
+        if ads_ratio:
+            ratio_value = _safe_float(ads_ratio.get("ratio"))
+            if ratio_value is not None:
+                share_count_basis = f"SEC underlying shares converted to ADS-equivalent shares by ADS ratio {ratio_value:g}"
+
+        raw_path = raw_hash = None
+        if raw_dir:
+            raw_payload: Mapping[str, Any]
+            if dataset == Dataset.VALUATION_INPUTS:
+                raw_payload = {
+                    "sec_companyfacts": payload,
+                    "sec_submission_identity": _sec_identity_summary(cik, submissions_payload),
+                    "share_fact": share_fact,
+                    "ads_ratio": ads_ratio,
+                    "ads_ratio_attempts": ads_ratio_attempts,
+                    "quote": quote,
+                    "quote_source": quote_result.source_name if quote_result else None,
+                    "quote_raw_path": quote_result.raw_path if quote_result else None,
+                    "quote_raw_hash": quote_result.raw_hash if quote_result else None,
+                }
+            else:
+                raw_payload = payload
+            raw_path, raw_hash = save_raw_json(raw_payload, raw_dir, f"{symbol.symbol}_{dataset.value}_sec_companyfacts_raw.json")
+        data = {
+            "symbol": symbol.symbol,
+            "name": quote.get("name") or payload.get("entityName") or submissions_payload.get("name"),
+            "cik": cik,
+            "currency": quote.get("currency") or symbol.currency or "USD",
+            "exchange": quote.get("exchange") or symbol.exchange,
+            "as_of_date": quote_result.as_of_date if quote_result and quote_result.as_of_date else share_fact.get("period") or share_fact.get("filed"),
+            "regular_market_price": round(price, 6) if price is not None else None,
+            "regular_market_time": str(quote.get("regular_market_time") or ""),
+            "total_shares": round(valuation_shares, 6) if valuation_shares is not None else None,
+            "float_shares": None,
+            "total_market_cap": round(total_market_cap, 6) if total_market_cap is not None else None,
+            "float_market_cap": None,
+            "source_basis": source_basis,
+            "share_count_basis": share_count_basis,
+            "market_cap_basis": market_cap_basis,
+            "requires_l0_l1_verification": dataset == Dataset.VALUATION_INPUTS,
+            "identity_check": _sec_identity_summary(cik, submissions_payload),
+            "source_fact": share_fact,
+        }
+        if ads_ratio:
+            data.update({
+                "underlying_total_shares": round(total_shares, 6),
+                "underlying_share_count_basis": f"SEC {share_fact.get('taxonomy')}:{share_fact.get('concept')} filed={share_fact.get('filed')} form={share_fact.get('form')}",
+                "ads_ratio": ads_ratio.get("ratio"),
+                "ads_ratio_basis": ads_ratio.get("basis"),
+                "ads_ratio_source": ads_ratio.get("source"),
+                "ads_ratio_evidence": {k: v for k, v in ads_ratio.items() if k not in {"ratio", "basis", "source"}},
+            })
+        return DataResult(
+            True,
+            dataset,
+            symbol.symbol,
+            self.name,
+            self.level,
+            utc_now(),
+            as_of_date=data["as_of_date"],
+            data=data,
+            raw_path=raw_path,
+            raw_hash=raw_hash,
+            currency=data["currency"],
+            warnings=valuation_warnings,
+        )
 
     def _fetch_filings(
         self,
@@ -4780,6 +5588,7 @@ class SecCompanyFactsProvider:
         if not periods and not facts:
             return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, "SEC companyfacts returned no usable financial facts")
         as_of = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
+        reporting_currency = _sec_reporting_currency(periods) or symbol.currency
         return DataResult(
             True,
             Dataset.FINANCIALS,
@@ -4791,13 +5600,16 @@ class SecCompanyFactsProvider:
             data={
                 "cik": cik,
                 "entity_name": payload.get("entityName"),
+                "currency": reporting_currency,
+                "unit": reporting_currency,
+                "period_basis": "SEC XBRL facts from 10-K, 10-Q, 20-F, or 40-F; income and cash-flow rows are reported for the period, balance-sheet rows are period-end.",
                 "periods": periods,
                 "latest_facts": facts[-40:],
                 "identity_check": _sec_identity_summary(cik, submissions_payload),
             },
             raw_path=raw_path,
             raw_hash=raw_hash,
-            currency=symbol.currency,
+            currency=reporting_currency,
             warnings=warnings,
         )
 
@@ -4857,21 +5669,22 @@ class SecCompanyConceptsProvider:
             return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, identity_error)
         concept_payloads: Dict[str, Mapping[str, Any]] = {}
         concept_errors: List[str] = []
-        for concept in _all_sec_financial_concepts():
-            url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{concept}.json"
+        for taxonomy, concept in _all_sec_financial_concept_routes():
+            concept_key = _sec_concept_key(taxonomy, concept)
+            url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/{taxonomy}/{concept}.json"
             try:
                 payload = https_json(url, user_agent=user_agent, retries=1)
             except urllib.error.HTTPError as exc:
                 if exc.code == 404:
-                    concept_errors.append(f"{concept}: not reported")
+                    concept_errors.append(f"{concept_key}: not reported")
                     continue
-                concept_errors.append(f"{concept}: HTTP {exc.code}")
+                concept_errors.append(f"{concept_key}: HTTP {exc.code}")
                 continue
             except Exception as exc:
-                concept_errors.append(f"{concept}: {type(exc).__name__}: {exc}")
+                concept_errors.append(f"{concept_key}: {type(exc).__name__}: {exc}")
                 continue
             if isinstance(payload, Mapping):
-                concept_payloads[concept] = payload
+                concept_payloads[concept_key] = payload
 
         if not concept_payloads:
             return DataResult.failed(
@@ -4897,8 +5710,9 @@ class SecCompanyConceptsProvider:
 
         periods = _period_rows_from_companyconcepts(concept_payloads)
         latest_facts: List[Dict[str, Any]] = []
-        for concept, payload in concept_payloads.items():
-            latest_facts.extend(_facts_from_concept_object(concept, payload))
+        for concept_key, payload in concept_payloads.items():
+            taxonomy, _, concept = concept_key.partition(":")
+            latest_facts.extend(_facts_from_concept_object(concept, payload, taxonomy=taxonomy))
         latest_facts.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
 
         if not periods and not latest_facts:
@@ -4919,6 +5733,7 @@ class SecCompanyConceptsProvider:
             None,
         )
         as_of = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
+        reporting_currency = _sec_reporting_currency(periods) or symbol.currency
         if concept_errors:
             warnings = list(warnings) + ["Some SEC concepts were unavailable: " + " | ".join(concept_errors[:8])]
         return DataResult(
@@ -4932,6 +5747,9 @@ class SecCompanyConceptsProvider:
             data={
                 "cik": cik,
                 "entity_name": entity_name,
+                "currency": reporting_currency,
+                "unit": reporting_currency,
+                "period_basis": "SEC companyconcept XBRL facts from 10-K, 10-Q, 20-F, or 40-F; income and cash-flow rows are reported for the period, balance-sheet rows are period-end.",
                 "periods": periods,
                 "latest_facts": latest_facts[-40:],
                 "concepts_fetched": sorted(concept_payloads),
@@ -4939,7 +5757,7 @@ class SecCompanyConceptsProvider:
             },
             raw_path=raw_path,
             raw_hash=raw_hash,
-            currency=symbol.currency,
+            currency=reporting_currency,
             warnings=warnings,
         )
 
@@ -4989,6 +5807,7 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
         providers.append(YahooChartProvider())
         providers.append(YahooChartProvider(name="Yahoo_Chart_Query2_L2", host="query2.finance.yahoo.com"))
     if symbol is None or symbol.market == Market.HK:
+        providers.append(HkexValuationInputsProvider())
         providers.append(HkexAnnouncementsProvider())
         providers.append(HkexFinancialReportsProvider())
     if symbol is None or symbol.market == Market.CN_A:

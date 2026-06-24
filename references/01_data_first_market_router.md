@@ -110,7 +110,7 @@ currency = HKD unless ADR or dual-counter special case
 #### L3 媒体/研报/F10
 
 - 东方财富/同花顺 F10 与网页摘要；
-- 内置 `Eastmoney_F10_Financials_L3` 可抓取 A 股 L3 结构化三表回退预检数据。
+- 内置 `Eastmoney_F10_Financials_L3` 可抓取 A 股 L3 结构化三表预检数据。
 
 用途：线索、上下文和快速索引。关键结论必须回 L0/L1 复核。
 
@@ -339,7 +339,7 @@ shares_outstanding
 | 最新财报失败 | 最高 B；不能给 S/A 长线结论 |
 | 原始公告/filing 失败 | 客户/订单最高 Medium，综合最高 B |
 | 客户/订单只有传闻 | 综合最高 C |
-| 股本/市值无法确认 | 不能做市值错配；最高 B |
+| 股本/市值无法确认 | 不能输出市值错配、估值赔率、市场隐含增长或核心行动 |
 | 多源价格差异 >2% | 最高 C，暂停估值与技术 |
 | 供应链证据只有社媒 | 最高 C |
 | 市场错源且未声明 forbidden | OBSERVE_ONLY 或最高 C |
@@ -359,13 +359,14 @@ shares_outstanding
     "currency": "CNY"
   },
   "retrieved_at": "2026-06-22T...Z",
-  "requested_datasets": ["current_quote", "price_history_adjusted", "filings_announcements"],
-  "full_research_required_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+  "requested_datasets": ["current_quote", "price_history_adjusted", "valuation_inputs", "filings_announcements"],
+  "full_research_required_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements", "valuation_inputs"],
   "data_acquisition": {
     "policy": "assets/data_acquisition_policy.json",
     "status_by_dataset": {
       "current_quote": "OK",
       "price_history_adjusted": "OK",
+      "valuation_inputs": "OK",
       "financials": "NOT_REQUESTED",
       "filings_announcements": "OK"
     },
@@ -416,6 +417,7 @@ shares_outstanding
     "full_research_ready": false
   },
   "data_quality": {
+    "valuation_inputs": "OK",
     "requested_data_rating_cap": "S",
     "full_research_rating_cap": "B",
     "rating_cap": "B"
@@ -423,7 +425,7 @@ shares_outstanding
 }
 ```
 
-`NOT_REQUESTED` means the current scoped fetch did not ask for the dataset. For formal rating tasks, any missing critical dataset caps the full-research rating until it is fetched and validated.
+`NOT_REQUESTED` means the current scoped fetch did not ask for the dataset. For formal rating tasks, any missing critical dataset caps the full-research rating until it is fetched and validated. `valuation_inputs=OK` requires current price, total shares, total market cap, currency, as-of date, share-count basis, and market-cap basis.
 
 L3 structured financial preflight creates a material evidence gap:
 
@@ -453,14 +455,21 @@ python scripts/data_router.py validate-price prices.csv --market CN_A --adjust q
 python scripts/data_router.py validate-financial financials.json
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
+python scripts/build_ai_review_packet.py manifest.json --out ai_review_packet.json
+python scripts/validate_ai_overlay.py ai_overlay.json
+python scripts/merge_ai_research_overlay.py manifest_a.json manifest_b.json --overlay TICKER=ai_overlay.json --format both
 ```
 
-`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 fallback preflight, HKEXnews announcements, or HKEX annual/interim report PDF evidence. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
+`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, valuation inputs, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 structured preflight, HKEXnews announcements, HKEX annual/interim report PDF evidence, or HK valuation inputs from HKEX issued-share disclosure plus Yahoo HK quote data. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
 
-For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. Resolve CIK through the bundled bootstrap table first, then SEC ticker directories. Fetch filings through SEC submissions, fetch financials through SEC companyfacts, and continue through SEC companyconcepts if the larger companyfacts payload is unavailable. If network, TLS, identity, rate limit, or provider support fails after the available route is attempted, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
+For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. Resolve CIK through the bundled bootstrap table first, then SEC ticker directories. Fetch filings through SEC submissions. Fetch financials through SEC companyfacts and SEC companyconcepts using US-GAAP / IFRS facts from 10-K, 10-Q, 20-F, and 40-F reports. If network, TLS, identity, rate limit, or provider support fails after the available route is attempted, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
 
 If deterministic validation caps a dataset while the dataset status remains `OK`, emit a structured gap instead of leaving the cap reason only in warnings. Use `EVIDENCE_DEPTH_LIMIT` for insufficient adjusted-history bars or evidence-window depth, and `ADJUSTMENT_BASIS_UNVERIFIED` when the adjusted-history basis is unknown or unconfirmed.
 
-CNINFO financial reports provide A-share L0 official PDF evidence and extract core financial statement lines when readable. The latest period must contain revenue, net income, operating cash flow, assets, liabilities, and equity before `financials=OK` can support S/A research work; a single complete period can support only limited trend analysis. Financial-sector issuers must include an industry profile before S/A ratings are allowed: banks need net interest, deposit, loan, asset-quality, provision, and capital metrics; securities firms need net capital and risk-control ratios; insurers need insurance service revenue, insurance contract liabilities, and solvency metrics. Eastmoney F10 financials are a fallback L3 structured preflight and create research debt when used without L0/L1 line-item verification. HKEX financial reports provide L0 official annual/interim report PDF evidence for HK issuers. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
+CNINFO financial reports provide A-share L0 official PDF evidence and extract core financial statement lines when readable. The latest period must contain revenue, net income, operating cash flow, assets, liabilities, and equity before `financials=OK` can support S/A research work; a single complete period can support only limited trend analysis. Financial-sector issuers must include an industry profile before S/A ratings are allowed: banks need net interest, deposit, loan, asset-quality, provision, and capital metrics; securities firms need net capital and risk-control ratios; insurers need insurance service revenue, insurance contract liabilities, and solvency metrics. Eastmoney F10 financials are an L3 structured preflight source and create research debt when used without L0/L1 line-item verification. HKEX financial reports provide L0 official annual/interim report PDF evidence for HK issuers. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
+
+Valuation inputs are a first-class dataset. A complete valuation input row records total shares, float shares, total market cap, float market cap, currency, as-of date, source basis, share-count basis, and market-cap basis. Missing valuation inputs create `VALUATION_IMPACT` gaps and a `VALUATION_GATED` action gate; they block market-implied growth, payoff quality, and core action claims.
+
+AI research overlays are the formal bridge from deterministic data to domain judgment. Build a packet with `scripts/build_ai_review_packet.py`, write the overlay against `assets/ai_research_overlay.schema.json`, validate it with `scripts/validate_ai_overlay.py`, then merge it through `scripts/merge_ai_research_overlay.py`. The overlay can affect layer score, company fit, evidence-supported growth, growth gap, and research questions only after validation.
 
 Additional official or licensed CNINFO/Tushare/Wind/Choice adapters can be added without changing the research logic.

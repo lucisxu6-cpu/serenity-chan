@@ -15,6 +15,7 @@
     "market_resolution": "OK",
     "current_price": "PENDING",
     "adjusted_history": "PENDING",
+    "valuation_inputs": "PENDING",
     "financials": "OK",
     "filings": "OK",
     "supply_chain_evidence": "PARTIAL"
@@ -23,6 +24,7 @@
     "status_by_dataset": {
       "current_quote": "PENDING",
       "price_history_adjusted": "PENDING",
+      "valuation_inputs": "PENDING",
       "financials": "OK",
       "filings_announcements": "OK"
     },
@@ -42,6 +44,14 @@
         "decision_impact": "ACTION_IMPACT",
         "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
         "next_action": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+      },
+      {
+        "dataset": "valuation_inputs",
+        "status": "PENDING",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "VALUATION_IMPACT",
+        "rating_impact": "Market payoff, valuation multiples, market-implied growth, and action priority are gated until valuation inputs are complete.",
+        "next_action": "Fetch total shares, float shares, total market cap, and float market cap from a market-appropriate source before inferring valuation or market-implied growth."
       }
     ],
     "research_debt": [
@@ -60,6 +70,14 @@
         "decision_impact": "ACTION_IMPACT",
         "rating_impact": "Current action, valuation reference, and buy-point conclusions are capped at B.",
         "next_action": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis."
+      },
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "gap_type": "SOURCE_UNAVAILABLE",
+        "decision_impact": "VALUATION_IMPACT",
+        "rating_impact": "Market payoff, valuation multiples, market-implied growth, and action priority are gated until valuation inputs are complete.",
+        "next_action": "Fetch total shares, float shares, total market cap, and float market cap from a market-appropriate source before inferring valuation or market-implied growth."
       }
     ],
     "manual_retrieval_tasks": [
@@ -79,6 +97,15 @@
         "objective": "Fetch adjusted daily history with enough bars for Chan and moving-average analysis.",
         "acceptance_criteria": [
           "Source, date, status, and evidence level are recorded."
+        ]
+      },
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "target_source": "Exchange, official filings, licensed vendor, or validated quote-derived market-cap source",
+        "objective": "Recover valuation inputs before inferring market-implied growth, payoff quality, or action priority.",
+        "acceptance_criteria": [
+          "Total shares, float shares, market cap, currency, as-of date, and source basis are recorded."
         ]
       }
     ]

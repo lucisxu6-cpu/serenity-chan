@@ -1,0 +1,60 @@
+{
+  "symbol": {
+    "input_value": "NVDA",
+    "symbol": "NVDA",
+    "market": "US",
+    "exchange": "US",
+    "currency": "USD"
+  },
+  "requested_datasets": ["share_capital"],
+  "full_research_required_datasets": [
+    "current_quote",
+    "price_history_adjusted",
+    "financials",
+    "filings_announcements",
+    "valuation_inputs"
+  ],
+  "retrieved_at": "2026-06-24T00:00:00+00:00",
+  "data_quality": {
+    "market_resolution": "OK",
+    "current_price": "NOT_REQUESTED",
+    "adjusted_history": "NOT_REQUESTED",
+    "valuation_inputs": "NOT_REQUESTED",
+    "financials": "NOT_REQUESTED",
+    "filings": "NOT_REQUESTED",
+    "requested_data_rating_cap": "S",
+    "full_research_rating_cap": "B",
+    "rating_cap": "B"
+  },
+  "data_acquisition": {
+    "status_by_dataset": {
+      "current_quote": "NOT_REQUESTED",
+      "price_history_adjusted": "NOT_REQUESTED",
+      "financials": "NOT_REQUESTED",
+      "filings_announcements": "NOT_REQUESTED",
+      "valuation_inputs": "NOT_REQUESTED"
+    },
+    "research_debt": [
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "gap_type": "SCOPE_NOT_REQUESTED",
+        "decision_impact": "VALUATION_IMPACT",
+        "next_action": "Fetch complete valuation inputs before market-implied growth."
+      }
+    ],
+    "manual_retrieval_tasks": []
+  },
+  "results": [
+    {
+      "dataset": "share_capital",
+      "status": "OK",
+      "source": "SEC_Companyfacts_L0",
+      "source_level": "L0_OFFICIAL_DISCLOSURE",
+      "as_of_date": "2026-05-15",
+      "currency": "USD",
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

@@ -25,6 +25,7 @@
     "status_by_dataset": {
       "current_quote": "OK",
       "price_history_adjusted": "OK",
+      "valuation_inputs": "OK",
       "financials": "OK",
       "filings_announcements": "OK"
     },

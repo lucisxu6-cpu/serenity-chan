@@ -60,10 +60,11 @@
       "properties": {
         "status_by_dataset": {
           "type": "object",
-          "required": ["current_quote", "price_history_adjusted", "financials", "filings_announcements"],
+          "required": ["current_quote", "price_history_adjusted", "valuation_inputs", "financials", "filings_announcements"],
           "properties": {
             "current_quote": { "$ref": "#/$defs/status" },
             "price_history_adjusted": { "$ref": "#/$defs/status" },
+            "valuation_inputs": { "$ref": "#/$defs/status" },
             "financials": { "$ref": "#/$defs/status" },
             "filings_announcements": { "$ref": "#/$defs/status" }
           },
@@ -109,7 +110,7 @@
         },
         "decision_impact": {
           "type": "string",
-          "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]
+          "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "VALUATION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]
         },
         "rating_impact": { "type": "string" },
         "next_action": { "type": "string" },

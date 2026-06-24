@@ -37,7 +37,7 @@
       },
       "decision_impact": {
         "type": "string",
-        "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]
+        "enum": ["THESIS_IMPACT", "EVIDENCE_IMPACT", "ACTION_IMPACT", "VALUATION_IMPACT", "ENGINEERING_GAP", "NO_IMPACT"]
       },
       "rating_impact": { "type": "string" },
       "next_action": { "type": "string" },

@@ -12,6 +12,7 @@
     "status_by_dataset": {
       "current_quote": "OK",
       "price_history_adjusted": "NOT_REQUESTED",
+      "valuation_inputs": "OK",
       "financials": "OK",
       "filings_announcements": "OK"
     },
@@ -59,6 +60,7 @@
     "market_resolution": "OK",
     "current_price": "OK",
     "adjusted_history": "NOT_REQUESTED",
+    "valuation_inputs": "OK",
     "financials": "OK",
     "filings": "OK",
     "requested_data_rating_cap": "B",
@@ -72,6 +74,13 @@
       "source": "Yahoo_Chart_L2",
       "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
       "data_path": "evals/fixtures/comparison_688322_quote.json"
+    },
+    {
+      "dataset": "valuation_inputs",
+      "status": "OK",
+      "source": "Tencent_Quote_Kline_L2",
+      "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+      "data_path": "evals/fixtures/comparison_688322_valuation_inputs.json"
     },
     {
       "dataset": "financials",

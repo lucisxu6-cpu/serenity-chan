@@ -474,12 +474,18 @@
     "expect_pass": true,
     "expected_result": {
       "candidate_priority_ranking.0.symbol": "688019.SH",
-      "candidate_priority_ranking.0.priority_score": 60.1,
+      "candidate_priority_ranking.0.priority_score": 69.39,
+      "candidate_priority_ranking.0.research_priority_score": 80.58,
+      "candidate_priority_ranking.0.action_priority_score": 40.62,
       "candidate_priority_ranking.0.rating_cap": "B",
       "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
-      "candidate_priority_ranking.1.priority_score": 44.3,
+      "candidate_priority_ranking.0.action_gate.primary_gate": "DATA_GATED",
+      "candidate_priority_ranking.1.priority_score": 57.2,
+      "candidate_priority_ranking.1.research_priority_score": 67.27,
+      "candidate_priority_ranking.1.action_priority_score": 31.33,
       "candidate_priority_ranking.1.rating_cap": "B",
       "candidate_priority_ranking.1.action_readiness": "DATA_GATED",
+      "candidate_priority_ranking.1.action_gate.primary_gate": "DATA_GATED",
       "capital_actions.1.summary.has_dilution_event": true,
       "growth_hypothesis_matrix.0.market_implied_growth": "H3",
       "growth_hypothesis_matrix.1.market_implied_growth": "H5",
@@ -570,6 +576,19 @@
       "selected_report_kinds.0": "annual",
       "selected_report_kinds.1": "q1"
     }
+  },
+  {
+    "name": "a-share-periodic-report-title-keeps-issuer-and-subsidiary-distinct",
+    "kind": "periodic_report_title",
+    "issuer_name": "中国平安",
+    "titles": {
+      "中国平安2025年年度报告": true,
+      "中国平安2026年第一季度报告": true,
+      "中国平安：平安银行股份有限公司2026年第一季度报告": false,
+      "中国平安关于披露平安银行2026年第一季度报告的公告": false,
+      "中国平安2025年年度权益分派实施公告": false
+    },
+    "expect_pass": true
   },
   {
     "name": "cn-statement-start-keeps-first-balance-sheet-page",
@@ -687,6 +706,31 @@
     }
   },
   {
+    "name": "a-share-tencent-valuation-fields-keep-total-and-float-order",
+    "kind": "tencent_valuation_fields",
+    "symbol": "688322",
+    "normalized_symbol": "688322.SH",
+    "alias": "sh688322",
+    "field_count": 88,
+    "fields": {
+      "1": "奥比中光",
+      "2": "688322",
+      "3": "123.95",
+      "30": "20260623150000",
+      "44": "395.00",
+      "45": "509.74",
+      "72": "318676392",
+      "73": "411247332"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "total_market_cap": 50974000000.0,
+      "float_market_cap": 39500000000.0,
+      "total_shares": 411247332.0,
+      "float_shares": 318676392.0
+    }
+  },
+  {
     "name": "us-provider-chain-keeps-sec-concepts",
     "kind": "provider_chain",
     "symbol": "NVDA",
@@ -714,12 +758,40 @@
     "required_providers": [
       "Yahoo_Chart_L2",
       "Yahoo_Chart_Query2_L2",
+      "HKEX_Yahoo_Valuation_L0L2",
       "HKEXnews_Announcements_L0",
       "HKEXnews_FinancialReports_L0"
     ],
     "expect_pass": true,
     "expected_result": {
       "has_required_providers": true
+    }
+  },
+  {
+    "name": "hk-issued-shares-extraction-from-official-report-text",
+    "kind": "hk_issued_shares_extraction",
+    "text": "As at 30 June 2025, the total number of issued shares of the Company was 9,165,513,622.",
+    "expect_pass": true,
+    "expected_result": {
+      "total_shares": 9165513622.0
+    }
+  },
+  {
+    "name": "hk-issued-shares-extraction-from-shares-in-issue-text",
+    "kind": "hk_issued_shares_extraction",
+    "text": "Shares in issue as at 31 December 2025: 3,456,789,000 ordinary shares.",
+    "expect_pass": true,
+    "expected_result": {
+      "total_shares": 3456789000.0
+    }
+  },
+  {
+    "name": "hk-issued-shares-extraction-from-fully-paid-text",
+    "kind": "hk_issued_shares_extraction",
+    "text": "The issued and fully paid share capital comprised 1,234,567,890 ordinary shares.",
+    "expect_pass": true,
+    "expected_result": {
+      "total_shares": 1234567890.0
     }
   },
   {
@@ -758,6 +830,434 @@
     "expect_pass": true,
     "expected_result": {
       "resolved_cik": "0001045810"
+    }
+  },
+  {
+    "name": "valuation-impact-gap-creates-research-debt",
+    "kind": "data_gaps",
+    "result_items": [
+      {
+        "dataset": "valuation_inputs",
+        "status": "FAILED",
+        "source": "Tencent_Quote_Kline_L2",
+        "source_level": "L2_FREE_API_OR_OPEN_SOURCE",
+        "errors": ["Tencent quote missing share count and market-cap fields"]
+      }
+    ],
+    "statuses": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "OK",
+      "filings_announcements": "OK",
+      "valuation_inputs": "FAILED"
+    },
+    "requested_datasets": ["valuation_inputs"],
+    "critical_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements", "valuation_inputs"],
+    "expect_pass": true,
+    "expected_result": {
+      "data_gaps.0.dataset": "valuation_inputs",
+      "data_gaps.0.decision_impact": "VALUATION_IMPACT",
+      "research_debt.0.dataset": "valuation_inputs",
+      "research_debt.0.priority": "high"
+    }
+  },
+  {
+    "name": "sec-companyfacts-extracts-latest-shares-outstanding",
+    "kind": "sec_shares_outstanding",
+    "companyfacts": {
+      "facts": {
+        "dei": {
+          "EntityCommonStockSharesOutstanding": {
+            "label": "Entity Common Stock Shares Outstanding",
+            "units": {
+              "shares": [
+                {
+                  "val": 24000000000,
+                  "end": "2025-01-26",
+                  "filed": "2025-02-26",
+                  "form": "10-K",
+                  "accn": "0000000000-25-000001"
+                },
+                {
+                  "val": 24500000000,
+                  "end": "2025-04-27",
+                  "filed": "2025-05-28",
+                  "form": "10-Q",
+                  "accn": "0000000000-25-000002"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "concept": "EntityCommonStockSharesOutstanding",
+      "value": 24500000000,
+      "period": "2025-04-27",
+      "filed": "2025-05-28"
+    }
+  },
+  {
+    "name": "sec-companyfacts-extracts-ifrs-20f-financial-periods",
+    "kind": "sec_financial_period_rows",
+    "companyfacts": {
+      "facts": {
+        "ifrs-full": {
+          "Revenue": {
+            "label": "Revenue",
+            "units": {
+              "USD": [
+                {"val": 88268000000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "RevenueFromContractsWithCustomers": {
+            "label": "Revenue from contracts with customers",
+            "units": {
+              "TWD": [
+                {"val": 2894308000000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "ProfitLoss": {
+            "label": "Profit",
+            "units": {
+              "USD": [
+                {"val": 35301100000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "CashFlowsFromUsedInOperatingActivities": {
+            "label": "Cash flows from operating activities",
+            "units": {
+              "USD": [
+                {"val": 55693100000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "Assets": {
+            "label": "Assets",
+            "units": {
+              "USD": [
+                {"val": 204079400000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024Q4I"}
+              ]
+            }
+          },
+          "Liabilities": {
+            "label": "Liabilities",
+            "units": {
+              "USD": [
+                {"val": 73574000000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024Q4I"}
+              ]
+            }
+          },
+          "Equity": {
+            "label": "Equity",
+            "units": {
+              "USD": [
+                {"val": 130505400000, "end": "2024-12-31", "filed": "2025-04-17", "form": "20-F", "fy": 2024, "fp": "FY", "frame": "CY2024Q4I"}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "row_count": 1,
+      "latest_row.revenue": 88268000000,
+      "latest_row.net_income": 35301100000,
+      "latest_row.operating_cash_flow": 55693100000,
+      "latest_row.assets": 204079400000,
+      "latest_row.liabilities": 73574000000,
+      "latest_row.equity": 130505400000,
+      "latest_row.revenue_concept": "Revenue",
+      "latest_row.revenue_unit": "USD"
+    }
+  },
+  {
+    "name": "sec-companyfacts-prefers-total-equity-for-balance-sheet-identity",
+    "kind": "sec_financial_period_rows",
+    "companyfacts": {
+      "facts": {
+        "us-gaap": {
+          "Assets": {
+            "label": "Assets",
+            "units": {
+              "USD": [
+                {"val": 100000000, "end": "2026-03-31", "filed": "2026-05-20", "form": "20-F", "fy": 2026, "fp": "FY"}
+              ]
+            }
+          },
+          "Liabilities": {
+            "label": "Liabilities",
+            "units": {
+              "USD": [
+                {"val": 40000000, "end": "2026-03-31", "filed": "2026-05-20", "form": "20-F", "fy": 2026, "fp": "FY"}
+              ]
+            }
+          },
+          "StockholdersEquity": {
+            "label": "Stockholders' equity attributable to parent",
+            "units": {
+              "USD": [
+                {"val": 50000000, "end": "2026-03-31", "filed": "2026-05-20", "form": "20-F", "fy": 2026, "fp": "FY"}
+              ]
+            }
+          },
+          "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": {
+            "label": "Stockholders' equity including noncontrolling interest",
+            "units": {
+              "USD": [
+                {"val": 60000000, "end": "2026-03-31", "filed": "2026-05-20", "form": "20-F", "fy": 2026, "fp": "FY"}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "row_count": 1,
+      "latest_row.assets": 100000000,
+      "latest_row.liabilities": 40000000,
+      "latest_row.equity": 60000000,
+      "latest_row.equity_concept": "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"
+    }
+  },
+  {
+    "name": "sec-ads-ratio-text-extracts-each-ads-represents",
+    "kind": "sec_ads_ratio_text",
+    "text": "Each ADS represents five (5) common shares, par value NT$10.00 per share.",
+    "expect_pass": true,
+    "expected_result": {
+      "ratio": 5.0,
+      "basis": "SEC annual report ADS/common-share description"
+    }
+  },
+  {
+    "name": "sec-ads-ratio-text-extracts-ordinary-shares-per-ads",
+    "kind": "sec_ads_ratio_text",
+    "text": "The depositary shares are evidenced by ADSs. Five ordinary shares per ADS are deposited with the custodian.",
+    "expect_pass": true,
+    "expected_result": {
+      "ratio": 5.0,
+      "basis": "SEC annual report ADS/common-share description"
+    }
+  },
+  {
+    "name": "sec-ads-ratio-required-for-20f-without-paired-otc",
+    "kind": "sec_ads_ratio_required",
+    "symbol": "BABA",
+    "forms": ["6-K", "20-F"],
+    "submission_tickers": ["BABA"],
+    "expected_required": true,
+    "expect_pass": true,
+    "expected_result": {
+      "required": true
+    }
+  },
+  {
+    "name": "sec-ads-ratio-not-required-for-10k-domestic-filer",
+    "kind": "sec_ads_ratio_required",
+    "symbol": "NVDA",
+    "forms": ["10-Q", "10-K"],
+    "submission_tickers": ["NVDA"],
+    "expected_required": false,
+    "expect_pass": true,
+    "expected_result": {
+      "required": false
+    }
+  },
+  {
+    "name": "valuation-inputs-validation-blocks-share-only-payload",
+    "kind": "valuation_inputs_validation",
+    "payload": {
+      "symbol": "NVDA",
+      "currency": "USD",
+      "exchange": "US",
+      "as_of_date": "2026-05-15",
+      "regular_market_price": null,
+      "total_shares": 24200000000,
+      "total_market_cap": null,
+      "source_basis": "official_disclosure",
+      "share_count_basis": "SEC dei:EntityCommonStockSharesOutstanding",
+      "market_cap_basis": "Current quote was not fetched."
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "status": "PARTIAL",
+      "stats.has_total_shares": true,
+      "stats.has_total_market_cap": false
+    }
+  },
+  {
+    "name": "valuation-inputs-validation-accepts-complete-payload",
+    "kind": "valuation_inputs_validation",
+    "payload": {
+      "symbol": "NVDA",
+      "currency": "USD",
+      "exchange": "US",
+      "as_of_date": "2026-06-24",
+      "regular_market_price": 120.5,
+      "total_shares": 24200000000,
+      "float_shares": null,
+      "total_market_cap": 2916100000000,
+      "float_market_cap": null,
+      "source_basis": "quote_derived_preflight",
+      "share_count_basis": "SEC dei:EntityCommonStockSharesOutstanding",
+      "market_cap_basis": "Yahoo regular_market_price * SEC official shares outstanding"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "status": "OK",
+      "stats.has_regular_market_price": true,
+      "stats.has_total_market_cap": true
+    }
+  },
+  {
+    "name": "ai-overlay-validation-accepts-primary-evidence",
+    "kind": "ai_overlay_validation",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-23",
+      "layer": "CMP slurry and wet-process materials bottleneck",
+      "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
+      "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
+      "serenity_fit": 0.74,
+      "market_implied_growth": "H3",
+      "evidence_supported_growth": "H3",
+      "h4_h5_evidence_bar_met": true,
+      "key_evidence_refs": [
+        {
+          "claim": "Revenue and margin expansion are visible in official reports.",
+          "source_ref": "CNINFO annual report line extraction",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
+      "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+      "ai_confidence": "HIGH"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "normalized_overlay.layer_score": 74,
+      "normalized_overlay.company_fit": 74
+    }
+  },
+  {
+    "name": "ai-overlay-validation-blocks-high-confidence-without-primary-evidence",
+    "kind": "ai_overlay_validation",
+    "payload": {
+      "symbol": "688322.SH",
+      "as_of_date": "2026-06-23",
+      "layer": "3D vision sensing",
+      "bottleneck_reason": "Theme exposure is described by secondary sources.",
+      "revenue_transmission": "Revenue transmission is inferred from theme demand.",
+      "serenity_fit": 0.81,
+      "key_evidence_refs": [
+        {
+          "claim": "Theme heat suggests strong AI hardware demand.",
+          "source_ref": "Media concept summary",
+          "source_level": "L3",
+          "confidence": 0.7
+        }
+      ],
+      "contrary_evidence": [],
+      "research_questions": ["Find L0/L1 customer and revenue evidence."],
+      "ai_confidence": "HIGH"
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "ai-review-packet-includes-valuation-and-open-debt",
+    "kind": "ai_review_packet",
+    "manifest": "evals/fixtures/comparison_688019_manifest.json",
+    "expect_pass": true,
+    "expected_result": {
+      "symbol": "688019.SH",
+      "data_acquisition.status_by_dataset.valuation_inputs": "OK",
+      "valuation_inputs.total_market_cap": 43573604604.0,
+      "open_research_debt.0.dataset": "financials",
+      "required_ai_questions.4": "Return an overlay matching assets/ai_research_overlay.schema.json.",
+      "deterministic_matrices.growth_hypothesis.market_implied_growth": "H3"
+    }
+  },
+  {
+    "name": "ai-review-packet-keeps-share-capital-separate-from-valuation-inputs",
+    "kind": "ai_review_packet",
+    "manifest": "evals/fixtures/share_capital_only_manifest.json",
+    "expect_pass": true,
+    "expected_result": {
+      "data_acquisition.status_by_dataset.valuation_inputs": "NOT_REQUESTED",
+      "valuation_inputs.symbol": null,
+      "deterministic_matrices.growth_hypothesis.market_implied_growth": "UNKNOWN",
+      "deterministic_matrices.growth_hypothesis.gap": "valuation_input_required"
+    }
+  },
+  {
+    "name": "ai-overlay-merge-updates-layer-and-keeps-structured-gates",
+    "kind": "ai_overlay_merge",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlays": {
+      "688019.SH": {
+        "symbol": "688019.SH",
+        "as_of_date": "2026-06-23",
+        "layer": "CMP slurry and wet-process materials bottleneck",
+        "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
+        "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
+        "serenity_fit": 0.74,
+        "market_implied_growth": "H3",
+        "evidence_supported_growth": "H3",
+        "h4_h5_evidence_bar_met": true,
+        "key_evidence_refs": [
+          {
+            "claim": "Revenue and margin expansion are visible in official reports.",
+            "source_ref": "CNINFO annual report line extraction",
+            "source_level": "L0",
+            "confidence": 0.82
+          }
+        ],
+        "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
+        "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+        "ai_confidence": "HIGH"
+      },
+      "688322.SH": {
+        "symbol": "688322.SH",
+        "as_of_date": "2026-06-23",
+        "layer": "3D vision sensing module adoption",
+        "bottleneck_reason": "Filings show improving revenue, but market-implied growth still requires stronger customer and segment proof.",
+        "revenue_transmission": "Revenue transmits through module shipments, robotics/customer adoption, and gross-margin recovery.",
+        "serenity_fit": 0.58,
+        "market_implied_growth": "H5",
+        "evidence_supported_growth": "H2",
+        "growth_gap": "market_ahead_of_evidence",
+        "h4_h5_evidence_bar_met": false,
+        "key_evidence_refs": [
+          {
+            "claim": "Revenue is improving, while cash-flow and valuation evidence remain incomplete for H5.",
+            "source_ref": "CNINFO annual report line extraction",
+            "source_level": "L0",
+            "confidence": 0.72
+          }
+        ],
+        "contrary_evidence": ["Operating cash flow and valuation remain pressure points."],
+        "research_questions": ["Verify robotics/customer revenue split and order durability."],
+        "ai_confidence": "MEDIUM"
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "serenity_layer_matrix.0.layer": "CMP slurry and wet-process materials bottleneck",
+      "serenity_layer_matrix.1.layer": "3D vision sensing module adoption",
+      "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
+      "candidate_priority_ranking.0.symbol": "688019.SH"
     }
   }
 ]

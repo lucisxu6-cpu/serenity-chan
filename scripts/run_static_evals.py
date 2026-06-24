@@ -14,25 +14,31 @@ try:
     import data_layer as data_layer_module
     from validate_output_contract import validate_text
     from validate_output_contract_json import validate_contract
-    from data_router import validate_financials, _build_data_gaps, _build_research_debt
+    from data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt
     from build_falsification_dashboard import build_from_output_contract
     from a_share_capital_actions import analyze_announcements
     from build_comparison_report import build_comparison_report
+    from build_ai_review_packet import build_ai_review_packet
     from candidate_ranker import rank_candidates
+    from merge_ai_research_overlay import overlay_to_profile
     from serenity_chan_scorecard import score
     from technical_health import analyze_price_rows
+    from validate_ai_overlay import validate_overlay
     from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
     from scripts import data_layer as data_layer_module
     from scripts.validate_output_contract import validate_text
     from scripts.validate_output_contract_json import validate_contract
-    from scripts.data_router import validate_financials, _build_data_gaps, _build_research_debt
+    from scripts.data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt
     from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.a_share_capital_actions import analyze_announcements
     from scripts.build_comparison_report import build_comparison_report
+    from scripts.build_ai_review_packet import build_ai_review_packet
     from scripts.candidate_ranker import rank_candidates
+    from scripts.merge_ai_research_overlay import overlay_to_profile
     from scripts.serenity_chan_scorecard import score
     from scripts.technical_health import analyze_price_rows
+    from scripts.validate_ai_overlay import validate_overlay
     from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 
 
@@ -117,6 +123,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "valuation_inputs_validation":
+            payload = case.get("payload", {})
+            try:
+                with tempfile.TemporaryDirectory(prefix="serenity-static-valuation-") as temp_dir:
+                    valuation_path = Path(temp_dir) / "valuation_inputs.json"
+                    valuation_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                    result = validate_valuation_inputs(valuation_path)
+                result_payload = {
+                    "status": result.status.value,
+                    "warnings": result.warnings,
+                    "errors": result.errors,
+                    "stats": result.stats,
+                }
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "data_gaps":
             result_items = case.get("result_items", [])
             statuses = case.get("statuses", {})
@@ -189,6 +212,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "selected_titles": [str(report.get("title") or "") for report in selected],
             }
             actual_pass = True
+        elif kind == "periodic_report_title":
+            titles = case.get("titles", {})
+            if not isinstance(titles, dict):
+                raise ValueError("periodic_report_title static eval requires titles object")
+            issuer_name = str(case.get("issuer_name") or "")
+            result_payload = {
+                str(title): CninfoFinancialReportsProvider._is_periodic_report_title(str(title), issuer_name=issuer_name)
+                for title in titles
+            }
+            mismatches = {
+                title: {"expected": expected, "actual": result_payload.get(title)}
+                for title, expected in titles.items()
+                if result_payload.get(title) != expected
+            }
+            actual_pass = not mismatches
+            if mismatches:
+                findings = [json.dumps(mismatches, ensure_ascii=False, sort_keys=True)]
         elif kind == "cn_statement_start":
             pages = case.get("pages", [])
             if not isinstance(pages, list):
@@ -282,6 +322,44 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_overlay_validation":
+            payload = case.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("ai_overlay_validation static eval requires payload object")
+            try:
+                result_payload = validate_overlay(payload)
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_review_packet":
+            manifest = case.get("manifest")
+            if not isinstance(manifest, str):
+                raise ValueError("ai_review_packet static eval requires manifest path")
+            try:
+                result_payload = build_ai_review_packet(root / manifest)
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_overlay_merge":
+            manifests = case.get("manifests", [])
+            overlays = case.get("overlays", {})
+            if not isinstance(manifests, list) or len(manifests) < 2:
+                raise ValueError("ai_overlay_merge static eval requires at least two manifests")
+            if not isinstance(overlays, dict):
+                raise ValueError("ai_overlay_merge static eval requires overlays object")
+            try:
+                profiles = {
+                    str(symbol): overlay_to_profile(overlay)
+                    for symbol, overlay in overlays.items()
+                    if isinstance(overlay, dict)
+                }
+                result_payload = build_comparison_report([root / str(path) for path in manifests], profiles)
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "provider_chain":
             symbol = SymbolInfo(
                 input_value=str(case.get("symbol", "NVDA")),
@@ -300,6 +378,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             actual_pass = bool(result_payload["has_required_providers"])
             if not actual_pass:
                 findings = [f"provider chain missing required providers; actual={provider_names}"]
+        elif kind == "hk_issued_shares_extraction":
+            extracted = data_layer_module.HkexValuationInputsProvider._extract_issued_shares_from_text(str(case.get("text") or ""))
+            result_payload = extracted or {}
+            actual_pass = extracted is not None
         elif kind == "sec_identity_match":
             symbol = SymbolInfo(
                 input_value=str(case.get("symbol", "NVDA")),
@@ -347,6 +429,62 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             actual_pass = resolved == case.get("expected_cik")
             if not actual_pass:
                 findings = [f"resolved CIK {resolved!r}, expected {case.get('expected_cik')!r}"]
+        elif kind == "sec_shares_outstanding":
+            companyfacts = case.get("companyfacts", {})
+            if not isinstance(companyfacts, dict):
+                raise ValueError("sec_shares_outstanding static eval requires companyfacts object")
+            share_fact = data_layer_module._latest_sec_shares_outstanding(companyfacts)
+            result_payload = share_fact if isinstance(share_fact, dict) else {}
+            actual_pass = bool(share_fact)
+        elif kind == "sec_financial_period_rows":
+            companyfacts = case.get("companyfacts", {})
+            if not isinstance(companyfacts, dict):
+                raise ValueError("sec_financial_period_rows static eval requires companyfacts object")
+            rows = data_layer_module._period_rows_from_sec_facts(companyfacts)
+            result_payload = {
+                "row_count": len(rows),
+                "latest_row": rows[-1] if rows else {},
+            }
+            actual_pass = bool(rows)
+        elif kind == "sec_ads_ratio_text":
+            extracted = data_layer_module._extract_ads_ratio_from_text(str(case.get("text") or ""))
+            result_payload = extracted if isinstance(extracted, dict) else {}
+            actual_pass = bool(extracted)
+        elif kind == "sec_ads_ratio_required":
+            symbol = SymbolInfo(
+                input_value=str(case.get("symbol", "ASML")),
+                symbol=str(case.get("symbol", "ASML")),
+                market=Market.US,
+                exchange="US",
+                currency="USD",
+            )
+            result_payload = {
+                "required": data_layer_module._ads_ratio_required(symbol, {
+                    "filings": {"recent": {"form": case.get("forms", [])}},
+                    "tickers": case.get("submission_tickers", []),
+                }),
+            }
+            actual_pass = bool(result_payload["required"]) == bool(case.get("expected_required"))
+            if not actual_pass:
+                findings = [f"ADS ratio required result was {result_payload['required']}"]
+        elif kind == "tencent_valuation_fields":
+            alias = str(case.get("alias", "sh688322"))
+            fields = [""] * int(case.get("field_count", 88))
+            for key, value in (case.get("fields", {}) if isinstance(case.get("fields"), dict) else {}).items():
+                fields[int(key)] = str(value)
+            provider = data_layer_module.TencentQuoteKlineProvider()
+            payload = (f'v_{alias}="' + "~".join(fields) + '";').encode("gb18030")
+            provider._read_bytes = lambda url: payload  # type: ignore[method-assign]
+            symbol = SymbolInfo(
+                input_value=str(case.get("symbol", "688322")),
+                symbol=str(case.get("normalized_symbol", "688322.SH")),
+                market=Market.CN_A,
+                exchange="SSE",
+                currency="CNY",
+            )
+            result = provider._fetch_valuation_inputs(symbol, data_layer_module.Dataset.VALUATION_INPUTS, alias, raw_dir=None)
+            result_payload = result.data if result.ok and isinstance(result.data, dict) else {"errors": result.errors}
+            actual_pass = bool(result.ok)
         else:
             raise ValueError(f"unknown static eval kind: {kind}")
 

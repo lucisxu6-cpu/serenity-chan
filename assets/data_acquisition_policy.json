@@ -55,6 +55,20 @@
       "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED"],
       "decision_limit_when_missing": "Official claim verification remains open."
     },
+    "share_capital": {
+      "materiality": "high",
+      "decision_role": ["market_cap_basis", "float_market_cap_basis", "valuation_inputs"],
+      "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED", "OPEN_STRUCTURED"],
+      "decision_limit_when_missing": "Market cap and valuation multiples remain gated.",
+      "verification_rule": "Quote-derived share counts are preflight evidence and must be reconciled against official or licensed capital structure before final valuation claims."
+    },
+    "valuation_inputs": {
+      "materiality": "high",
+      "decision_role": ["market_implied_growth", "relative_payoff", "candidate_priority", "action_gate"],
+      "preferred_route": ["PRIMARY_DISCLOSURE", "LICENSED_STRUCTURED", "OPEN_STRUCTURED"],
+      "decision_limit_when_missing": "No market-implied growth, PE/PS, payoff upgrade, or action-priority upgrade.",
+      "verification_rule": "Total shares, current price, total market cap, currency, and as-of date must share a consistent basis. Float shares and float market cap must be captured when the source exposes them; otherwise liquidity/free-float analysis must remain explicit."
+    },
     "customer_order_capacity_evidence": {
       "materiality": "high",
       "decision_role": ["serenity_bottleneck_validation", "transmission_chain"],
@@ -69,6 +83,27 @@
     }
   },
   "market_routes": {
+    "CN_A": {
+      "market_data": [
+        "Eastmoney quote/kline",
+        "Tencent quote/kline",
+        "Yahoo chart auxiliary cross-check"
+      ],
+      "valuation_inputs": [
+        "Tencent quote market-cap and share-count fields",
+        "CNINFO/exchange capital disclosures",
+        "licensed capital-structure database"
+      ],
+      "financials": [
+        "CNINFO/SSE/SZSE/BSE official report PDFs",
+        "licensed financial database",
+        "Eastmoney F10 structured preflight"
+      ],
+      "filings_announcements": [
+        "CNINFO announcements",
+        "exchange disclosures"
+      ]
+    },
     "US": {
       "cik_resolution": [
         "assets/sec_cik_bootstrap.json",
@@ -81,11 +116,32 @@
         "Yahoo chart query2"
       ],
       "financials": [
-        "SEC companyfacts",
-        "SEC companyconcepts"
+        "SEC companyfacts US-GAAP / IFRS XBRL facts from 10-K, 10-Q, 20-F, or 40-F",
+        "SEC companyconcepts US-GAAP / IFRS XBRL facts from 10-K, 10-Q, 20-F, or 40-F"
       ],
       "filings_announcements": [
         "SEC submissions"
+      ]
+    },
+    "HK": {
+      "market_data": [
+        "Yahoo chart query1",
+        "Yahoo chart query2",
+        "HKEX or licensed vendor"
+      ],
+      "valuation_inputs": [
+        "HKEX annual/interim report issued-share disclosure plus Yahoo HK current quote",
+        "HKEX announcements / annual reports",
+        "Wind/Choice/Bloomberg"
+      ],
+      "financials": [
+        "HKEX annual/interim report PDFs",
+        "Company IR",
+        "Wind/Choice/Bloomberg"
+      ],
+      "filings_announcements": [
+        "HKEXnews announcements",
+        "Company IR"
       ]
     }
   },

@@ -105,7 +105,8 @@
           "gap": { "type": "string" },
           "h4_h5_evidence_bar_met": { "type": "boolean" },
           "required_next_evidence": { "type": "string" },
-          "market_cap": { "type": ["number", "null"] },
+          "total_market_cap": { "type": ["number", "null"] },
+          "total_shares": { "type": ["number", "null"] },
           "pe_preflight": { "type": ["number", "null"] },
           "ps_preflight": { "type": ["number", "null"] },
           "posterior_basis": { "type": "string" }
@@ -136,16 +137,22 @@
           "rank",
           "symbol",
           "priority_score",
+          "research_priority_score",
+          "action_priority_score",
           "rating_cap",
           "action_readiness",
+          "action_gate",
           "key_reason"
         ],
         "properties": {
           "rank": { "type": "integer", "minimum": 1 },
           "symbol": { "type": "string" },
           "priority_score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "research_priority_score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "action_priority_score": { "type": "number", "minimum": 0, "maximum": 100 },
           "rating_cap": { "$ref": "#/$defs/rating" },
           "action_readiness": { "$ref": "#/$defs/action_readiness" },
+          "action_gate": { "$ref": "#/$defs/action_gate" },
           "key_reason": { "type": "string" }
         },
         "additionalProperties": true
@@ -178,6 +185,7 @@
         "CANDIDATE_POOL",
         "WAIT_FOR_BUY_POINT",
         "DATA_GATED",
+        "RESEARCH_GATED",
         "LEAD_TRACKING",
         "ELIMINATE",
         "OBSERVE_ONLY"
@@ -188,6 +196,44 @@
       "required": ["symbol"],
       "properties": {
         "symbol": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "action_gate": {
+      "type": "object",
+      "required": ["primary_gate", "primary_gate_class", "gate_classes", "secondary_gates", "blocking_datasets", "blocking_reasons"],
+      "properties": {
+        "state": { "type": "string" },
+        "primary_gate": {
+          "type": "string",
+          "enum": ["NONE", "DATA_GATED", "EVIDENCE_GATED", "VALUATION_GATED", "AI_REVIEW_GATED", "BUY_POINT_GATED", "CAPITAL_ACTION_GATED"]
+        },
+        "primary_gate_class": {
+          "type": "string",
+          "enum": ["NONE", "DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
+        },
+        "gate_classes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
+          }
+        },
+        "secondary_gates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["DATA_GATED", "EVIDENCE_GATED", "VALUATION_GATED", "AI_REVIEW_GATED", "BUY_POINT_GATED", "CAPITAL_ACTION_GATED"]
+          }
+        },
+        "blocking_datasets": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       },
       "additionalProperties": true
     }

@@ -1,0 +1,16 @@
+{
+  "symbol": "688322.SH",
+  "name": "奥比中光",
+  "currency": "CNY",
+  "exchange": "SH",
+  "as_of_date": "2026-06-23",
+  "regular_market_price": 124.99,
+  "total_shares": 401144240,
+  "float_shares": 401144240,
+  "total_market_cap": 50139018557.6,
+  "float_market_cap": 50139018557.6,
+  "source_basis": "quote_derived_preflight",
+  "share_count_basis": "fixture mirrors quote-derived valuation input chain",
+  "market_cap_basis": "regular_market_price * total_shares",
+  "requires_l0_l1_verification": true
+}
