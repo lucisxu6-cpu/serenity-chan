@@ -16,13 +16,16 @@ Examples:
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import datetime as dt
 import json
 import math
 import os
+import signal
 import statistics
 import sys
+import threading
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -50,6 +53,7 @@ try:
     from data_layer import default_real_providers
     from data_layer import provider_is_allowed
     from data_layer import resolve_symbol as canonical_resolve_symbol
+    from financial_periods import normalize_financial_period
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.data_router
     from scripts.data_contracts import (
         AcquisitionStage,
@@ -72,6 +76,51 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.dat
     from scripts.data_layer import default_real_providers
     from scripts.data_layer import provider_is_allowed
     from scripts.data_layer import resolve_symbol as canonical_resolve_symbol
+    from scripts.financial_periods import normalize_financial_period
+
+
+DEFAULT_PROVIDER_TIMEOUT_SECONDS: Any = 45
+
+
+class ProviderTimeoutError(RuntimeError):
+    """Raised when one data provider exceeds the router execution budget."""
+
+
+def _provider_timeout_seconds(value: Any = None) -> int:
+    raw_value: Any = value if value is not None else os.getenv("SERENITY_PROVIDER_TIMEOUT_SECONDS", str(DEFAULT_PROVIDER_TIMEOUT_SECONDS))
+    try:
+        parsed: Any = int(float(str(raw_value)))
+    except (TypeError, ValueError):
+        parsed = DEFAULT_PROVIDER_TIMEOUT_SECONDS
+    return max(0, parsed)
+
+
+@contextmanager
+def _provider_timeout(seconds: int, *, provider_name: str, dataset: CanonicalDataset):
+    if (
+        seconds <= 0
+        or threading.current_thread() is not threading.main_thread()
+        or not hasattr(signal, "SIGALRM")
+        or not hasattr(signal, "setitimer")
+    ):
+        yield
+        return
+
+    previous_handler: Any = signal.getsignal(signal.SIGALRM)
+    previous_timer: Any = signal.getitimer(signal.ITIMER_REAL)
+
+    def _raise_timeout(signum: int, frame: Any) -> None:
+        raise ProviderTimeoutError(f"{provider_name} exceeded {seconds}s while fetching {dataset.value}")
+
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, float(seconds))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
 
 
 @dataclass
@@ -98,7 +147,7 @@ class ValidationReport:
     rating_cap: RatingCap = RatingCap.S
 
     def downgrade(self, cap: RatingCap, reason: str) -> None:
-        order = [RatingCap.OBSERVE_ONLY, RatingCap.C, RatingCap.B, RatingCap.A, RatingCap.S]
+        order: Any = [RatingCap.OBSERVE_ONLY, RatingCap.C, RatingCap.B, RatingCap.A, RatingCap.S]
         if order.index(cap) < order.index(self.rating_cap):
             self.rating_cap = cap
         self.warnings.append(reason)
@@ -106,9 +155,9 @@ class ValidationReport:
 
 def _source_pack(market: Market) -> Tuple[List[str], List[str], List[str]]:
     if market == Market.CN_A:
-        disclosure = ["CNINFO", "SSE", "SZSE", "BSE", "Company IR"]
-        price = ["Wind", "Choice", "CSMAR", "Tushare Pro", "Eastmoney", "Tencent", "AKShare", "BaoStock", "yfinance auxiliary"]
-        financial = ["CNINFO filings", "SSE/SZSE/BSE filings", "Wind/Choice/CSMAR", "Tushare Pro", "Eastmoney F10 L3 structured preflight", "Company IR"]
+        disclosure: Any = ["CNINFO", "SSE", "SZSE", "BSE", "Company IR"]
+        price: Any = ["Wind", "Choice", "CSMAR", "Tushare Pro", "Eastmoney", "Tencent", "AKShare", "BaoStock", "yfinance auxiliary"]
+        financial: Any = ["CNINFO filings", "SSE/SZSE/BSE filings", "Wind/Choice/CSMAR", "Tushare Pro", "Eastmoney F10 L3 structured preflight", "Company IR"]
     elif market == Market.US:
         disclosure = ["SEC EDGAR", "Company IR", "Earnings releases", "Investor presentations"]
         price = ["Polygon", "IEX/Tiingo", "Nasdaq Data Link", "Bloomberg/FactSet/Koyfin", "yfinance auxiliary", "Stooq auxiliary"]
@@ -126,11 +175,11 @@ def _source_pack(market: Market) -> Tuple[List[str], List[str], List[str]]:
 
 def resolve_symbol(value: str) -> SymbolInfo:
     """Resolve symbols via the canonical data layer and adapt to this CLI contract."""
-    canonical = canonical_resolve_symbol(value)
+    canonical: Any = canonical_resolve_symbol(value)
     warnings: List[str] = []
 
     if canonical.market == CanonicalMarket.CN_A:
-        market = Market.CN_A
+        market: Any = Market.CN_A
     elif canonical.market == CanonicalMarket.US:
         market = Market.US
     elif canonical.market == CanonicalMarket.HK:
@@ -138,13 +187,13 @@ def resolve_symbol(value: str) -> SymbolInfo:
     else:
         market = Market.OTHER
 
-    normalized = canonical.symbol
-    exchange = canonical.exchange or None
+    normalized: Any = canonical.symbol
+    exchange: Any = canonical.exchange or None
     aliases: Dict[str, str] = {}
 
     if market == Market.CN_A:
         aliases = {"tushare": normalized, "wind": normalized}
-        code = normalized.split(".", 1)[0]
+        code: Any = normalized.split(".", 1)[0]
         if exchange == "SH":
             aliases["yfinance"] = f"{code}.SS"
         elif exchange == "SZ":
@@ -156,7 +205,7 @@ def resolve_symbol(value: str) -> SymbolInfo:
     elif market == Market.US:
         aliases = {"sec_ticker": normalized, "yfinance": normalized}
 
-    raw_token = canonical.input_value.upper().replace(" ", "")
+    raw_token: Any = canonical.input_value.upper().replace(" ", "")
     if raw_token.endswith(".SS") and normalized.endswith(".SH"):
         warnings.append("Input used Yahoo-style .SS; normalized to A-share .SH.")
     if raw_token.isdigit() and market == Market.CN_A:
@@ -164,6 +213,9 @@ def resolve_symbol(value: str) -> SymbolInfo:
     if market == Market.OTHER:
         warnings.append("Could not confidently resolve market. Ask user or provide suffix.")
 
+    disclosure: Any
+    price: Any
+    financial: Any
     disclosure, price, financial = _source_pack(market)
     return SymbolInfo(
         canonical.input_value,
@@ -183,7 +235,7 @@ def _parse_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
     try:
-        f = float(str(value).replace(",", ""))
+        f: Any = float(str(value).replace(",", ""))
     except Exception:
         return None
     if math.isnan(f) or math.isinf(f):
@@ -194,7 +246,7 @@ def _parse_float(value: Any) -> Optional[float]:
 def _parse_date(value: Any) -> Optional[dt.date]:
     if value is None:
         return None
-    s = str(value).strip()[:10]
+    s: Any = str(value).strip()[:10]
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
         try:
             return dt.datetime.strptime(s, fmt).date()
@@ -209,20 +261,20 @@ def read_csv_rows(path: Path) -> List[Dict[str, Any]]:
 
 
 def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: str = "unknown", min_bars: int = 250) -> ValidationReport:
-    report = ValidationReport(dataset="price_history", status=DataStatus.OK, stats={"path": str(path), "adjust": adjust})
+    report: Any = ValidationReport(dataset="price_history", status=DataStatus.OK, stats={"path": str(path), "adjust": adjust})
     if not path.exists():
         report.status = DataStatus.FAILED
         report.errors.append(f"File not found: {path}")
         report.rating_cap = RatingCap.B
         return report
-    rows = read_csv_rows(path)
-    required = ["date", "open", "high", "low", "close", "volume"]
+    rows: Any = read_csv_rows(path)
+    required: Any = ["date", "open", "high", "low", "close", "volume"]
     if not rows:
         report.status = DataStatus.FAILED
         report.errors.append("CSV is empty.")
         report.rating_cap = RatingCap.B
         return report
-    missing_cols = [c for c in required if c not in rows[0]]
+    missing_cols: Any = [c for c in required if c not in rows[0]]
     if missing_cols:
         report.status = DataStatus.FAILED
         report.errors.append(f"Missing required columns: {missing_cols}")
@@ -234,14 +286,14 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
     closes: List[float] = []
     highs: List[float] = []
     lows: List[float] = []
-    invalid_count = 0
+    invalid_count: Any = 0
     for i, row in enumerate(rows, start=2):
-        d = _parse_date(row.get("date"))
-        o = _parse_float(row.get("open"))
-        h = _parse_float(row.get("high"))
-        l = _parse_float(row.get("low"))
-        c = _parse_float(row.get("close"))
-        v = _parse_float(row.get("volume"))
+        d: Any = _parse_date(row.get("date"))
+        o: Any = _parse_float(row.get("open"))
+        h: Any = _parse_float(row.get("high"))
+        l: Any = _parse_float(row.get("low"))
+        c: Any = _parse_float(row.get("close"))
+        v: Any = _parse_float(row.get("volume"))
         if d is None:
             report.errors.append(f"Invalid date at row {i}: {row.get('date')}")
             invalid_count += 1
@@ -276,7 +328,7 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
     if len(dates) < min_bars:
         report.warnings.append(f"Only {len(dates)} bars; {min_bars}+ preferred for 200DMA and medium-term structure.")
         report.rating_cap = RatingCap.B
-    adjust_normalized = adjust.lower()
+    adjust_normalized: Any = adjust.lower()
     if adjust_normalized not in {"qfq", "forward", "hfq", "backward", "adjusted", "none", "unadjusted", "unknown"} and not adjust_normalized.startswith("qfq_"):
         report.warnings.append(f"Unknown adjustment flag: {adjust}")
         report.rating_cap = RatingCap.B
@@ -285,10 +337,10 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
         report.rating_cap = RatingCap.B
 
     if dates:
-        latest = dates[-1]
-        today = dt.datetime.now().date()
-        calendar_days_old = (today - latest).days
-        stale_threshold = 7 if market in {Market.CN_A, Market.HK, Market.US} else 14
+        latest: Any = dates[-1]
+        today: Any = dt.datetime.now().date()
+        calendar_days_old: Any = (today - latest).days
+        stale_threshold: Any = 7 if market in {Market.CN_A, Market.HK, Market.US} else 14
         report.stats.update({
             "bars": len(dates),
             "start_date": str(dates[0]),
@@ -309,10 +361,10 @@ def validate_price_history(path: Path, market: Market = Market.OTHER, adjust: st
         if len(closes) >= 200:
             report.stats["sma200"] = sum(closes[-200:]) / 200
         if len(closes) >= 21:
-            trs = []
+            trs: Any = []
             for j in range(len(closes) - 20, len(closes)):
-                prev_close = closes[j - 1]
-                tr = max(highs[j] - lows[j], abs(highs[j] - prev_close), abs(lows[j] - prev_close))
+                prev_close: Any = closes[j - 1]
+                tr: Any = max(highs[j] - lows[j], abs(highs[j] - prev_close), abs(lows[j] - prev_close))
                 trs.append(tr)
             report.stats["atr20"] = sum(trs) / len(trs)
 
@@ -327,13 +379,13 @@ def min_cap(a: RatingCap, b: RatingCap) -> RatingCap:
 
 
 def compare_quotes(prices: Sequence[float]) -> Dict[str, Any]:
-    valid = [float(p) for p in prices if p and p > 0]
+    valid: Any = [float(p) for p in prices if p and p > 0]
     if len(valid) < 2:
         return {"status": "PARTIAL", "warning": "Need at least two valid prices for cross-source comparison."}
-    med = statistics.median(valid)
-    max_diff = max(abs(p - med) / med for p in valid)
+    med: Any = statistics.median(valid)
+    max_diff: Any = max(abs(p - med) / med for p in valid)
     if max_diff <= 0.005:
-        status = "OK"
+        status: Any = "OK"
     elif max_diff <= 0.02:
         status = "PARTIAL"
     else:
@@ -347,15 +399,15 @@ def load_json(path: Path) -> Any:
 
 
 def validate_financials(path: Path) -> ValidationReport:
-    report = ValidationReport(dataset="financials", status=DataStatus.OK, stats={"path": str(path)})
+    report: Any = ValidationReport(dataset="financials", status=DataStatus.OK, stats={"path": str(path)})
     if not path.exists():
         report.status = DataStatus.FAILED
         report.errors.append(f"File not found: {path}")
         report.rating_cap = RatingCap.B
         return report
-    data = load_json(path)
+    data: Any = load_json(path)
     if isinstance(data, list):
-        rows = data
+        rows: Any = data
     elif isinstance(data, Mapping):
         rows = data.get("periods", [])
     else:
@@ -371,26 +423,26 @@ def validate_financials(path: Path) -> ValidationReport:
         report.rating_cap = RatingCap.B
         return report
 
-    core_statement_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
-    required_any = ["period", *core_statement_fields]
-    bad = 0
+    core_statement_fields: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    required_any: Any = ["period", *core_statement_fields]
+    bad: Any = 0
     missing_counts: Dict[str, int] = {k: 0 for k in required_any}
     for idx, row in enumerate(rows):
         for k in required_any:
             if k not in row:
                 missing_counts[k] += 1
-        assets = _parse_float(row.get("assets"))
-        liabilities = _parse_float(row.get("liabilities"))
-        equity = _parse_float(row.get("equity"))
+        assets: Any = _parse_float(row.get("assets"))
+        liabilities: Any = _parse_float(row.get("liabilities"))
+        equity: Any = _parse_float(row.get("equity"))
         if assets and liabilities is not None and equity is not None:
-            denom = max(abs(assets), 1.0)
-            diff = abs(assets - liabilities - equity) / denom
+            denom: Any = max(abs(assets), 1.0)
+            diff: Any = abs(assets - liabilities - equity) / denom
             if diff > 0.01:
                 report.warnings.append(f"Balance sheet identity differs by {diff:.2%} in period {row.get('period')}.")
                 bad += 1
-        revenue = _parse_float(row.get("revenue"))
-        ocf = _parse_float(row.get("operating_cash_flow"))
-        net_income = _parse_float(row.get("net_income"))
+        revenue: Any = _parse_float(row.get("revenue"))
+        ocf: Any = _parse_float(row.get("operating_cash_flow"))
+        net_income: Any = _parse_float(row.get("net_income"))
         if revenue is not None and revenue < 0:
             report.warnings.append(f"Negative revenue in period {row.get('period')}; confirm business context.")
         if net_income and ocf is not None and abs(ocf / net_income) < 0.3:
@@ -400,24 +452,42 @@ def validate_financials(path: Path) -> ValidationReport:
     for key, count in missing_counts.items():
         if count:
             report.warnings.append(f"{count}/{len(rows)} periods missing {key}.")
+
+    period_identity_counts: Dict[Tuple[str, str], int] = {}
+    duplicate_period_identities: List[str] = []
+    for row in rows:
+        normalized: Any = normalize_financial_period(row)
+        period_end: Any = str(normalized.get("period_end") or row.get("period") or "")
+        period_type: Any = str(normalized.get("period_type") or "unknown")
+        if not period_end or period_type == "unknown":
+            continue
+        identity: Any = (period_end, period_type)
+        period_identity_counts[identity] = period_identity_counts.get(identity, 0) + 1
+    for (period_end, period_type), count in sorted(period_identity_counts.items()):
+        if count > 1:
+            duplicate_period_identities.append(f"{period_end}/{period_type} x{count}")
+    report.stats["unique_period_identity_count"] = len(period_identity_counts)
+    if duplicate_period_identities:
+        report.stats["duplicate_period_identities"] = duplicate_period_identities
+
     def has_core_statement(row: Mapping[str, Any]) -> bool:
         return all(_parse_float(row.get(key)) is not None for key in core_statement_fields)
 
-    sorted_rows = sorted(
+    sorted_rows: Any = sorted(
         [row for row in rows if isinstance(row, Mapping)],
         key=lambda row: str(row.get("period") or ""),
     )
-    latest_row = sorted_rows[-1] if sorted_rows else {}
-    latest_period = str(latest_row.get("period") or "") if latest_row else ""
-    latest_missing_core_fields = [
+    latest_row: Any = sorted_rows[-1] if sorted_rows else {}
+    latest_period: Any = str(latest_row.get("period") or "") if latest_row else ""
+    latest_missing_core_fields: Any = [
         key for key in core_statement_fields
         if not latest_row or _parse_float(latest_row.get(key)) is None
     ]
-    core_complete_rows = [
+    core_complete_rows: Any = [
         row for row in rows
         if isinstance(row, Mapping) and has_core_statement(row)
     ]
-    latest_core_period = max((str(row.get("period", "")) for row in core_complete_rows), default="")
+    latest_core_period: Any = max((str(row.get("period", "")) for row in core_complete_rows), default="")
     report.stats["core_complete_period_count"] = len(core_complete_rows)
     report.stats["core_statement_fields"] = core_statement_fields
     if latest_period:
@@ -431,7 +501,7 @@ def validate_financials(path: Path) -> ValidationReport:
     if latest_missing_core_fields:
         report.status = DataStatus.PARTIAL
         report.rating_cap = RatingCap.B
-        period_label = latest_period or "latest retained period"
+        period_label: Any = latest_period or "latest retained period"
         report.warnings.append(
             f"Latest financial period {period_label} is missing core statement fields: {', '.join(latest_missing_core_fields)}."
         )
@@ -443,6 +513,10 @@ def validate_financials(path: Path) -> ValidationReport:
         report.status = DataStatus.PARTIAL
         report.rating_cap = min_cap(report.rating_cap, RatingCap.A)
         report.warnings.append("Only one retained period has all core statement fields; trend analysis is partial.")
+    if duplicate_period_identities:
+        report.status = DataStatus.PARTIAL
+        report.rating_cap = min_cap(report.rating_cap, RatingCap.B)
+        report.warnings.append("Financial rows contain duplicate normalized reporting periods: " + ", ".join(duplicate_period_identities) + ".")
     if bad:
         report.status = DataStatus.PARTIAL
         report.rating_cap = RatingCap.B
@@ -450,27 +524,27 @@ def validate_financials(path: Path) -> ValidationReport:
 
 
 def validate_valuation_inputs(path: Path) -> ValidationReport:
-    report = ValidationReport(dataset="valuation_inputs", status=DataStatus.OK, stats={"path": str(path)})
+    report: Any = ValidationReport(dataset="valuation_inputs", status=DataStatus.OK, stats={"path": str(path)})
     if not path.exists():
         report.status = DataStatus.FAILED
         report.errors.append(f"File not found: {path}")
         return report
-    data = load_json(path)
+    data: Any = load_json(path)
     if not isinstance(data, Mapping):
         report.status = DataStatus.FAILED
         report.errors.append("Valuation inputs JSON must be an object.")
         return report
 
-    price = _parse_float(data.get("regular_market_price"))
-    total_shares = _parse_float(data.get("total_shares"))
-    total_market_cap = _parse_float(data.get("total_market_cap"))
-    float_shares = _parse_float(data.get("float_shares"))
-    float_market_cap = _parse_float(data.get("float_market_cap"))
-    currency = str(data.get("currency") or "").strip()
-    as_of_date = str(data.get("as_of_date") or "").strip()
-    source_basis = str(data.get("source_basis") or "").strip()
-    share_count_basis = str(data.get("share_count_basis") or "").strip()
-    market_cap_basis = str(data.get("market_cap_basis") or "").strip()
+    price: Any = _parse_float(data.get("regular_market_price"))
+    total_shares: Any = _parse_float(data.get("total_shares"))
+    total_market_cap: Any = _parse_float(data.get("total_market_cap"))
+    float_shares: Any = _parse_float(data.get("float_shares"))
+    float_market_cap: Any = _parse_float(data.get("float_market_cap"))
+    currency: Any = str(data.get("currency") or "").strip()
+    as_of_date: Any = str(data.get("as_of_date") or "").strip()
+    source_basis: Any = str(data.get("source_basis") or "").strip()
+    share_count_basis: Any = str(data.get("share_count_basis") or "").strip()
+    market_cap_basis: Any = str(data.get("market_cap_basis") or "").strip()
 
     missing: List[str] = []
     if price is None or price <= 0:
@@ -498,8 +572,8 @@ def validate_valuation_inputs(path: Path) -> ValidationReport:
         "source_basis": source_basis,
     })
     if price and total_shares and total_market_cap:
-        implied_market_cap = price * total_shares
-        diff = abs(implied_market_cap - total_market_cap) / max(abs(total_market_cap), 1.0)
+        implied_market_cap: Any = price * total_shares
+        diff: Any = abs(implied_market_cap - total_market_cap) / max(abs(total_market_cap), 1.0)
         report.stats["implied_total_market_cap"] = implied_market_cap
         report.stats["market_cap_diff_ratio"] = diff
         if diff > 0.08:
@@ -514,9 +588,9 @@ def validate_valuation_inputs(path: Path) -> ValidationReport:
 
 
 def _default_fetch_dir(symbol: str) -> Path:
-    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    root = Path(os.getenv("SERENITY_DATA_DIR", "/tmp/serenity-chan-data"))
-    safe_symbol = "".join(ch if ch.isalnum() or ch in {"-", ".", "_"} else "_" for ch in symbol)
+    stamp: Any = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    root: Any = Path(os.getenv("SERENITY_DATA_DIR", "/tmp/serenity-chan-data"))
+    safe_symbol: Any = "".join(ch if ch.isalnum() or ch in {"-", ".", "_"} else "_" for ch in symbol)
     return root / safe_symbol / stamp
 
 
@@ -537,9 +611,9 @@ def _write_json(path: Path, data: Any) -> None:
 
 def _write_price_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["date", "open", "high", "low", "close", "volume", "adj_close", "raw_close"]
+    fieldnames: Any = ["date", "open", "high", "low", "close", "volume", "adj_close", "raw_close"]
     with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer: Any = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             writer.writerow({
@@ -561,15 +635,15 @@ def _cap_for_statuses(
     required_datasets: Optional[Sequence[str]] = None,
     downgrade_not_requested: bool = True,
 ) -> RatingCap:
-    cap = RatingCap.S
+    cap: Any = RatingCap.S
 
     def downgrade(target: RatingCap) -> None:
         nonlocal cap
         cap = stricter_cap(cap, target)
 
-    keys = list(required_datasets) if required_datasets is not None else list(statuses)
+    keys: Any = list(required_datasets) if required_datasets is not None else list(statuses)
     for key in keys:
-        status = statuses.get(key, DataStatus.NOT_REQUESTED.value)
+        status: Any = statuses.get(key, DataStatus.NOT_REQUESTED.value)
         if status in {"FAILED", "PENDING"}:
             downgrade(RatingCap.B)
         elif status == "STALE":
@@ -589,7 +663,7 @@ def _cap_for_statuses(
 def _source_usage_from_result(result_data: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(result_data, Mapping):
         return None
-    source_usage = result_data.get("source_usage")
+    source_usage: Any = result_data.get("source_usage")
     if isinstance(source_usage, Mapping):
         return dict(source_usage)
     return None
@@ -599,7 +673,7 @@ def _build_source_integrity_summary(result_items: Sequence[Dict[str, Any]]) -> D
     l3_structured_datasets: List[str] = []
     preferred_source_gaps: List[str] = []
     for item in result_items:
-        source_usage = item.get("source_usage") if isinstance(item.get("source_usage"), dict) else None
+        source_usage: Any = item.get("source_usage") if isinstance(item.get("source_usage"), dict) else None
         if not source_usage:
             continue
         if source_usage.get("structured_preflight_used"):
@@ -616,7 +690,7 @@ def _build_source_integrity_summary(result_items: Sequence[Dict[str, Any]]) -> D
 
 
 def _stage_for_source_level(level: SourceLevel | str) -> AcquisitionStage:
-    value = getattr(level, "value", str(level))
+    value: Any = getattr(level, "value", str(level))
     if value.startswith("L0_"):
         return AcquisitionStage.PRIMARY_DISCLOSURE
     if value.startswith("L1_"):
@@ -629,7 +703,7 @@ def _stage_for_source_level(level: SourceLevel | str) -> AcquisitionStage:
 
 
 def _decision_impact_for_dataset(dataset: CanonicalDataset | str) -> DecisionImpact:
-    value = getattr(dataset, "value", str(dataset))
+    value: Any = getattr(dataset, "value", str(dataset))
     if value in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, CanonicalDataset.PRICE_HISTORY_RAW.value}:
         return DecisionImpact.ACTION_IMPACT
     if value in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value, CanonicalDataset.CUSTOMER_EVIDENCE.value}:
@@ -639,12 +713,12 @@ def _decision_impact_for_dataset(dataset: CanonicalDataset | str) -> DecisionImp
     return DecisionImpact.NO_IMPACT
 
 
-_PRICE_HISTORY_DATASETS = {
+_PRICE_HISTORY_DATASETS: Any = {
     CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
     CanonicalDataset.PRICE_HISTORY_RAW.value,
 }
 
-_ADJUSTMENT_BASIS_TOKENS = [
+_ADJUSTMENT_BASIS_TOKENS: Any = [
     "adjustment is not confirmed",
     "unknown adjustment",
     "source adjustment basis",
@@ -652,7 +726,7 @@ _ADJUSTMENT_BASIS_TOKENS = [
     "unadjusted",
 ]
 
-_EVIDENCE_DEPTH_TOKENS = [
+_EVIDENCE_DEPTH_TOKENS: Any = [
     "200dma",
     "bar count",
     "evidence window",
@@ -666,14 +740,14 @@ _EVIDENCE_DEPTH_TOKENS = [
 def _is_adjustment_basis_gap(dataset: str, reason: str) -> bool:
     if dataset not in _PRICE_HISTORY_DATASETS:
         return False
-    text = reason.lower()
+    text: Any = reason.lower()
     return any(token in text for token in _ADJUSTMENT_BASIS_TOKENS)
 
 
 def _is_evidence_depth_gap(dataset: str, reason: str) -> bool:
     if dataset not in _PRICE_HISTORY_DATASETS:
         return False
-    text = reason.lower()
+    text: Any = reason.lower()
     return any(token in text for token in _EVIDENCE_DEPTH_TOKENS)
 
 
@@ -687,7 +761,7 @@ def _validation_cap_gap_types(dataset: str, reason: str) -> List[DataGapType]:
 
 
 def _classify_gap(status: str, reason: str, *, dataset: str = "", source_level: str = "") -> DataGapType:
-    text = reason.lower()
+    text: Any = reason.lower()
     if status == DataStatus.STALE.value:
         return DataGapType.STALE_DATA
     if _is_adjustment_basis_gap(dataset, reason):
@@ -696,7 +770,7 @@ def _classify_gap(status: str, reason: str, *, dataset: str = "", source_level: 
         return DataGapType.SOURCE_NOT_IMPLEMENTED
     if "does not support market" in text or "market is unknown" in text:
         return DataGapType.POLICY_BLOCKED
-    if any(token in text for token in ["403", "forbidden", "429", "timeout", "timed out", "ssl", "certificate", "network", "urlopen", "connection", "jsondecodeerror", "json parse failed", "malformed json", "parse failed"]):
+    if any(token in text for token in ["403", "forbidden", "429", "timeout", "timed out", "exceeded", "ssl", "certificate", "network", "urlopen", "connection", "jsondecodeerror", "json parse failed", "malformed json", "parse failed"]):
         return DataGapType.ACCESS_FAILURE
     if any(token in text for token in ["ohlc consistency", "price difference", "cross-source", "difference"]):
         return DataGapType.CONFLICTING_SOURCES
@@ -720,9 +794,9 @@ def _attempt_from_provider(
     attempted_at: str,
     reason: str = "",
 ) -> Dict[str, Any]:
-    level_value = getattr(source_level, "value", str(source_level))
-    gap_type = None
-    decision_impact = None
+    level_value: Any = getattr(source_level, "value", str(source_level))
+    gap_type: Any = None
+    decision_impact: Any = None
     if status != DataStatus.OK:
         gap_type = _classify_gap(status.value, reason, dataset=dataset.value, source_level=level_value).value
         decision_impact = _decision_impact_for_dataset(dataset).value
@@ -745,9 +819,11 @@ def _fetch_with_attempt_ledger(
     dataset: CanonicalDataset,
     **kwargs: Any,
 ) -> Tuple[DataResult, List[Dict[str, Any]]]:
+    provider_kwargs: Any = dict(kwargs)
+    provider_timeout_seconds: Any = _provider_timeout_seconds(provider_kwargs.pop("provider_timeout_seconds", None))
     attempts: List[Dict[str, Any]] = []
     if symbol.market == CanonicalMarket.UNKNOWN:
-        result = DataResult.failed(dataset, symbol.symbol, "symbol_resolver", SourceLevel.L4, "market is UNKNOWN; cannot route data safely")
+        result: Any = DataResult.failed(dataset, symbol.symbol, "symbol_resolver", SourceLevel.L4, "market is UNKNOWN; cannot route data safely")
         attempts.append(_attempt_from_provider(
             dataset=dataset,
             provider_name="symbol_resolver",
@@ -760,8 +836,10 @@ def _fetch_with_attempt_ledger(
 
     failures: List[str] = []
     for provider in providers:
+        allowed: Any
+        reason: Any
         allowed, reason = provider_is_allowed(provider, symbol, dataset)
-        source_level = getattr(provider, "level", SourceLevel.L4)
+        source_level: Any = getattr(provider, "level", SourceLevel.L4)
         if not allowed:
             attempts.append(_attempt_from_provider(
                 dataset=dataset,
@@ -773,9 +851,22 @@ def _fetch_with_attempt_ledger(
             ))
             continue
 
-        provider_name = getattr(provider, "name", provider.__class__.__name__)
+        provider_name: Any = getattr(provider, "name", provider.__class__.__name__)
         try:
-            result = provider.fetch(symbol, dataset, **kwargs)
+            with _provider_timeout(provider_timeout_seconds, provider_name=provider_name, dataset=dataset):
+                result = provider.fetch(symbol, dataset, **provider_kwargs)
+        except ProviderTimeoutError as exc:
+            reason = str(exc)
+            failures.append(f"{provider_name}: {reason}")
+            attempts.append(_attempt_from_provider(
+                dataset=dataset,
+                provider_name=provider_name,
+                source_level=source_level,
+                status=DataStatus.FAILED,
+                attempted_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                reason=reason,
+            ))
+            continue
         except Exception as exc:  # defensive; provider errors must not crash whole agent
             reason = f"{type(exc).__name__}: {exc}"
             failures.append(f"{provider_name}: {reason}")
@@ -873,9 +964,9 @@ def _next_action_for_gap(dataset: str, gap_type: str) -> str:
 
 
 def _manual_task_for_gap(gap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    dataset = str(gap.get("dataset") or "")
-    impact = str(gap.get("decision_impact") or "")
-    gap_type = str(gap.get("gap_type") or "")
+    dataset: Any = str(gap.get("dataset") or "")
+    impact: Any = str(gap.get("decision_impact") or "")
+    gap_type: Any = str(gap.get("gap_type") or "")
     if impact == DecisionImpact.NO_IMPACT.value:
         return None
     if gap_type in {
@@ -975,21 +1066,21 @@ def _build_data_gaps(
 ) -> List[Dict[str, Any]]:
     gaps: List[Dict[str, Any]] = []
     seen_keys: set[Tuple[str, str, str]] = set()
-    requested_set = set(requested_dataset_values)
+    requested_set: Any = set(requested_dataset_values)
 
     for item in result_items:
-        dataset = str(item.get("dataset") or "")
-        status = str(item.get("status") or DataStatus.FAILED.value)
-        source_level = str(item.get("source_level") or "")
-        source_name = str(item.get("source") or "")
+        dataset: Any = str(item.get("dataset") or "")
+        status: Any = str(item.get("status") or DataStatus.FAILED.value)
+        source_level: Any = str(item.get("source_level") or "")
+        source_name: Any = str(item.get("source") or "")
         reason_items: List[str] = []
         reason_items.extend(str(x) for x in (item.get("errors") or []))
         reason_items.extend(str(x) for x in (item.get("warnings") or []))
-        validation = item.get("validation") if isinstance(item.get("validation"), dict) else {}
+        validation: Any = item.get("validation") if isinstance(item.get("validation"), dict) else {}
         if isinstance(validation, dict):
             reason_items.extend(str(x) for x in (validation.get("errors") or []))
             reason_items.extend(str(x) for x in (validation.get("warnings") or []))
-        reason = "; ".join(reason_items)
+        reason: Any = "; ".join(reason_items)
 
         gap_entries: List[Tuple[DataGapType, str]] = []
 
@@ -1005,7 +1096,7 @@ def _build_data_gaps(
                 DataStatus.PARTIAL.value if status == DataStatus.OK.value else status,
             )
         if isinstance(validation, dict):
-            validation_cap = validation.get("rating_cap")
+            validation_cap: Any = validation.get("rating_cap")
             if isinstance(validation_cap, str):
                 try:
                     if stricter_cap(RatingCap.S, RatingCap(validation_cap)) != RatingCap.S:
@@ -1017,11 +1108,11 @@ def _build_data_gaps(
         if not gap_entries:
             continue
         for gap_type, gap_status in gap_entries:
-            key = (dataset, gap_status, gap_type.value)
+            key: Any = (dataset, gap_status, gap_type.value)
             if key in seen_keys:
                 continue
             seen_keys.add(key)
-            gap = DataGap(
+            gap: Any = DataGap(
                 dataset=dataset,
                 status=gap_status,
                 gap_type=gap_type.value,
@@ -1059,11 +1150,11 @@ def _build_data_gaps(
 def _build_research_debt(data_gaps: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     debt: List[Dict[str, Any]] = []
     for gap in data_gaps:
-        impact = str(gap.get("decision_impact") or "")
-        dataset = str(gap.get("dataset") or "")
+        impact: Any = str(gap.get("decision_impact") or "")
+        dataset: Any = str(gap.get("dataset") or "")
         if impact == DecisionImpact.NO_IMPACT.value:
             continue
-        priority = "critical" if dataset in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value} else "high"
+        priority: Any = "critical" if dataset in {CanonicalDataset.FINANCIALS.value, CanonicalDataset.FILINGS.value} else "high"
         if str(gap.get("gap_type")) == DataGapType.SCOPE_NOT_REQUESTED.value:
             priority = "high"
         debt.append({
@@ -1075,8 +1166,85 @@ def _build_research_debt(data_gaps: Sequence[Dict[str, Any]]) -> List[Dict[str, 
             "next_action": gap.get("next_action"),
             "source_name": gap.get("source_name", ""),
             "source_level": gap.get("source_level", ""),
+            **_research_debt_runbook_fields(gap, priority=priority),
         })
     return debt
+
+
+def _research_debt_runbook_fields(gap: Mapping[str, Any], *, priority: str) -> Dict[str, Any]:
+    dataset: Any = str(gap.get("dataset") or "")
+    impact: Any = str(gap.get("decision_impact") or "")
+    source: Any = str(gap.get("source_name") or "")
+
+    if impact == DecisionImpact.VALUATION_IMPACT.value:
+        axis: Any = "market_payoff"
+        blocking_level: Any = "rating_and_action"
+    elif impact == DecisionImpact.ACTION_IMPACT.value:
+        axis = "action_readiness"
+        blocking_level = "action"
+    elif impact == DecisionImpact.EVIDENCE_IMPACT.value:
+        axis = "evidence_confidence"
+        blocking_level = "rating_and_action" if priority == "critical" else "rating"
+    else:
+        axis = "source_quality"
+        blocking_level = "research_priority"
+
+    if dataset == CanonicalDataset.FILINGS.value:
+        if "HKEX" in source:
+            preferred: Any = ["HKEXnews stock-code/date-range search", "HKEX issuer filings page"]
+            fallback: Any = ["Company IR announcements", "Company annual/interim report page", "Licensed disclosure database"]
+        elif "CNINFO" in source or not source:
+            preferred = ["CNINFO stock-specific announcement query", "Listing exchange disclosure page"]
+            fallback = ["SSE/SZSE/BSE announcement search", "Company IR announcements", "Eastmoney announcements as L3 lead"]
+        else:
+            preferred = ["Market-primary disclosure venue", "Company IR"]
+            fallback = ["Licensed disclosure database", "Validated issuer PDF archive"]
+        validation: Any = [
+            "latest annual/interim/quarterly report",
+            "major contracts or bid-win announcements",
+            "capacity expansion and capex disclosures",
+            "customer/order claims",
+            "capital actions and regulatory inquiry letters",
+        ]
+        expected: Any = "Evidence confidence can be upgraded only after thesis claims link to concrete filings or announcements."
+    elif dataset == CanonicalDataset.FINANCIALS.value:
+        preferred = ["Official filing XBRL/PDF", "L1 financial database export"]
+        fallback = ["Issuer IR financial reports", "Exchange filing archive", "L3 structured preflight only as a lead"]
+        validation = [
+            "latest reporting period",
+            "revenue",
+            "net income",
+            "operating cash flow",
+            "assets",
+            "liabilities",
+            "equity",
+            "unit and currency",
+        ]
+        expected = "Financial quality and rating cap can improve after core statement lines are reconciled with L0/L1 evidence."
+    elif dataset in {CanonicalDataset.VALUATION_INPUTS.value, CanonicalDataset.SHARE_CAPITAL.value}:
+        preferred = ["Exchange share-capital disclosure", "Official filing share count", "Licensed market data"]
+        fallback = ["Validated quote-derived market cap", "Issuer IR capital structure disclosure"]
+        validation = ["current price", "total shares", "float shares when available", "total market cap", "currency", "as-of date", "share-count basis"]
+        expected = "Market-implied growth and valuation gates can be recomputed with an explicit preflight or verified valuation stage."
+    elif dataset in _PRICE_HISTORY_DATASETS:
+        preferred = ["Exchange or licensed adjusted history", "Validated open market-data source"]
+        fallback = ["Corporate-action-adjusted reconstruction", "Secondary quote provider cross-check"]
+        validation = ["latest trading day", "adjustment basis", "corporate-action evidence", "minimum bar count"]
+        expected = "Chan timing and action-readiness gates can be evaluated after adjusted history is complete."
+    else:
+        preferred = ["Market-appropriate primary source"]
+        fallback = ["Licensed vendor", "Issuer IR", "Validated secondary source"]
+        validation = ["source identity", "as-of date", "field completeness", "claim linkage"]
+        expected = "Research priority can be upgraded only after the missing evidence is linked to the affected decision axis."
+
+    return {
+        "axis": axis,
+        "blocking_level": blocking_level,
+        "preferred_sources": preferred,
+        "fallback_sources": fallback,
+        "validation_target": validation,
+        "expected_effect_if_resolved": expected,
+    }
 
 
 def _build_ai_review_guidance(
@@ -1100,13 +1268,13 @@ def _build_ai_review_guidance(
     upgrade_requirements: List[str] = []
 
     for item in result_items:
-        dataset = str(item.get("dataset") or "")
-        status = str(item.get("status") or "")
-        source_level = str(item.get("source_level") or "")
-        source = str(item.get("source") or "")
-        source_usage = item.get("source_usage") if isinstance(item.get("source_usage"), dict) else None
-        validation = item.get("validation") if isinstance(item.get("validation"), dict) else {}
-        validation_warnings = validation.get("warnings") if isinstance(validation, dict) else []
+        dataset: Any = str(item.get("dataset") or "")
+        status: Any = str(item.get("status") or "")
+        source_level: Any = str(item.get("source_level") or "")
+        source: Any = str(item.get("source") or "")
+        source_usage: Any = item.get("source_usage") if isinstance(item.get("source_usage"), dict) else None
+        validation: Any = item.get("validation") if isinstance(item.get("validation"), dict) else {}
+        validation_warnings: Any = validation.get("warnings") if isinstance(validation, dict) else []
 
         if source_usage and source_usage.get("structured_preflight_used"):
             checks.append(
@@ -1198,23 +1366,28 @@ def fetch_real_data(
     interval: str = "1d",
     min_bars: int = 250,
 ) -> Dict[str, Any]:
-    symbol = canonical_resolve_symbol(symbol_value)
-    destination = Path(out_dir) if out_dir else _default_fetch_dir(symbol.symbol)
+    symbol: Any = canonical_resolve_symbol(symbol_value)
+    destination: Any = Path(out_dir) if out_dir else _default_fetch_dir(symbol.symbol)
     destination.mkdir(parents=True, exist_ok=True)
 
-    providers = default_real_providers(symbol)
+    providers: Any = default_real_providers(symbol)
     result_items: List[Dict[str, Any]] = []
     attempt_ledger: List[Dict[str, Any]] = []
     statuses: Dict[str, str] = {}
+    fetched_payloads: Dict[str, Dict[str, Any]] = {}
     validation_caps: List[str] = []
-    router_market = _market_for_router(symbol.market)
-    requested_dataset_values = [CanonicalDataset(dataset_name).value for dataset_name in datasets]
+    router_market: Any = _market_for_router(symbol.market)
+    requested_dataset_values: Any = [CanonicalDataset(dataset_name).value for dataset_name in datasets]
 
     for dataset_name in requested_dataset_values:
-        dataset = CanonicalDataset(dataset_name)
+        dataset: Any = CanonicalDataset(dataset_name)
         provider_kwargs: Dict[str, Any] = {"raw_dir": destination / "raw"}
         if dataset in {CanonicalDataset.PRICE_HISTORY_RAW, CanonicalDataset.PRICE_HISTORY_ADJUSTED}:
             provider_kwargs.update({"range": chart_range, "interval": interval})
+        if dataset in {CanonicalDataset.SHARE_CAPITAL, CanonicalDataset.VALUATION_INPUTS} and CanonicalDataset.CURRENT_QUOTE.value in fetched_payloads:
+            provider_kwargs["current_quote_result"] = fetched_payloads[CanonicalDataset.CURRENT_QUOTE.value]
+        result: Any
+        attempts: Any
         result, attempts = _fetch_with_attempt_ledger(
             providers,
             symbol,
@@ -1222,25 +1395,25 @@ def fetch_real_data(
             **provider_kwargs,
         )
         attempt_ledger.extend(attempts)
-        source_level_value = getattr(result.source_level, "value", str(result.source_level))
-        source_usage = _source_usage_from_result(result.data)
+        source_level_value: Any = getattr(result.source_level, "value", str(result.source_level))
+        source_usage: Any = _source_usage_from_result(result.data)
         data_path: Optional[str] = None
         validation_payload: Optional[Dict[str, Any]] = None
-        status = "OK" if result.ok else "FAILED"
+        status: Any = "OK" if result.ok else "FAILED"
 
         if result.ok:
             if dataset in {CanonicalDataset.PRICE_HISTORY_RAW, CanonicalDataset.PRICE_HISTORY_ADJUSTED}:
-                csv_path = destination / f"{symbol.symbol}_{dataset.value}.csv"
+                csv_path: Any = destination / f"{symbol.symbol}_{dataset.value}.csv"
                 _write_price_csv(csv_path, list(result.data or []))
                 data_path = str(csv_path)
-                adjust_basis = result.adjust or ("adjusted" if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED else "unadjusted")
-                validation = validate_price_history(
+                adjust_basis: Any = result.adjust or ("adjusted" if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED else "unadjusted")
+                validation: Any = validate_price_history(
                     csv_path,
                     router_market,
                     adjust_basis,
                     min_bars,
                 )
-                adjust_basis_normalized = adjust_basis.lower()
+                adjust_basis_normalized: Any = adjust_basis.lower()
                 if dataset == CanonicalDataset.PRICE_HISTORY_ADJUSTED and adjust_basis_normalized not in {"qfq", "forward", "hfq", "backward", "adjusted"} and not adjust_basis_normalized.startswith("qfq_"):
                     validation.warnings.append(f"Requested adjusted history but source adjustment basis is {adjust_basis}.")
                     if validation.status == DataStatus.OK:
@@ -1250,12 +1423,12 @@ def fetch_real_data(
                 validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
                 validation_caps.append(validation.rating_cap.value)
             else:
-                json_path = destination / f"{symbol.symbol}_{dataset.value}.json"
+                json_path: Any = destination / f"{symbol.symbol}_{dataset.value}.json"
                 _write_json(json_path, result.data)
                 data_path = str(json_path)
                 if dataset == CanonicalDataset.FINANCIALS:
-                    report_evidence = result.data.get("official_report_evidence") if isinstance(result.data, Mapping) else None
-                    has_period_rows = isinstance(result.data, Mapping) and isinstance(result.data.get("periods"), list) and bool(result.data.get("periods"))
+                    report_evidence: Any = result.data.get("official_report_evidence") if isinstance(result.data, Mapping) else None
+                    has_period_rows: Any = isinstance(result.data, Mapping) and isinstance(result.data.get("periods"), list) and bool(result.data.get("periods"))
                     if isinstance(report_evidence, Mapping) and not has_period_rows:
                         validation = ValidationReport(
                             dataset="financials",
@@ -1302,6 +1475,14 @@ def fetch_real_data(
                     status = validation.status.value
                     validation_payload = json.loads(json.dumps(validation, ensure_ascii=False, default=lambda o: o.value if isinstance(o, Enum) else asdict(o)))
 
+            fetched_payloads[dataset.value] = {
+                "data": result.data,
+                "as_of_date": result.as_of_date,
+                "source_name": result.source_name,
+                "source_level": source_level_value,
+                "currency": result.currency,
+            }
+
         statuses[dataset.value] = status
         result_items.append({
             "dataset": dataset.value,
@@ -1321,39 +1502,39 @@ def fetch_real_data(
             "validation": validation_payload,
         })
 
-    effective_statuses = dict(statuses)
+    effective_statuses: Any = dict(statuses)
 
-    rating_critical_datasets = [
+    rating_critical_datasets: Any = [
         CanonicalDataset.CURRENT_QUOTE.value,
         CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
         CanonicalDataset.FINANCIALS.value,
         CanonicalDataset.FILINGS.value,
     ]
-    full_research_required_datasets = [
+    full_research_required_datasets: Any = [
         *rating_critical_datasets,
         CanonicalDataset.VALUATION_INPUTS.value,
     ]
-    rating_cap_exempt_datasets = {
+    rating_cap_exempt_datasets: Any = {
         CanonicalDataset.SHARE_CAPITAL.value,
         CanonicalDataset.VALUATION_INPUTS.value,
     }
-    rating_requested_dataset_values = [
+    rating_requested_dataset_values: Any = [
         dataset for dataset in requested_dataset_values
         if dataset not in rating_cap_exempt_datasets
     ]
-    requested_cap = _cap_for_statuses(
+    requested_cap: Any = _cap_for_statuses(
         effective_statuses,
         validation_caps,
         required_datasets=rating_requested_dataset_values,
         downgrade_not_requested=False,
     )
-    full_research_cap = _cap_for_statuses(
+    full_research_cap: Any = _cap_for_statuses(
         effective_statuses,
         validation_caps,
         required_datasets=rating_critical_datasets,
         downgrade_not_requested=True,
     )
-    data_quality = {
+    data_quality: Any = {
         "market_resolution": "OK" if symbol.market != CanonicalMarket.UNKNOWN else "FAILED",
         "current_price": effective_statuses.get(CanonicalDataset.CURRENT_QUOTE.value, DataStatus.NOT_REQUESTED.value),
         "adjusted_history": effective_statuses.get(CanonicalDataset.PRICE_HISTORY_ADJUSTED.value, DataStatus.NOT_REQUESTED.value),
@@ -1364,26 +1545,26 @@ def fetch_real_data(
         "full_research_rating_cap": full_research_cap.value,
         "rating_cap": full_research_cap.value,
     }
-    data_gaps = _build_data_gaps(
+    data_gaps: Any = _build_data_gaps(
         result_items,
         effective_statuses,
         requested_dataset_values=requested_dataset_values,
         critical_datasets=full_research_required_datasets,
     )
-    research_debt = _build_research_debt(data_gaps)
+    research_debt: Any = _build_research_debt(data_gaps)
     manual_retrieval_tasks: List[Dict[str, Any]] = []
     seen_tasks: set[Tuple[str, str]] = set()
     for gap in data_gaps:
-        task = _manual_task_for_gap(gap)
+        task: Any = _manual_task_for_gap(gap)
         if not task:
             continue
-        key = (str(task.get("dataset") or ""), str(task.get("objective") or ""))
+        key: Any = (str(task.get("dataset") or ""), str(task.get("objective") or ""))
         if key in seen_tasks:
             continue
         seen_tasks.add(key)
         manual_retrieval_tasks.append(task)
 
-    data_acquisition = {
+    data_acquisition: Any = {
         "policy": "assets/data_acquisition_policy.json",
         "status_by_dataset": {
             dataset: effective_statuses.get(dataset, DataStatus.NOT_REQUESTED.value)
@@ -1404,9 +1585,9 @@ def fetch_real_data(
         "manual_task_count": len(manual_retrieval_tasks),
         "full_research_ready": full_research_cap == RatingCap.S and not research_debt,
     }
-    source_integrity = _build_source_integrity_summary(result_items)
-    ai_review = _build_ai_review_guidance(result_items, data_quality, data_gaps, research_debt)
-    manifest = {
+    source_integrity: Any = _build_source_integrity_summary(result_items)
+    ai_review: Any = _build_ai_review_guidance(result_items, data_quality, data_gaps, research_debt)
+    manifest: Any = {
         "symbol": symbol.__dict__,
         "requested_datasets": requested_dataset_values,
         "full_research_required_datasets": full_research_required_datasets,
@@ -1437,29 +1618,29 @@ def emit(obj: Any) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Serenity-Chan market data router and validator")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    parser: Any = argparse.ArgumentParser(description="Serenity-Chan market data router and validator")
+    sub: Any = parser.add_subparsers(dest="cmd", required=True)
 
-    p_resolve = sub.add_parser("resolve", help="Resolve ticker/stock code into market-aware symbol info")
+    p_resolve: Any = sub.add_parser("resolve", help="Resolve ticker/stock code into market-aware symbol info")
     p_resolve.add_argument("symbol")
 
-    p_plan = sub.add_parser("plan", help="Build a market-aware data fetch plan")
+    p_plan: Any = sub.add_parser("plan", help="Build a market-aware data fetch plan")
     p_plan.add_argument("symbol")
     p_plan.add_argument("--horizon", default="12M")
 
-    p_price = sub.add_parser("validate-price", help="Validate OHLCV CSV")
+    p_price: Any = sub.add_parser("validate-price", help="Validate OHLCV CSV")
     p_price.add_argument("csv_path")
     p_price.add_argument("--market", choices=[m.value for m in Market], default="OTHER")
     p_price.add_argument("--adjust", default="unknown")
     p_price.add_argument("--min-bars", type=int, default=250)
 
-    p_fin = sub.add_parser("validate-financial", help="Validate financial JSON")
+    p_fin: Any = sub.add_parser("validate-financial", help="Validate financial JSON")
     p_fin.add_argument("json_path")
 
-    p_quotes = sub.add_parser("compare-quotes", help="Compare multiple quotes")
+    p_quotes: Any = sub.add_parser("compare-quotes", help="Compare multiple quotes")
     p_quotes.add_argument("prices", nargs="+")
 
-    p_fetch = sub.add_parser("fetch", help="Fetch real preflight data into an auditable local bundle")
+    p_fetch: Any = sub.add_parser("fetch", help="Fetch real preflight data into an auditable local bundle")
     p_fetch.add_argument("symbol")
     p_fetch.add_argument(
         "--datasets",
@@ -1479,7 +1660,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_fetch.add_argument("--min-bars", type=int, default=250)
     p_fetch.add_argument("--sec-user-agent", help="SEC-compliant User-Agent, e.g. 'Your Name your.email@example.com'")
 
-    args = parser.parse_args(argv)
+    args: Any = parser.parse_args(argv)
     if args.cmd == "resolve":
         emit(resolve_symbol(args.symbol))
     elif args.cmd == "plan":

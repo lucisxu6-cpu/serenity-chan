@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Report Mode",
+  "type": "object",
+  "required": ["mode", "required_sections"],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["candidate_comparison", "full_research", "quick_audit"]
+    },
+    "required_sections": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "thin_summary_allowed": { "type": "boolean" }
+  },
+  "additionalProperties": true
+}

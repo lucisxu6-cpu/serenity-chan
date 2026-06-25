@@ -100,6 +100,83 @@
     }
   },
   {
+    "name": "financial-validation-caps-duplicate-normalized-periods",
+    "kind": "financial_validation",
+    "payload": {
+      "periods": [
+        {
+          "period": "2025-12-31",
+          "period_type": "annual",
+          "source_report_kind": "annual",
+          "source_title": "贵州茅台2025年年度报告",
+          "revenue": 1000,
+          "net_income": 120,
+          "operating_cash_flow": 180,
+          "assets": 3000,
+          "liabilities": 1700,
+          "equity": 1300
+        },
+        {
+          "period": "2025-12-31",
+          "period_type": "annual",
+          "source_report_kind": "annual",
+          "source_title": "贵州茅台2025年年度报告（英文版）",
+          "revenue": 1000,
+          "net_income": 120,
+          "operating_cash_flow": 180,
+          "assets": 3000,
+          "liabilities": 1700,
+          "equity": 1300
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "status": "PARTIAL",
+      "rating_cap": "B",
+      "stats.duplicate_period_identities.0": "2025-12-31/annual x2"
+    }
+  },
+  {
+    "name": "financial-period-selection-accepts-us-non-calendar-fiscal-year",
+    "kind": "financial_period_selection",
+    "market": "US",
+    "rows": [
+      {
+        "period": "2025-10-26",
+        "form": "10-Q",
+        "fp": "Q3",
+        "fy": 2026,
+        "revenue": 57006000000,
+        "net_income": 31910000000
+      },
+      {
+        "period": "2026-01-25",
+        "form": "10-K",
+        "fp": "FY",
+        "fy": 2026,
+        "revenue": 215938000000,
+        "net_income": 120067000000
+      },
+      {
+        "period": "2026-04-26",
+        "form": "10-Q",
+        "fp": "Q1",
+        "fy": 2027,
+        "revenue": 81615000000,
+        "net_income": 58321000000
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "latest_annual_period": "2026-01-25",
+      "latest_annual_selection_rule": "form=10-K",
+      "latest_annual_period_type": "annual",
+      "latest_q1_period": "2026-04-26",
+      "latest_q1_period_type": "q1"
+    }
+  },
+  {
     "name": "ok-validation-cap-creates-evidence-depth-debt",
     "kind": "data_gaps",
     "statuses": {
@@ -497,8 +574,9 @@
       "growth_hypothesis_matrix.1.market_implied_growth": "H5",
       "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
       "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false,
-      "final_decision.decision_mode": "clear_top_candidate",
+      "final_decision.decision_mode": "tentative_top_candidate",
       "final_decision.score_gap_to_runner_up": 12.19,
+      "final_decision.ranking_validity.status": "PARTIAL",
       "final_decision.candidate_count_warning": "insufficient_universe_warning"
     },
     "expected_contains": [
@@ -531,7 +609,8 @@
       "candidate_priority_ranking.0.symbol": "688019.SH",
       "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
       "candidate_priority_ranking.1.symbol": "688322.SH",
-      "candidate_priority_ranking.1.action_readiness": "DATA_GATED"
+      "candidate_priority_ranking.1.action_readiness": "DATA_GATED",
+      "final_decision.ranking_validity.status": "PARTIAL"
     },
     "expected_contains": [
       {
@@ -560,7 +639,91 @@
       "valuation_input_matrix.0.source_basis": "quote_derived_preflight",
       "valuation_input_matrix.0.verification_needed": true,
       "growth_hypothesis_matrix.0.market_implied_growth": "UNKNOWN",
-      "growth_hypothesis_matrix.0.gap": "valuation_input_required"
+      "growth_hypothesis_matrix.0.gap": "valuation_input_required",
+      "final_decision.ranking_validity.status": "PARTIAL",
+      "final_decision.decision_mode": "tentative_top_candidate"
+    }
+  },
+  {
+    "name": "render-report-full-research-adds-candidate-workbench",
+    "kind": "render_report_mode",
+    "mode": "full_research",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "mode": "full_research",
+      "differs_from_candidate_comparison": true,
+      "has_full_research_workbench": true,
+      "has_candidate_sections": true,
+      "has_dataset_statuses": true,
+      "has_gate_reasons": true,
+      "has_gate_classes": true
+    }
+  },
+  {
+    "name": "comparison-report-file-validator-accepts-comparison-contract",
+    "kind": "comparison_report_file_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true,
+      "error_count": 0
+    }
+  },
+  {
+    "name": "financial-consumption-raw-partial-keeps-ranking-partial",
+    "kind": "data_consumption_ranking_validity",
+    "symbol": "TEST.SH",
+    "raw_status": "PARTIAL",
+    "financial_payload": {
+      "periods": [
+        {
+          "period": "2025-12-31",
+          "revenue": 1000000000
+        }
+      ]
+    },
+    "financial_row": {
+      "status": "OK",
+      "latest_annual_period": "2025-12-31",
+      "latest_annual_selection_rule": "date_fallback=12-31"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "consumption.consumption_status": "PARTIAL",
+      "consumption.consumed_by.0": "financial_quality_matrix",
+      "ranking_validity.status": "PARTIAL",
+      "ranking_validity.partial_axes.0": "TEST.SH financials"
+    }
+  },
+  {
+    "name": "valuation-consumption-partial-growth-records-growth-matrix",
+    "kind": "valuation_consumption_audit",
+    "symbol": "TEST.SH",
+    "raw_status": "PARTIAL",
+    "valuation_payload": {
+      "regular_market_price": 10,
+      "total_market_cap": 1000
+    },
+    "valuation_row": {
+      "total_market_cap": 1000,
+      "as_of_date": "2026-06-25",
+      "source_basis": "partial_verified"
+    },
+    "growth_row": {
+      "market_implied_growth": "H3"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "consumption_status": "PARTIAL",
+      "consumed_by.0": "valuation_input_matrix",
+      "consumed_by.1": "growth_hypothesis_matrix"
     }
   },
   {
@@ -574,6 +737,144 @@
       {
         "path": "valuation_input_matrix.0.valuation_input_ref",
         "value": "valuation_input_matrix:688322.SH"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-missing-required-consumption-dataset",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "data_consumption_audit",
+        "value": [
+          {
+            "symbol": "688019.SH",
+            "dataset": "financials",
+            "raw_status": "OK",
+            "row_count": 4,
+            "consumed_by": [
+              "financial_quality_matrix",
+              "growth_hypothesis_matrix"
+            ],
+            "consumption_status": "OK",
+            "selected_period": "2025-12-31",
+            "selection_rule": "date_fallback=12-31",
+            "warnings": []
+          },
+          {
+            "symbol": "688322.SH",
+            "dataset": "financials",
+            "raw_status": "OK",
+            "row_count": 4,
+            "consumed_by": [
+              "financial_quality_matrix",
+              "growth_hypothesis_matrix"
+            ],
+            "consumption_status": "OK",
+            "selected_period": "2025-12-31",
+            "selection_rule": "date_fallback=12-31",
+            "warnings": []
+          }
+        ]
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-partial-ranking-without-axes",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_partial_valuation_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "final_decision.ranking_validity.partial_axes",
+        "value": []
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-invalid-ranking-without-blockers",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "final_decision.ranking_validity.status",
+        "value": "INVALID"
+      },
+      {
+        "path": "final_decision.ranking_validity.blocked_by",
+        "value": []
+      },
+      {
+        "path": "final_decision.ranking_validity.partial_axes",
+        "value": []
+      },
+      {
+        "path": "final_decision.decision_mode",
+        "value": "comparison_not_decision_grade"
+      },
+      {
+        "path": "final_decision.top_candidate",
+        "value": ""
+      },
+      {
+        "path": "final_decision.score_gap_to_runner_up",
+        "value": null
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-data-consumption-mismatch-with-valid-ranking",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "data_consumption_audit.0.consumption_status",
+        "value": "MISMATCH"
+      },
+      {
+        "path": "data_consumption_audit.0.warnings",
+        "value": [
+          "financials dataset has period rows but financial_quality_matrix did not consume an annual row"
+        ]
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-partial-consumption-with-valid-ranking",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_partial_valuation_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "final_decision.ranking_validity.status",
+        "value": "VALID"
+      },
+      {
+        "path": "final_decision.ranking_validity.reason",
+        "value": "All audited fetched datasets were consumed by their downstream matrices."
+      },
+      {
+        "path": "final_decision.decision_mode",
+        "value": "clear_top_candidate"
       }
     ],
     "expect_pass": false
@@ -745,6 +1046,37 @@
     }
   },
   {
+    "name": "a-share-official-report-download-selection-dedupes-language-variants",
+    "kind": "official_report_selection",
+    "limit": 2,
+    "reports": [
+      {
+        "title": "贵州茅台2026年第一季度报告",
+        "report_kind": "q1",
+        "announcement_date": "2026-04-24",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/q1.pdf"
+      },
+      {
+        "title": "贵州茅台2025年年度报告",
+        "report_kind": "annual",
+        "announcement_date": "2026-04-16",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/annual-cn.pdf"
+      },
+      {
+        "title": "贵州茅台2025年年度报告（英文版）",
+        "report_kind": "annual",
+        "announcement_date": "2026-04-16",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/annual-en.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "selected_report_kinds.0": "annual",
+      "selected_report_kinds.1": "q1",
+      "selected_titles.0": "贵州茅台2025年年度报告"
+    }
+  },
+  {
     "name": "a-share-periodic-report-title-keeps-issuer-and-subsidiary-distinct",
     "kind": "periodic_report_title",
     "issuer_name": "中国平安",
@@ -782,6 +1114,27 @@
     }
   },
   {
+    "name": "cninfo-english-balance-sheet-extracts-total-equity-not-parent-equity",
+    "kind": "cninfo_english_value_extraction",
+    "pages": [
+      {
+        "page_number": 73,
+        "text": "Consolidated balance sheet as of December 31, 2025\nAssets Closingbalance December31,2024\nTotalassets 303,834,844,021.44 298,944,579,918.70"
+      },
+      {
+        "page_number": 75,
+        "text": "Consolidated balance sheet as of December 31, 2025 (continued)\nLiabilities&Equity NoteNo. Closingbalance December31,2024\nTotalliabilities 49,875,590,112.37 56,933,264,798.10\nTotalequityattributabletotheparentcompany 244,637,811,032.18 233,105,984,399.47\nTotalequity 253,959,253,909.07 242,011,315,120.60\nTotalliabilities&equity 303,834,844,021.44 298,944,579,918.70"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "assets": 303834844021.44,
+      "liabilities": 49875590112.37,
+      "equity": 253959253909.07,
+      "parent_equity": 244637811032.18
+    }
+  },
+  {
     "name": "a-share-bank-profile-extracts-table-values-not-ratio-text",
     "kind": "financial_sector_profile_extraction",
     "unit": "million_yuan",
@@ -806,6 +1159,18 @@
       "metrics.capital_adequacy_ratio_pct": 18.24,
       "sanity_warnings.0": null
     }
+  },
+  {
+    "name": "a-share-nonfinancial-cash-flow-does-not-trigger-bank-profile",
+    "kind": "financial_sector_profile_extraction",
+    "unit": "yuan",
+    "pages": [
+      {
+        "page_number": 13,
+        "text": "经营活动产生的现金流量\n客户存款和同业存放款项净增加额 -5,099,271,966.87 11,060,205,782.10 不适用\n经营活动产生的现金流量净额 61,522,204,989.35 72,143,000,000.00"
+      }
+    ],
+    "expect_pass": false
   },
   {
     "name": "a-share-securities-profile-extracts-risk-control-metrics",
@@ -962,6 +1327,90 @@
     }
   },
   {
+    "name": "hk-issued-shares-extraction-from-monthly-return-text",
+    "kind": "hk_issued_shares_extraction",
+    "text": "Monthly Return of Equity Issuer. No. of issued shares at close of the month: 9,482,992,820 ordinary shares.",
+    "expect_pass": true,
+    "expected_result": {
+      "total_shares": 9482992820.0
+    }
+  },
+  {
+    "name": "hk-issued-shares-extraction-from-next-day-disclosure-closing-balance",
+    "kind": "hk_issued_shares_extraction",
+    "text": "Closing balance as at (Notes 5 and 6) 24 June 2026 9,108,192,913 0 9,108,192,913",
+    "expect_pass": true,
+    "expected_result": {
+      "total_shares": 9108192913.0
+    }
+  },
+  {
+    "name": "hk-valuation-uses-quote-market-cap-preflight-when-official-share-count-unavailable",
+    "kind": "hk_valuation_quote_fallback",
+    "symbol": "0700.HK",
+    "expect_pass": true,
+    "expected_result": {
+      "source_basis": "quote_derived_preflight",
+      "total_shares": 10.0,
+      "total_market_cap": 1000.0,
+      "official_share_evidence.source": "Yahoo_Static_L2"
+    }
+  },
+  {
+    "name": "hk-valuation-consumes-cached-current-quote-before-refetching",
+    "kind": "hk_valuation_quote_fallback",
+    "symbol": "0700.HK",
+    "use_cached_quote": true,
+    "expect_pass": true,
+    "expected_result": {
+      "source_basis": "quote_derived_preflight",
+      "total_shares": 10.0,
+      "total_market_cap": 1000.0,
+      "official_share_evidence.source": "Yahoo_Cached_L2"
+    }
+  },
+  {
+    "name": "hk-announcements-use-targeted-title-fallback-when-broad-search-fails",
+    "kind": "hk_announcements_targeted_fallback",
+    "symbol": "0700.HK",
+    "expect_pass": true,
+    "expected_result": {
+      "loaded_record_count": 1,
+      "query_count": 6,
+      "announcements.0.news_id": "static-hkex-annual"
+    }
+  },
+  {
+    "name": "hk-report-download-selection-includes-next-day-disclosure-for-share-count",
+    "kind": "hk_report_download_selection",
+    "limit": 1,
+    "reports": [
+      {
+        "report_kind": "next_day_disclosure",
+        "title": "Next Day Disclosure Return",
+        "announcement_datetime": "2026-06-24T16:30:00",
+        "pdf_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0624/static.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "selected_count": 1,
+      "selected_kinds.0": "next_day_disclosure"
+    }
+  },
+  {
+    "name": "provider-timeout-enters-attempt-ledger-as-access-failure",
+    "kind": "provider_timeout_attempt",
+    "symbol": "NVDA",
+    "sleep_seconds": 2,
+    "provider_timeout_seconds": 1,
+    "expect_pass": true,
+    "expected_result": {
+      "result_ok": false,
+      "first_gap_type": "ACCESS_FAILURE"
+    }
+  },
+  {
     "name": "sec-identity-match-accepts-requested-ticker",
     "kind": "sec_identity_match",
     "symbol": "NVDA",
@@ -1026,6 +1475,42 @@
       "data_gaps.0.decision_impact": "VALUATION_IMPACT",
       "research_debt.0.dataset": "valuation_inputs",
       "research_debt.0.priority": "high"
+    }
+  },
+  {
+    "name": "financial-evidence-debt-uses-evidence-validation-gate",
+    "kind": "action_gate_profile",
+    "technical": {
+      "buy_point_claim_allowed": true
+    },
+    "capital": {
+      "summary": {
+        "material_risk_level": "none",
+        "has_dilution_event": false
+      }
+    },
+    "layer": {
+      "layer": "verified_bottleneck",
+      "evidence_gap": ""
+    },
+    "growth": {
+      "market_implied_growth": "H2",
+      "gap": "evidence_aligned",
+      "required_next_evidence": ""
+    },
+    "research_debt": [
+      {
+        "dataset": "financials",
+        "priority": "critical",
+        "next_action": "Reconcile core financial lines against official filings."
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "primary_gate": "EVIDENCE_GATED",
+      "primary_gate_class": "EVIDENCE_VALIDATION",
+      "gate_classes.EVIDENCE_GATED": "EVIDENCE_VALIDATION",
+      "blocking_datasets.0": "financials"
     }
   },
   {
@@ -1221,6 +1706,146 @@
       "latest_row.equity": 130505400000,
       "latest_row.revenue_concept": "Revenue",
       "latest_row.revenue_unit": "USD"
+    }
+  },
+  {
+    "name": "sec-companyfacts-collapses-repeated-balance-sheet-disclosures",
+    "kind": "sec_financial_period_rows",
+    "companyfacts": {
+      "facts": {
+        "us-gaap": {
+          "Revenues": {
+            "label": "Revenue",
+            "units": {
+              "USD": [
+                {"val": 130497000000, "end": "2025-01-26", "filed": "2025-02-26", "form": "10-K", "fy": 2025, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "NetIncomeLoss": {
+            "label": "Net income",
+            "units": {
+              "USD": [
+                {"val": 72880000000, "end": "2025-01-26", "filed": "2025-02-26", "form": "10-K", "fy": 2025, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "NetCashProvidedByUsedInOperatingActivities": {
+            "label": "Operating cash flow",
+            "units": {
+              "USD": [
+                {"val": 64089000000, "end": "2025-01-26", "filed": "2025-02-26", "form": "10-K", "fy": 2025, "fp": "FY", "frame": "CY2024"}
+              ]
+            }
+          },
+          "Assets": {
+            "label": "Assets",
+            "units": {
+              "USD": [
+                {"val": 111601000000, "end": "2025-01-26", "filed": "2025-02-26", "form": "10-K", "fy": 2025, "fp": "FY", "frame": "CY2024Q4I"},
+                {"val": 111601000000, "end": "2025-01-26", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2024Q4I"}
+              ]
+            }
+          },
+          "Liabilities": {
+            "label": "Liabilities",
+            "units": {
+              "USD": [
+                {"val": 32274000000, "end": "2025-01-26", "filed": "2025-02-26", "form": "10-K", "fy": 2025, "fp": "FY", "frame": "CY2024Q4I"},
+                {"val": 32274000000, "end": "2025-01-26", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2024Q4I"}
+              ]
+            }
+          },
+          "StockholdersEquity": {
+            "label": "Stockholders equity",
+            "units": {
+              "USD": [
+                {"val": 79327000000, "end": "2025-01-26", "filed": "2025-02-26", "form": "10-K", "fy": 2025, "fp": "FY", "frame": "CY2024Q4I"},
+                {"val": 79327000000, "end": "2025-01-26", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2024Q4I"}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "row_count": 1,
+      "latest_row.period": "2025-01-26",
+      "latest_row.form": "10-K",
+      "latest_row.fp": "FY",
+      "latest_row.revenue": 130497000000,
+      "latest_row.assets": 111601000000
+    }
+  },
+  {
+    "name": "sec-companyfacts-keeps-primary-fiscal-identity-for-comparative-flow-facts",
+    "kind": "sec_financial_period_rows",
+    "companyfacts": {
+      "facts": {
+        "us-gaap": {
+          "Revenues": {
+            "label": "Revenue",
+            "units": {
+              "USD": [
+                {"val": 44062000000, "end": "2025-04-27", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2025Q1"},
+                {"val": 44062000000, "end": "2025-04-27", "filed": "2026-05-20", "form": "10-Q", "fy": 2027, "fp": "Q1", "frame": "CY2025Q1"}
+              ]
+            }
+          },
+          "NetIncomeLoss": {
+            "label": "Net income",
+            "units": {
+              "USD": [
+                {"val": 18775000000, "end": "2025-04-27", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2025Q1"},
+                {"val": 18775000000, "end": "2025-04-27", "filed": "2026-05-20", "form": "10-Q", "fy": 2027, "fp": "Q1", "frame": "CY2025Q1"}
+              ]
+            }
+          },
+          "NetCashProvidedByUsedInOperatingActivities": {
+            "label": "Operating cash flow",
+            "units": {
+              "USD": [
+                {"val": 27414000000, "end": "2025-04-27", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2025Q1"},
+                {"val": 27414000000, "end": "2025-04-27", "filed": "2026-05-20", "form": "10-Q", "fy": 2027, "fp": "Q1", "frame": "CY2025Q1"}
+              ]
+            }
+          },
+          "Assets": {
+            "label": "Assets",
+            "units": {
+              "USD": [
+                {"val": 125254000000, "end": "2025-04-27", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2025Q1I"}
+              ]
+            }
+          },
+          "Liabilities": {
+            "label": "Liabilities",
+            "units": {
+              "USD": [
+                {"val": 41411000000, "end": "2025-04-27", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2025Q1I"}
+              ]
+            }
+          },
+          "StockholdersEquity": {
+            "label": "Stockholders equity",
+            "units": {
+              "USD": [
+                {"val": 83843000000, "end": "2025-04-27", "filed": "2025-05-28", "form": "10-Q", "fy": 2026, "fp": "Q1", "frame": "CY2025Q1I"}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "row_count": 1,
+      "latest_row.period": "2025-04-27",
+      "latest_row.fy": 2026,
+      "latest_row.fp": "Q1",
+      "latest_row.form": "10-Q",
+      "latest_row.filed": "2025-05-28"
     }
   },
   {
@@ -1496,6 +2121,19 @@
       "valuation_input_matrix_row.status": "NOT_REQUESTED",
       "deterministic_matrices.growth_hypothesis.market_implied_growth": "UNKNOWN",
       "deterministic_matrices.growth_hypothesis.gap": "valuation_input_required"
+    }
+  },
+  {
+    "name": "ai-committee-packet-keeps-review-notes-outside-overlay-schema",
+    "kind": "ai_committee_packet",
+    "manifest": "evals/fixtures/comparison_688019_manifest.json",
+    "expect_pass": true,
+    "expected_result": {
+      "packet_type": "serenity_ai_research_committee",
+      "overlay_contract_ok": true,
+      "committee_outputs_are_separate": true,
+      "overlay_output_contract.committee_fields_are_not_overlay_fields": true,
+      "committee_to_overlay_mapping.consensus": "posterior_basis"
     }
   },
   {

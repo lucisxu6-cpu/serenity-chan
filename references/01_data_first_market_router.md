@@ -457,7 +457,9 @@ python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --forma
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
 python scripts/build_ai_review_packet.py manifest.json --out ai_review_packet.json
 python scripts/validate_ai_overlay.py ai_overlay.json
-python scripts/merge_ai_research_overlay.py manifest_a.json manifest_b.json --overlay TICKER=ai_overlay.json --format both
+python scripts/merge_ai_research_overlay.py manifest_a.json manifest_b.json --overlay TICKER=ai_overlay.json --format json > comparison_report.json
+python scripts/validate_comparison_report.py comparison_report.json
+python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
 ```
 
 `fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, valuation inputs, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 structured preflight, HKEXnews announcements, HKEX annual/interim report PDF evidence, or HK valuation inputs from HKEX issued-share disclosure plus Yahoo HK quote data. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.

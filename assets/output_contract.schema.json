@@ -212,13 +212,13 @@
         },
         "primary_gate_class": {
           "type": "string",
-          "enum": ["NONE", "DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
+          "enum": ["NONE", "DATA_ACQUISITION", "EVIDENCE_VALIDATION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
         },
         "gate_classes": {
           "type": "object",
           "additionalProperties": {
             "type": "string",
-            "enum": ["DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
+            "enum": ["DATA_ACQUISITION", "EVIDENCE_VALIDATION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
           }
         },
         "secondary_gates": {

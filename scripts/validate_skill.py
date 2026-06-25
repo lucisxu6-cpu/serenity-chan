@@ -4,11 +4,12 @@ import py_compile
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
-NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-ALLOWED_FRONTMATTER_KEYS = {"name", "description"}
-REQUIRED_DIRS = ["references", "assets", "scripts", "evals", "agents", "examples"]
-REQUIRED_FILES = [
+NAME_RE: Any = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+ALLOWED_FRONTMATTER_KEYS: Any = {"name", "description"}
+REQUIRED_DIRS: Any = ["references", "assets", "scripts", "evals", "agents", "examples"]
+REQUIRED_FILES: Any = [
     "references/01_data_first_market_router.md",
     "references/02_serenity_bottleneck_workflow.md",
     "references/03_fundamental_valuation_framework.md",
@@ -24,6 +25,9 @@ REQUIRED_FILES = [
     "assets/manual_retrieval_tasks.schema.json",
     "assets/valuation_inputs.schema.json",
     "assets/ai_research_overlay.schema.json",
+    "assets/data_consumption_audit.schema.json",
+    "assets/research_debt_runbook.schema.json",
+    "assets/report_mode.schema.json",
     "assets/capital_actions.schema.json",
     "assets/technical_health.schema.json",
     "assets/comparison_output_contract.schema.json",
@@ -39,6 +43,11 @@ REQUIRED_FILES = [
     "scripts/technical_health.py",
     "scripts/build_comparison_report.py",
     "scripts/build_ai_review_packet.py",
+    "scripts/build_ai_committee_packet.py",
+    "scripts/data_consumption.py",
+    "scripts/financial_periods.py",
+    "scripts/render_research_report.py",
+    "scripts/validate_comparison_report.py",
     "scripts/validate_ai_overlay.py",
     "scripts/merge_ai_research_overlay.py",
     "scripts/serenity_chan_scorecard.py",
@@ -53,7 +62,7 @@ REQUIRED_FILES = [
 def parse_frontmatter(text: str) -> dict[str, str]:
     if not text.startswith("---\n"):
         raise ValueError("SKILL.md must start with YAML frontmatter")
-    end = text.find("\n---", 4)
+    end: Any = text.find("\n---", 4)
     if end == -1:
         raise ValueError("SKILL.md frontmatter closing delimiter missing")
     data: dict[str, str] = {}
@@ -61,27 +70,29 @@ def parse_frontmatter(text: str) -> dict[str, str]:
         if not line.strip() or line.startswith(" "):
             continue
         if ":" in line:
+            k: Any
+            v: Any
             k, v = line.split(":", 1)
             data[k.strip()] = v.strip().strip('"')
     return data
 
 
 def main() -> None:
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
-    skill = root / "SKILL.md"
+    root: Any = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
+    skill: Any = root / "SKILL.md"
     errors: list[str] = []
-    name = ""
+    name: Any = ""
     if not skill.exists():
         errors.append(f"missing file: {skill}")
     else:
-        text = skill.read_text(encoding="utf-8")
+        text: Any = skill.read_text(encoding="utf-8")
         try:
-            fm = parse_frontmatter(text)
+            fm: Any = parse_frontmatter(text)
         except ValueError as exc:
             fm = {}
             errors.append(str(exc))
         name = fm.get("name", "")
-        description = fm.get("description", "")
+        description: Any = fm.get("description", "")
         if not name:
             errors.append("name is required")
         if name and not NAME_RE.match(name):
@@ -90,7 +101,7 @@ def main() -> None:
             errors.append("description is required")
         if len(description) > 1024:
             errors.append(f"description too long: {len(description)}")
-        unexpected_keys = sorted(set(fm) - ALLOWED_FRONTMATTER_KEYS)
+        unexpected_keys: Any = sorted(set(fm) - ALLOWED_FRONTMATTER_KEYS)
         if unexpected_keys:
             errors.append(f"unexpected frontmatter keys: {', '.join(unexpected_keys)}")
         if len(text.splitlines()) < 80:
@@ -101,7 +112,7 @@ def main() -> None:
     for file_name in REQUIRED_FILES:
         if not (root / file_name).exists():
             errors.append(f"missing file: {file_name}")
-    scripts_dir = root / "scripts"
+    scripts_dir: Any = root / "scripts"
     if scripts_dir.exists():
         for script in sorted(scripts_dir.glob("*.py")):
             text = script.read_text(encoding="utf-8", errors="replace")

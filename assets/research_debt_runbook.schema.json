@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Research Debt Runbook",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "dataset",
+      "priority",
+      "gap_type",
+      "decision_impact",
+      "next_action",
+      "axis",
+      "blocking_level",
+      "preferred_sources",
+      "fallback_sources",
+      "validation_target",
+      "expected_effect_if_resolved"
+    ],
+    "properties": {
+      "dataset": { "type": "string" },
+      "priority": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+      "gap_type": { "type": "string" },
+      "decision_impact": { "type": "string" },
+      "rating_impact": { "type": "string" },
+      "next_action": { "type": "string" },
+      "axis": { "type": "string" },
+      "blocking_level": { "type": "string", "enum": ["rating_and_action", "rating", "action", "research_priority"] },
+      "preferred_sources": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "fallback_sources": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "validation_target": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "expected_effect_if_resolved": { "type": "string" },
+      "source_name": { "type": "string" },
+      "source_level": { "type": "string" }
+    },
+    "additionalProperties": true
+  }
+}

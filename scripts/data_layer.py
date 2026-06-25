@@ -40,7 +40,7 @@ import urllib.request
 try:
     import pandas as pd  # type: ignore
 except Exception:  # pragma: no cover
-    pd = None  # type: ignore
+    pd: Any = None  # type: ignore
 
 try:
     from data_contracts import DataStatus, Dataset, Market, RatingCap, SourceLevel
@@ -133,7 +133,7 @@ class DataProvider(Protocol):
 # Utilities
 # ---------------------------------------------------------------------------
 
-RATING_ORDER = [RatingCap.S, RatingCap.A, RatingCap.B, RatingCap.C, RatingCap.D, RatingCap.OBSERVE_ONLY]
+RATING_ORDER: Any = [RatingCap.S, RatingCap.A, RatingCap.B, RatingCap.C, RatingCap.D, RatingCap.OBSERVE_ONLY]
 
 
 def utc_now() -> str:
@@ -141,8 +141,8 @@ def utc_now() -> str:
 
 
 def file_sha256(path: str | Path) -> str:
-    p = Path(path)
-    h = sha256()
+    p: Any = Path(path)
+    h: Any = sha256()
     with p.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
@@ -152,7 +152,7 @@ def file_sha256(path: str | Path) -> str:
 def save_raw_json(obj: Any, raw_dir: str | Path, name: str) -> Tuple[str, str]:
     raw_dir = Path(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
-    path = raw_dir / name
+    path: Any = raw_dir / name
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return str(path), file_sha256(path)
 
@@ -160,7 +160,7 @@ def save_raw_json(obj: Any, raw_dir: str | Path, name: str) -> Tuple[str, str]:
 def save_raw_bytes(data: bytes, raw_dir: str | Path, name: str) -> Tuple[str, str]:
     raw_dir = Path(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
-    path = raw_dir / name
+    path: Any = raw_dir / name
     path.write_bytes(data)
     return str(path), file_sha256(path)
 
@@ -168,13 +168,13 @@ def save_raw_bytes(data: bytes, raw_dir: str | Path, name: str) -> Tuple[str, st
 def save_raw_text(text: str, raw_dir: str | Path, name: str) -> Tuple[str, str]:
     raw_dir = Path(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
-    path = raw_dir / name
+    path: Any = raw_dir / name
     path.write_text(text, encoding="utf-8")
     return str(path), file_sha256(path)
 
 
 def _safe_artifact_name(value: str, *, max_length: int = 120) -> str:
-    cleaned = re.sub(r"[^0-9A-Za-z._-]+", "_", value).strip("._-")
+    cleaned: Any = re.sub(r"[^0-9A-Za-z._-]+", "_", value).strip("._-")
     return (cleaned or "artifact")[:max_length]
 
 
@@ -192,7 +192,7 @@ def https_json(
     Homebrew Python, may not have OpenSSL CA paths configured. Do not fall back
     to an unverified SSL context; failed TLS means failed data.
     """
-    merged_headers = {
+    merged_headers: Any = {
         "User-Agent": user_agent,
         "Accept": "application/json",
         "Accept-Encoding": "gzip",
@@ -203,16 +203,16 @@ def https_json(
     try:
         import certifi  # type: ignore
 
-        context = ssl.create_default_context(cafile=certifi.where())
+        context: Any = ssl.create_default_context(cafile=certifi.where())
     except Exception:
         context = ssl.create_default_context()
 
     last_error: Optional[BaseException] = None
     for attempt in range(retries + 1):
-        request = urllib.request.Request(url, headers=merged_headers)
+        request: Any = urllib.request.Request(url, headers=merged_headers)
         try:
             with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
-                raw = response.read()
+                raw: Any = response.read()
                 if response.headers.get("Content-Encoding", "").lower() == "gzip":
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8"))
@@ -239,7 +239,7 @@ def https_text(
     retries: int = 2,
 ) -> str:
     """Fetch HTTPS text with the same TLS and retry policy as JSON fetches."""
-    merged_headers = {
+    merged_headers: Any = {
         "User-Agent": user_agent,
         "Accept": "text/plain,*/*",
         "Accept-Encoding": "gzip",
@@ -250,16 +250,16 @@ def https_text(
     try:
         import certifi  # type: ignore
 
-        context = ssl.create_default_context(cafile=certifi.where())
+        context: Any = ssl.create_default_context(cafile=certifi.where())
     except Exception:
         context = ssl.create_default_context()
 
     last_error: Optional[BaseException] = None
     for attempt in range(retries + 1):
-        request = urllib.request.Request(url, headers=merged_headers)
+        request: Any = urllib.request.Request(url, headers=merged_headers)
         try:
             with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
-                raw = response.read()
+                raw: Any = response.read()
                 if response.headers.get("Content-Encoding", "").lower() == "gzip":
                     raw = gzip.decompress(raw)
                 return raw.decode("utf-8-sig")
@@ -287,7 +287,7 @@ def https_bytes(
     max_bytes: int = 80 * 1024 * 1024,
 ) -> bytes:
     """Fetch binary source artifacts with TLS verification and a size guard."""
-    merged_headers = {
+    merged_headers: Any = {
         "User-Agent": user_agent,
         "Accept": "application/pdf,*/*",
         "Accept-Encoding": "gzip",
@@ -298,19 +298,19 @@ def https_bytes(
     try:
         import certifi  # type: ignore
 
-        context = ssl.create_default_context(cafile=certifi.where())
+        context: Any = ssl.create_default_context(cafile=certifi.where())
     except Exception:
         context = ssl.create_default_context()
 
     last_error: Optional[BaseException] = None
     for attempt in range(retries + 1):
-        request = urllib.request.Request(url, headers=merged_headers)
+        request: Any = urllib.request.Request(url, headers=merged_headers)
         try:
             with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
-                content_length = response.headers.get("Content-Length")
+                content_length: Any = response.headers.get("Content-Length")
                 if content_length and int(content_length) > max_bytes:
                     raise RuntimeError(f"artifact is too large: {content_length} bytes > {max_bytes}")
-                raw = response.read(max_bytes + 1)
+                raw: Any = response.read(max_bytes + 1)
                 if len(raw) > max_bytes:
                     raise RuntimeError(f"artifact exceeds max_bytes={max_bytes}")
                 if response.headers.get("Content-Encoding", "").lower() == "gzip":
@@ -340,7 +340,7 @@ def form_json(
     retries: int = 2,
 ) -> Any:
     """POST form data and parse JSON without disabling TLS verification."""
-    merged_headers = {
+    merged_headers: Any = {
         "User-Agent": user_agent,
         "Accept": "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -348,8 +348,8 @@ def form_json(
     if headers:
         merged_headers.update(headers)
 
-    body = urllib.parse.urlencode(form).encode("utf-8")
-    context = None
+    body: Any = urllib.parse.urlencode(form).encode("utf-8")
+    context: Any = None
     if url.lower().startswith("https://"):
         try:
             import certifi  # type: ignore
@@ -360,10 +360,10 @@ def form_json(
 
     last_error: Optional[BaseException] = None
     for attempt in range(retries + 1):
-        request = urllib.request.Request(url, data=body, headers=merged_headers)
+        request: Any = urllib.request.Request(url, data=body, headers=merged_headers)
         try:
             with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
-                raw = response.read()
+                raw: Any = response.read()
                 if response.headers.get("Content-Encoding", "").lower() == "gzip":
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8-sig"))
@@ -389,9 +389,9 @@ def cap_rating(current: RatingCap, cap: RatingCap) -> RatingCap:
 # Symbol resolution and market routing
 # ---------------------------------------------------------------------------
 
-CN_A_SH_PREFIX = ("600", "601", "603", "605", "688", "689")
-CN_A_SZ_PREFIX = ("000", "001", "002", "003", "300", "301")
-CN_A_BJ_PREFIX = ("430", "830", "831", "832", "833", "834", "835", "836", "837", "838", "839", "870", "871", "872", "873", "920")
+CN_A_SH_PREFIX: Any = ("600", "601", "603", "605", "688", "689")
+CN_A_SZ_PREFIX: Any = ("000", "001", "002", "003", "300", "301")
+CN_A_BJ_PREFIX: Any = ("430", "830", "831", "832", "833", "834", "835", "836", "837", "838", "839", "870", "871", "872", "873", "920")
 
 
 def resolve_symbol(input_value: str, *, master_table: Optional[Mapping[str, Mapping[str, Any]]] = None) -> SymbolInfo:
@@ -401,11 +401,11 @@ def resolve_symbol(input_value: str, *, master_table: Optional[Mapping[str, Mapp
     master table to override/confirm exchange/name/currency. For production,
     use a licensed or official security master and keep the result traceable.
     """
-    raw = input_value.strip()
-    token = raw.upper().replace(" ", "")
+    raw: Any = input_value.strip()
+    token: Any = raw.upper().replace(" ", "")
 
     if master_table and token in master_table:
-        row = master_table[token]
+        row: Any = master_table[token]
         return SymbolInfo(
             input_value=raw,
             symbol=str(row.get("symbol", token)),
@@ -418,8 +418,10 @@ def resolve_symbol(input_value: str, *, master_table: Optional[Mapping[str, Mapp
         )
 
     # Explicit A-share suffix. Accept Yahoo-style .SS, but normalize to .SH.
-    m = re.fullmatch(r"(\d{6})\.(SH|SZ|BJ|SS)", token)
+    m: Any = re.fullmatch(r"(\d{6})\.(SH|SZ|BJ|SS)", token)
     if m:
+        code: Any
+        exch: Any
         code, exch = m.groups()
         if exch == "SS":
             exch = "SH"
@@ -519,12 +521,14 @@ def fetch_with_provider_chain(providers: Iterable[DataProvider], symbol: SymbolI
     if symbol.market == Market.UNKNOWN:
         return DataResult.failed(dataset, symbol.symbol, "symbol_resolver", SourceLevel.L4, "market is UNKNOWN; cannot route data safely")
     for provider in providers:
+        allowed: Any
+        reason: Any
         allowed, reason = provider_is_allowed(provider, symbol, dataset)
         if not allowed:
             failures.append(reason)
             continue
         try:
-            result = provider.fetch(symbol, dataset, **kwargs)
+            result: Any = provider.fetch(symbol, dataset, **kwargs)
             if result.ok:
                 return result
             failures.append(f"{provider.name}: {'; '.join(result.errors) or 'not ok'}")
@@ -537,7 +541,7 @@ def fetch_with_provider_chain(providers: Iterable[DataProvider], symbol: SymbolI
 # Validation
 # ---------------------------------------------------------------------------
 
-REQUIRED_PRICE_COLUMNS = ["trade_date", "open", "high", "low", "close", "volume"]
+REQUIRED_PRICE_COLUMNS: Any = ["trade_date", "open", "high", "low", "close", "volume"]
 
 
 def validate_price_frame(
@@ -550,7 +554,7 @@ def validate_price_frame(
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=result.errors)
     if pd is None:
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=["pandas is not installed"])
-    df = result.data
+    df: Any = result.data
     if df is None or not hasattr(df, "columns"):
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=["price data is not a DataFrame"])
     if df.empty:
@@ -558,7 +562,7 @@ def validate_price_frame(
 
     errors: List[str] = []
     warnings: List[str] = []
-    missing = [c for c in REQUIRED_PRICE_COLUMNS if c not in df.columns]
+    missing: Any = [c for c in REQUIRED_PRICE_COLUMNS if c not in df.columns]
     if missing:
         errors.append(f"missing columns: {missing}")
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=errors)
@@ -566,9 +570,9 @@ def validate_price_frame(
     if require_adjusted and result.adjust not in {"qfq", "hfq", "adjusted"}:
         errors.append(f"adjusted price required, got adjust={result.adjust}")
 
-    numeric_cols = ["open", "high", "low", "close", "volume"]
+    numeric_cols: Any = ["open", "high", "low", "close", "volume"]
     for col in numeric_cols:
-        series = pd.to_numeric(df[col], errors="coerce")
+        series: Any = pd.to_numeric(df[col], errors="coerce")
         if series.isna().any():
             warnings.append(f"{col} contains NaN or non-numeric values")
         if col != "volume" and (series <= 0).any():
@@ -576,16 +580,16 @@ def validate_price_frame(
         if col == "volume" and (series < 0).any():
             errors.append("volume contains negative values")
 
-    high = pd.to_numeric(df["high"], errors="coerce")
-    low = pd.to_numeric(df["low"], errors="coerce")
-    open_ = pd.to_numeric(df["open"], errors="coerce")
-    close = pd.to_numeric(df["close"], errors="coerce")
+    high: Any = pd.to_numeric(df["high"], errors="coerce")
+    low: Any = pd.to_numeric(df["low"], errors="coerce")
+    open_: Any = pd.to_numeric(df["open"], errors="coerce")
+    close: Any = pd.to_numeric(df["close"], errors="coerce")
     if (high < pd.concat([open_, close], axis=1).max(axis=1)).any():
         errors.append("high < max(open, close) on one or more rows")
     if (low > pd.concat([open_, close], axis=1).min(axis=1)).any():
         errors.append("low > min(open, close) on one or more rows")
 
-    dates = pd.to_datetime(df["trade_date"], errors="coerce")
+    dates: Any = pd.to_datetime(df["trade_date"], errors="coerce")
     if dates.isna().any():
         errors.append("trade_date cannot be parsed")
     else:
@@ -593,11 +597,11 @@ def validate_price_frame(
             errors.append("duplicated trade_date values")
         if not dates.is_monotonic_increasing:
             warnings.append("trade_date is not monotonically increasing")
-        last_date = dates.max().date()
-        age = (dt.datetime.now().date() - last_date).days
+        last_date: Any = dates.max().date()
+        age: Any = (dt.datetime.now().date() - last_date).days
         if age > max_stale_calendar_days:
             warnings.append(f"price history appears stale: last_date={last_date}, age={age} days")
-            status = DataStatus.STALE if not errors else DataStatus.FAILED
+            status: Any = DataStatus.STALE if not errors else DataStatus.FAILED
         else:
             status = DataStatus.OK if not errors else DataStatus.FAILED
 
@@ -626,17 +630,19 @@ def compare_latest_closes(results: List[DataResult], *, warn_pct: float = 0.5, b
         if not r.ok or r.data is None or not hasattr(r.data, "iloc"):
             warnings.append(f"skip {r.source_name}: no usable data")
             continue
-        df = r.data
+        df: Any = r.data
         if "close" not in df.columns or df.empty:
             warnings.append(f"skip {r.source_name}: no close")
             continue
-        latest = df.iloc[-1]
+        latest: Any = df.iloc[-1]
         closes.append((r.source_name, float(latest["close"]), str(latest.get("trade_date", r.as_of_date))))
     if len(closes) < 2:
         return ValidationReport("latest_close_crosscheck", DataStatus.PARTIAL, warnings=["fewer than two usable sources"] + warnings)
-    values = [x[1] for x in closes]
+    values: Any = [x[1] for x in closes]
+    min_v: Any
+    max_v: Any
     min_v, max_v = min(values), max(values)
-    diff_pct = (max_v - min_v) / min_v * 100 if min_v > 0 else math.inf
+    diff_pct: Any = (max_v - min_v) / min_v * 100 if min_v > 0 else math.inf
     if diff_pct > block_pct:
         return ValidationReport("latest_close_crosscheck", DataStatus.FAILED, errors=[f"latest close difference {diff_pct:.2f}% > {block_pct:.2f}%"], warnings=warnings, stats={"closes": closes, "diff_pct": diff_pct})
     if diff_pct > warn_pct:
@@ -644,7 +650,7 @@ def compare_latest_closes(results: List[DataResult], *, warn_pct: float = 0.5, b
     return ValidationReport("latest_close_crosscheck", DataStatus.OK, warnings=warnings, stats={"closes": closes, "diff_pct": diff_pct})
 
 
-REQUIRED_FINANCIAL_FIELDS = ["period", "revenue", "gross_profit", "net_profit", "operating_cash_flow", "total_assets", "total_liabilities", "total_equity"]
+REQUIRED_FINANCIAL_FIELDS: Any = ["period", "revenue", "gross_profit", "net_profit", "operating_cash_flow", "total_assets", "total_liabilities", "total_equity"]
 
 
 def validate_financial_frame(result: DataResult, *, max_stale_days: int = 240) -> ValidationReport:
@@ -652,46 +658,46 @@ def validate_financial_frame(result: DataResult, *, max_stale_days: int = 240) -
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=result.errors)
     if pd is None:
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=["pandas is not installed"])
-    df = result.data
+    df: Any = result.data
     if df is None or not hasattr(df, "columns") or df.empty:
         return ValidationReport(result.dataset, DataStatus.FAILED, errors=["financial data is empty or not DataFrame"])
 
     errors: List[str] = []
     warnings: List[str] = []
-    missing = [c for c in REQUIRED_FINANCIAL_FIELDS if c not in df.columns]
+    missing: Any = [c for c in REQUIRED_FINANCIAL_FIELDS if c not in df.columns]
     if missing:
         warnings.append(f"missing recommended fields: {missing}")
 
     if {"total_assets", "total_liabilities", "total_equity"}.issubset(df.columns):
-        lhs = pd.to_numeric(df["total_assets"], errors="coerce")
-        rhs = pd.to_numeric(df["total_liabilities"], errors="coerce") + pd.to_numeric(df["total_equity"], errors="coerce")
-        denom = lhs.abs().replace(0, math.nan)
-        diff = ((lhs - rhs).abs() / denom).fillna(0)
+        lhs: Any = pd.to_numeric(df["total_assets"], errors="coerce")
+        rhs: Any = pd.to_numeric(df["total_liabilities"], errors="coerce") + pd.to_numeric(df["total_equity"], errors="coerce")
+        denom: Any = lhs.abs().replace(0, math.nan)
+        diff: Any = ((lhs - rhs).abs() / denom).fillna(0)
         if (diff > 0.01).any():
             warnings.append(f"assets != liabilities + equity by >1% on {int((diff > 0.01).sum())} rows")
 
     if {"revenue", "accounts_receivable"}.issubset(df.columns):
         # Warn if receivables grow much faster than revenue in the latest period.
         if len(df) >= 2:
-            rev_growth = _safe_growth(df["revenue"].iloc[-2], df["revenue"].iloc[-1])
-            ar_growth = _safe_growth(df["accounts_receivable"].iloc[-2], df["accounts_receivable"].iloc[-1])
+            rev_growth: Any = _safe_growth(df["revenue"].iloc[-2], df["revenue"].iloc[-1])
+            ar_growth: Any = _safe_growth(df["accounts_receivable"].iloc[-2], df["accounts_receivable"].iloc[-1])
             if ar_growth is not None and rev_growth is not None and ar_growth > rev_growth + 0.30:
                 warnings.append(f"receivables growth exceeds revenue growth by >30ppt: AR={ar_growth:.1%}, revenue={rev_growth:.1%}")
 
     if {"net_profit", "operating_cash_flow"}.issubset(df.columns):
-        np = pd.to_numeric(df["net_profit"], errors="coerce")
-        ocf = pd.to_numeric(df["operating_cash_flow"], errors="coerce")
+        np: Any = pd.to_numeric(df["net_profit"], errors="coerce")
+        ocf: Any = pd.to_numeric(df["operating_cash_flow"], errors="coerce")
         if ((np > 0) & (ocf < 0)).sum() >= 2:
             warnings.append("positive net profit with negative operating cash flow in multiple periods")
 
     if "period" in df.columns:
-        dates = pd.to_datetime(df["period"], errors="coerce")
+        dates: Any = pd.to_datetime(df["period"], errors="coerce")
         if not dates.isna().all():
-            last_period = dates.max().date()
-            age = (dt.datetime.now().date() - last_period).days
+            last_period: Any = dates.max().date()
+            age: Any = (dt.datetime.now().date() - last_period).days
             if age > max_stale_days:
                 warnings.append(f"financial data may be stale: last_period={last_period}, age={age} days")
-                status = DataStatus.STALE if not errors else DataStatus.FAILED
+                status: Any = DataStatus.STALE if not errors else DataStatus.FAILED
             else:
                 status = DataStatus.OK if not errors else DataStatus.FAILED
         else:
@@ -709,6 +715,8 @@ def validate_financial_frame(result: DataResult, *, max_stale_days: int = 240) -
 
 def _safe_growth(old: Any, new: Any) -> Optional[float]:
     try:
+        old_f: Any
+        new_f: Any
         old_f, new_f = float(old), float(new)
         if old_f == 0 or math.isnan(old_f) or math.isnan(new_f):
             return None
@@ -730,12 +738,12 @@ def compute_quality_score(
     technical_report: Optional[ValidationReport] = None,
     cross_validation_report: Optional[ValidationReport] = None,
 ) -> DataQualityScore:
-    price = price_report.status if price_report else DataStatus.FAILED
-    financials = financial_report.status if financial_report else DataStatus.FAILED
-    technical = technical_report.status if technical_report else DataStatus.FAILED
-    cross = cross_validation_report.status if cross_validation_report else DataStatus.PARTIAL
+    price: Any = price_report.status if price_report else DataStatus.FAILED
+    financials: Any = financial_report.status if financial_report else DataStatus.FAILED
+    technical: Any = technical_report.status if technical_report else DataStatus.FAILED
+    cross: Any = cross_validation_report.status if cross_validation_report else DataStatus.PARTIAL
 
-    cap = RatingCap.S
+    cap: Any = RatingCap.S
     missing: List[str] = []
     warnings: List[str] = []
 
@@ -785,8 +793,8 @@ def quality_summary_markdown(score: DataQualityScore) -> str:
 
 
 def build_data_fetch_plan(symbol_or_theme: str, *, horizon: str = "12M") -> Dict[str, Any]:
-    symbol = resolve_symbol(symbol_or_theme)
-    datasets = [
+    symbol: Any = resolve_symbol(symbol_or_theme)
+    datasets: Any = [
         Dataset.CURRENT_QUOTE,
         Dataset.PRICE_HISTORY_RAW,
         Dataset.PRICE_HISTORY_ADJUSTED,
@@ -799,7 +807,7 @@ def build_data_fetch_plan(symbol_or_theme: str, *, horizon: str = "12M") -> Dict
         Dataset.ESTIMATES,
         Dataset.TRADING_CALENDAR,
     ]
-    policies = {d.value: source_policy(symbol.market, d).__dict__ for d in datasets}
+    policies: Any = {d.value: source_policy(symbol.market, d).__dict__ for d in datasets}
     return {
         "research_object": symbol_or_theme,
         "resolved_symbol": symbol.__dict__,
@@ -831,7 +839,7 @@ class DummyProvider:
         self.payloads = dict(payloads)
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
-        key = dataset.value
+        key: Any = dataset.value
         if key not in self.payloads:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "dataset not available")
         return DataResult(
@@ -851,7 +859,7 @@ def _safe_float(value: Any) -> Optional[float]:
     if value is None:
         return None
     try:
-        number = float(value)
+        number: Any = float(value)
     except Exception:
         return None
     if math.isnan(number) or math.isinf(number):
@@ -870,6 +878,9 @@ def _safe_int(value: Any) -> Optional[int]:
 
 def _yahoo_symbol(symbol: SymbolInfo) -> str:
     if symbol.market == Market.CN_A:
+        code: Any
+        _: Any
+        suffix: Any
         code, _, suffix = symbol.symbol.partition(".")
         if suffix == "SH":
             return f"{code}.SS"
@@ -881,6 +892,9 @@ def _yahoo_symbol(symbol: SymbolInfo) -> str:
 def _eastmoney_secid(symbol: SymbolInfo) -> Optional[str]:
     if symbol.market != Market.CN_A:
         return None
+    code: Any
+    _: Any
+    suffix: Any
     code, _, suffix = symbol.symbol.partition(".")
     if not re.fullmatch(r"\d{6}", code):
         return None
@@ -892,26 +906,26 @@ def _eastmoney_secid(symbol: SymbolInfo) -> Optional[str]:
 
 
 def _eastmoney_price(value: Any) -> Optional[float]:
-    number = _safe_float(value)
+    number: Any = _safe_float(value)
     if number is None or number <= 0:
         return None
     return round(number / 100, 4)
 
 
 def _eastmoney_history_begin(chart_range: str) -> str:
-    token = chart_range.strip().lower()
-    today = dt.datetime.now().date()
+    token: Any = chart_range.strip().lower()
+    today: Any = dt.datetime.now().date()
     if token in {"max", "all"}:
         return "19900101"
     if token == "ytd":
         return f"{today.year}0101"
-    match = re.fullmatch(r"(\d+)(d|mo|y)", token)
+    match: Any = re.fullmatch(r"(\d+)(d|mo|y)", token)
     if not match:
         return "19900101"
-    amount = int(match.group(1))
-    unit = match.group(2)
+    amount: Any = int(match.group(1))
+    unit: Any = match.group(2)
     if unit == "d":
-        days = amount
+        days: Any = amount
     elif unit == "mo":
         days = amount * 31
     else:
@@ -922,6 +936,9 @@ def _eastmoney_history_begin(chart_range: str) -> str:
 def _tencent_quote_alias(symbol: SymbolInfo) -> Optional[str]:
     if symbol.market != Market.CN_A:
         return None
+    code: Any
+    _: Any
+    suffix: Any
     code, _, suffix = symbol.symbol.partition(".")
     if not re.fullmatch(r"\d{6}", code):
         return None
@@ -935,26 +952,26 @@ def _tencent_quote_alias(symbol: SymbolInfo) -> Optional[str]:
 
 
 def _tencent_kline_alias(symbol: SymbolInfo) -> Optional[str]:
-    quote_alias = _tencent_quote_alias(symbol)
+    quote_alias: Any = _tencent_quote_alias(symbol)
     if quote_alias and quote_alias.startswith("bj"):
         return "nq" + quote_alias[2:]
     return quote_alias
 
 
 def _tencent_timestamp_to_date(value: Any) -> Optional[str]:
-    token = str(value or "")
+    token: Any = str(value or "")
     if not re.fullmatch(r"\d{14}", token):
         return None
     return f"{token[:4]}-{token[4:6]}-{token[6:8]}"
 
 
 def _epoch_to_date(timestamp: int, gmtoffset: int = 0) -> str:
-    shifted = dt.datetime.fromtimestamp(timestamp + gmtoffset, dt.timezone.utc)
+    shifted: Any = dt.datetime.fromtimestamp(timestamp + gmtoffset, dt.timezone.utc)
     return shifted.date().isoformat()
 
 
 def _millis_to_date(value: Any) -> Optional[str]:
-    millis = _safe_int(value)
+    millis: Any = _safe_int(value)
     if millis is None:
         return None
     return dt.datetime.fromtimestamp(millis / 1000, dt.timezone.utc).date().isoformat()
@@ -967,50 +984,52 @@ class YahooChartProvider:
     must not replace market-specific official filings or licensed/pro databases.
     """
 
-    name = "Yahoo_Chart_L2"
-    level = SourceLevel.L2
-    markets = [Market.US, Market.HK, Market.CN_A]
-    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED]
-    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    name: Any = "Yahoo_Chart_L2"
+    level: Any = SourceLevel.L2
+    markets: Any = [Market.US, Market.HK, Market.CN_A]
+    datasets: Any = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED]
+    user_agent: Any = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
 
     def __init__(self, *, name: str = "Yahoo_Chart_L2", host: str = "query1.finance.yahoo.com") -> None:
         self.name = name
         self.host = host
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
-        yahoo_symbol = _yahoo_symbol(symbol)
-        chart_range = str(kwargs.get("range", "5d" if dataset == Dataset.CURRENT_QUOTE else "1y"))
-        interval = str(kwargs.get("interval", "1d"))
-        params = urllib.parse.urlencode({
+        yahoo_symbol: Any = _yahoo_symbol(symbol)
+        chart_range: Any = str(kwargs.get("range", "5d" if dataset == Dataset.CURRENT_QUOTE else "1y"))
+        interval: Any = str(kwargs.get("interval", "1d"))
+        params: Any = urllib.parse.urlencode({
             "range": chart_range,
             "interval": interval,
             "events": "history|div|split",
             "includeAdjustedClose": "true",
         })
-        url = f"https://{self.host}/v8/finance/chart/{urllib.parse.quote(yahoo_symbol)}?{params}"
+        url: Any = f"https://{self.host}/v8/finance/chart/{urllib.parse.quote(yahoo_symbol)}?{params}"
         try:
-            payload = https_json(url, user_agent=self.user_agent)
+            payload: Any = https_json(url, user_agent=self.user_agent)
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
 
-        chart = payload.get("chart", {}) if isinstance(payload, Mapping) else {}
+        chart: Any = payload.get("chart", {}) if isinstance(payload, Mapping) else {}
         if chart.get("error"):
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"Yahoo chart error: {chart['error']}")
-        results = chart.get("result") or []
+        results: Any = chart.get("result") or []
         if not results:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Yahoo chart returned no result")
 
-        result = results[0]
-        meta = result.get("meta", {}) if isinstance(result, Mapping) else {}
+        result: Any = results[0]
+        meta: Any = result.get("meta", {}) if isinstance(result, Mapping) else {}
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
-        raw_dir = kwargs.get("raw_dir")
+        raw_dir: Any = kwargs.get("raw_dir")
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_yahoo_chart_raw.json")
 
         if dataset == Dataset.CURRENT_QUOTE:
-            market_time = _safe_int(meta.get("regularMarketTime"))
-            as_of_date = _epoch_to_date(market_time, int(meta.get("gmtoffset", 0) or 0)) if market_time else None
-            data = {
+            market_time: Any = _safe_int(meta.get("regularMarketTime"))
+            as_of_date: Any = _epoch_to_date(market_time, int(meta.get("gmtoffset", 0) or 0)) if market_time else None
+            data: Any = {
                 "symbol": meta.get("symbol", yahoo_symbol),
                 "name": meta.get("longName") or meta.get("shortName"),
                 "currency": meta.get("currency") or symbol.currency,
@@ -1020,6 +1039,7 @@ class YahooChartProvider:
                 "regular_market_day_high": _safe_float(meta.get("regularMarketDayHigh")),
                 "regular_market_day_low": _safe_float(meta.get("regularMarketDayLow")),
                 "regular_market_volume": _safe_int(meta.get("regularMarketVolume")),
+                "market_cap": _safe_float(meta.get("marketCap")),
                 "previous_close": _safe_float(meta.get("chartPreviousClose")),
                 "fifty_two_week_high": _safe_float(meta.get("fiftyTwoWeekHigh")),
                 "fifty_two_week_low": _safe_float(meta.get("fiftyTwoWeekLow")),
@@ -1041,7 +1061,7 @@ class YahooChartProvider:
                 currency=data["currency"],
             )
 
-        rows = self._price_rows(result, adjusted=(dataset == Dataset.PRICE_HISTORY_ADJUSTED))
+        rows: Any = self._price_rows(result, adjusted=(dataset == Dataset.PRICE_HISTORY_ADJUSTED))
         if not rows:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Yahoo chart returned no usable OHLCV rows")
         return DataResult(
@@ -1061,28 +1081,28 @@ class YahooChartProvider:
 
     @staticmethod
     def _price_rows(result: Mapping[str, Any], *, adjusted: bool) -> List[Dict[str, Any]]:
-        timestamps = result.get("timestamp") or []
-        meta = result.get("meta", {}) if isinstance(result.get("meta"), Mapping) else {}
-        gmtoffset = int(meta.get("gmtoffset", 0) or 0)
-        indicators = result.get("indicators", {}) if isinstance(result.get("indicators"), Mapping) else {}
-        quotes = indicators.get("quote") or []
+        timestamps: Any = result.get("timestamp") or []
+        meta: Any = result.get("meta", {}) if isinstance(result.get("meta"), Mapping) else {}
+        gmtoffset: Any = int(meta.get("gmtoffset", 0) or 0)
+        indicators: Any = result.get("indicators", {}) if isinstance(result.get("indicators"), Mapping) else {}
+        quotes: Any = indicators.get("quote") or []
         if not quotes:
             return []
-        quote = quotes[0]
-        adj = (indicators.get("adjclose") or [{}])[0].get("adjclose") or []
+        quote: Any = quotes[0]
+        adj: Any = (indicators.get("adjclose") or [{}])[0].get("adjclose") or []
         rows: List[Dict[str, Any]] = []
         for idx, ts in enumerate(timestamps):
-            open_ = _safe_float((quote.get("open") or [None])[idx] if idx < len(quote.get("open") or []) else None)
-            high = _safe_float((quote.get("high") or [None])[idx] if idx < len(quote.get("high") or []) else None)
-            low = _safe_float((quote.get("low") or [None])[idx] if idx < len(quote.get("low") or []) else None)
-            close = _safe_float((quote.get("close") or [None])[idx] if idx < len(quote.get("close") or []) else None)
-            volume = _safe_int((quote.get("volume") or [None])[idx] if idx < len(quote.get("volume") or []) else None)
-            adj_close = _safe_float(adj[idx] if idx < len(adj) else None)
+            open_: Any = _safe_float((quote.get("open") or [None])[idx] if idx < len(quote.get("open") or []) else None)
+            high: Any = _safe_float((quote.get("high") or [None])[idx] if idx < len(quote.get("high") or []) else None)
+            low: Any = _safe_float((quote.get("low") or [None])[idx] if idx < len(quote.get("low") or []) else None)
+            close: Any = _safe_float((quote.get("close") or [None])[idx] if idx < len(quote.get("close") or []) else None)
+            volume: Any = _safe_int((quote.get("volume") or [None])[idx] if idx < len(quote.get("volume") or []) else None)
+            adj_close: Any = _safe_float(adj[idx] if idx < len(adj) else None)
             if open_ is None or high is None or low is None or close is None or volume is None:
                 continue
-            raw_close = close
+            raw_close: Any = close
             if adjusted and adj_close is not None and close:
-                ratio = adj_close / close
+                ratio: Any = adj_close / close
                 open_, high, low, close = open_ * ratio, high * ratio, low * ratio, adj_close
             rows.append({
                 "trade_date": _epoch_to_date(int(ts), gmtoffset),
@@ -1105,17 +1125,17 @@ class TencentQuoteKlineProvider:
     continues to use the canonical .SH/.SZ/.BJ symbol format.
     """
 
-    name = "Tencent_Quote_Kline_L2"
-    level = SourceLevel.L2
-    markets = [Market.CN_A]
-    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_ADJUSTED, Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
-    user_agent = "Mozilla/5.0"
-    quote_url = "https://qt.gtimg.cn/q="
-    kline_url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+    name: Any = "Tencent_Quote_Kline_L2"
+    level: Any = SourceLevel.L2
+    markets: Any = [Market.CN_A]
+    datasets: Any = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_ADJUSTED, Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
+    user_agent: Any = "Mozilla/5.0"
+    quote_url: Any = "https://qt.gtimg.cn/q="
+    kline_url: Any = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if dataset == Dataset.CURRENT_QUOTE:
-            alias = _tencent_quote_alias(symbol)
+            alias: Any = _tencent_quote_alias(symbol)
             if not alias:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
             return self._fetch_quote(symbol, dataset, alias, raw_dir=kwargs.get("raw_dir"))
@@ -1142,13 +1162,13 @@ class TencentQuoteKlineProvider:
         try:
             import certifi  # type: ignore
 
-            context = ssl.create_default_context(cafile=certifi.where())
+            context: Any = ssl.create_default_context(cafile=certifi.where())
         except Exception:
             context = ssl.create_default_context()
 
         last_error: Optional[BaseException] = None
         for attempt in range(retries + 1):
-            request = urllib.request.Request(
+            request: Any = urllib.request.Request(
                 url,
                 headers={
                     "User-Agent": self.user_agent,
@@ -1173,29 +1193,31 @@ class TencentQuoteKlineProvider:
         raise RuntimeError("Tencent fetch failed without a captured exception")
 
     def _fetch_quote(self, symbol: SymbolInfo, dataset: Dataset, alias: str, *, raw_dir: Optional[str | Path]) -> DataResult:
-        url = self.quote_url + urllib.parse.quote(alias)
+        url: Any = self.quote_url + urllib.parse.quote(alias)
         try:
-            raw = self._read_bytes(url)
-            text = raw.decode("gb18030", errors="replace")
+            raw: Any = self._read_bytes(url)
+            text: Any = raw.decode("gb18030", errors="replace")
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
 
-        match = re.search(rf"v_{re.escape(alias)}=\"([^\"]*)\"", text)
+        match: Any = re.search(rf"v_{re.escape(alias)}=\"([^\"]*)\"", text)
         if not match:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote returned no matching symbol data")
-        fields = match.group(1).split("~")
+        fields: Any = match.group(1).split("~")
         if len(fields) < 35:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"Tencent quote returned too few fields: {len(fields)}")
-        price = _safe_float(fields[3])
+        price: Any = _safe_float(fields[3])
         if price is None or price <= 0:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote missing regular market price")
 
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json({"alias": alias, "raw_text": text}, raw_dir, f"{symbol.symbol}_{dataset.value}_tencent_quote_raw.json")
 
-        market_time = fields[30] if len(fields) > 30 else ""
-        data = {
+        market_time: Any = fields[30] if len(fields) > 30 else ""
+        data: Any = {
             "symbol": fields[2] if len(fields) > 2 else symbol.symbol.partition(".")[0],
             "name": fields[1] if len(fields) > 1 else symbol.name,
             "currency": symbol.currency or "CNY",
@@ -1225,25 +1247,25 @@ class TencentQuoteKlineProvider:
         )
 
     def _fetch_valuation_inputs(self, symbol: SymbolInfo, dataset: Dataset, alias: str, *, raw_dir: Optional[str | Path]) -> DataResult:
-        url = self.quote_url + urllib.parse.quote(alias)
+        url: Any = self.quote_url + urllib.parse.quote(alias)
         try:
-            raw = self._read_bytes(url)
-            text = raw.decode("gb18030", errors="replace")
+            raw: Any = self._read_bytes(url)
+            text: Any = raw.decode("gb18030", errors="replace")
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
 
-        match = re.search(rf"v_{re.escape(alias)}=\"([^\"]*)\"", text)
+        match: Any = re.search(rf"v_{re.escape(alias)}=\"([^\"]*)\"", text)
         if not match:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent quote returned no matching symbol data")
-        fields = match.group(1).split("~")
+        fields: Any = match.group(1).split("~")
         if len(fields) < 46:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"Tencent quote returned too few fields for valuation inputs: {len(fields)}")
 
-        price = _safe_float(fields[3])
-        float_market_cap = self._tencent_market_cap(fields, 44)
-        total_market_cap = self._tencent_market_cap(fields, 45)
-        float_shares = _safe_float(fields[72] if len(fields) > 72 else None)
-        total_shares = _safe_float(fields[73] if len(fields) > 73 else None)
+        price: Any = _safe_float(fields[3])
+        float_market_cap: Any = self._tencent_market_cap(fields, 44)
+        total_market_cap: Any = self._tencent_market_cap(fields, 45)
+        float_shares: Any = _safe_float(fields[72] if len(fields) > 72 else None)
+        total_shares: Any = _safe_float(fields[73] if len(fields) > 73 else None)
         if total_shares is None and total_market_cap is not None and price and price > 0:
             total_shares = total_market_cap / price
         if float_shares is None and float_market_cap is not None and price and price > 0:
@@ -1258,20 +1280,22 @@ class TencentQuoteKlineProvider:
 
         warnings: List[str] = []
         if price and price > 0 and total_market_cap is not None and total_shares:
-            implied_market_cap = price * total_shares
+            implied_market_cap: Any = price * total_shares
             if implied_market_cap:
-                diff = abs(implied_market_cap - total_market_cap) / max(total_market_cap, 1.0)
+                diff: Any = abs(implied_market_cap - total_market_cap) / max(total_market_cap, 1.0)
                 if diff > 0.05:
                     warnings.append(f"Total market cap differs from price * total shares by {diff:.2%}; verify share basis.")
         if float_market_cap is not None and float_shares is None:
             warnings.append("Float market cap is present, but float share count could not be derived.")
 
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json({"alias": alias, "raw_text": text}, raw_dir, f"{symbol.symbol}_{dataset.value}_tencent_quote_raw.json")
 
-        market_time = fields[30] if len(fields) > 30 else ""
-        data = {
+        market_time: Any = fields[30] if len(fields) > 30 else ""
+        data: Any = {
             "symbol": fields[2] if len(fields) > 2 else symbol.symbol.partition(".")[0],
             "name": fields[1] if len(fields) > 1 else symbol.name,
             "currency": symbol.currency or "CNY",
@@ -1312,7 +1336,7 @@ class TencentQuoteKlineProvider:
 
     @staticmethod
     def _tencent_market_cap(fields: Sequence[str], index: int) -> Optional[float]:
-        value = _safe_float(fields[index] if len(fields) > index else None)
+        value: Any = _safe_float(fields[index] if len(fields) > index else None)
         if value is None or value <= 0:
             return None
         return value * 100_000_000
@@ -1329,27 +1353,29 @@ class TencentQuoteKlineProvider:
     ) -> DataResult:
         if interval.strip().lower() not in {"1d", "day", "daily"}:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported Tencent interval {interval}")
-        limit = self._history_limit(chart_range)
-        params = urllib.parse.urlencode({"param": f"{alias},day,,,{limit},qfq"})
-        url = f"{self.kline_url}?{params}"
+        limit: Any = self._history_limit(chart_range)
+        params: Any = urllib.parse.urlencode({"param": f"{alias},day,,,{limit},qfq"})
+        url: Any = f"{self.kline_url}?{params}"
         try:
-            raw = self._read_bytes(url)
-            payload = json.loads(raw.decode("utf-8"))
+            raw: Any = self._read_bytes(url)
+            payload: Any = json.loads(raw.decode("utf-8"))
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
-        data = payload.get("data") if isinstance(payload, Mapping) else None
-        stock_payload = data.get(alias) if isinstance(data, Mapping) else None
+        data: Any = payload.get("data") if isinstance(payload, Mapping) else None
+        stock_payload: Any = data.get(alias) if isinstance(data, Mapping) else None
         if not isinstance(stock_payload, Mapping):
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent kline returned no matching symbol data")
 
-        qfq_rows = stock_payload.get("qfqday")
-        day_rows = stock_payload.get("day")
-        rows_source = qfq_rows if isinstance(qfq_rows, list) and qfq_rows else day_rows
-        adjust = "qfq" if isinstance(qfq_rows, list) and qfq_rows else "unknown"
-        rows = self._kline_rows(rows_source if isinstance(rows_source, list) else [])
+        qfq_rows: Any = stock_payload.get("qfqday")
+        day_rows: Any = stock_payload.get("day")
+        rows_source: Any = qfq_rows if isinstance(qfq_rows, list) and qfq_rows else day_rows
+        adjust: Any = "qfq" if isinstance(qfq_rows, list) and qfq_rows else "unknown"
+        rows: Any = self._kline_rows(rows_source if isinstance(rows_source, list) else [])
         if not rows:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Tencent kline returned no usable OHLCV rows")
 
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_tencent_kline_raw.json")
@@ -1374,14 +1400,14 @@ class TencentQuoteKlineProvider:
 
     @staticmethod
     def _history_limit(chart_range: str) -> int:
-        token = chart_range.strip().lower()
+        token: Any = chart_range.strip().lower()
         if token in {"max", "all"}:
             return 10000
-        match = re.fullmatch(r"(\d+)(d|mo|y)", token)
+        match: Any = re.fullmatch(r"(\d+)(d|mo|y)", token)
         if not match:
             return 800
-        amount = int(match.group(1))
-        unit = match.group(2)
+        amount: Any = int(match.group(1))
+        unit: Any = match.group(2)
         if unit == "d":
             return max(amount, 1)
         if unit == "mo":
@@ -1394,12 +1420,12 @@ class TencentQuoteKlineProvider:
         for item in raw_rows:
             if not isinstance(item, Sequence) or isinstance(item, (str, bytes)) or len(item) < 6:
                 continue
-            trade_date = str(item[0])
-            open_ = _safe_float(item[1])
-            close = _safe_float(item[2])
-            high = _safe_float(item[3])
-            low = _safe_float(item[4])
-            volume = _safe_int(float(item[5])) if _safe_float(item[5]) is not None else None
+            trade_date: Any = str(item[0])
+            open_: Any = _safe_float(item[1])
+            close: Any = _safe_float(item[2])
+            high: Any = _safe_float(item[3])
+            low: Any = _safe_float(item[4])
+            volume: Any = _safe_int(float(item[5])) if _safe_float(item[5]) is not None else None
             if not trade_date or open_ is None or high is None or low is None or close is None or volume is None:
                 continue
             rows.append({
@@ -1418,16 +1444,16 @@ class TencentQuoteKlineProvider:
 class EastmoneyQuoteKlineProvider:
     """Eastmoney L2 quote/K-line adapter for A-share SH/SZ/BJ market data."""
 
-    name = "Eastmoney_Quote_Kline_L2"
-    level = SourceLevel.L2
-    markets = [Market.CN_A]
-    datasets = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED]
-    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
-    quote_url = "https://push2.eastmoney.com/api/qt/stock/get"
-    kline_url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    name: Any = "Eastmoney_Quote_Kline_L2"
+    level: Any = SourceLevel.L2
+    markets: Any = [Market.CN_A]
+    datasets: Any = [Dataset.CURRENT_QUOTE, Dataset.PRICE_HISTORY_RAW, Dataset.PRICE_HISTORY_ADJUSTED]
+    user_agent: Any = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    quote_url: Any = "https://push2.eastmoney.com/api/qt/stock/get"
+    kline_url: Any = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
-        secid = _eastmoney_secid(symbol)
+        secid: Any = _eastmoney_secid(symbol)
         if not secid:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported A-share exchange for {symbol.symbol}")
         if dataset == Dataset.CURRENT_QUOTE:
@@ -1450,7 +1476,7 @@ class EastmoneyQuoteKlineProvider:
         }
 
     def _fetch_quote(self, symbol: SymbolInfo, dataset: Dataset, secid: str, *, raw_dir: Optional[str | Path]) -> DataResult:
-        fields = ",".join([
+        fields: Any = ",".join([
             "f43",  # latest price, scaled by 100
             "f44",  # day high, scaled by 100
             "f45",  # day low, scaled by 100
@@ -1463,25 +1489,27 @@ class EastmoneyQuoteKlineProvider:
             "f86",  # market timestamp
             "f107",  # market id
         ])
-        params = urllib.parse.urlencode({"secid": secid, "fields": fields})
-        url = f"{self.quote_url}?{params}"
+        params: Any = urllib.parse.urlencode({"secid": secid, "fields": fields})
+        url: Any = f"{self.quote_url}?{params}"
         try:
-            payload = https_json(url, user_agent=self.user_agent, headers=self._headers())
+            payload: Any = https_json(url, user_agent=self.user_agent, headers=self._headers())
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
-        data = payload.get("data") if isinstance(payload, Mapping) else None
+        data: Any = payload.get("data") if isinstance(payload, Mapping) else None
         if not isinstance(data, Mapping):
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney quote returned no data")
 
-        market_price = _eastmoney_price(data.get("f43"))
+        market_price: Any = _eastmoney_price(data.get("f43"))
         if market_price is None:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney quote missing regular market price")
-        market_time = _safe_int(data.get("f86"))
+        market_time: Any = _safe_int(data.get("f86"))
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_eastmoney_quote_raw.json")
 
-        quote = {
+        quote: Any = {
             "symbol": str(data.get("f57") or symbol.symbol.partition(".")[0]),
             "name": data.get("f58") or symbol.name,
             "currency": symbol.currency or "CNY",
@@ -1521,10 +1549,10 @@ class EastmoneyQuoteKlineProvider:
         interval: str,
         raw_dir: Optional[str | Path],
     ) -> DataResult:
-        klt = self._kline_interval(interval)
+        klt: Any = self._kline_interval(interval)
         if not klt:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported Eastmoney interval {interval}")
-        params = urllib.parse.urlencode({
+        params: Any = urllib.parse.urlencode({
             "secid": secid,
             "fields1": "f1,f2,f3,f4,f5,f6",
             "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
@@ -1533,17 +1561,19 @@ class EastmoneyQuoteKlineProvider:
             "beg": _eastmoney_history_begin(chart_range),
             "end": dt.datetime.now().date().strftime("%Y%m%d"),
         })
-        url = f"{self.kline_url}?{params}"
+        url: Any = f"{self.kline_url}?{params}"
         try:
-            payload = https_json(url, user_agent=self.user_agent, headers=self._headers())
+            payload: Any = https_json(url, user_agent=self.user_agent, headers=self._headers())
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"https fetch failed: {type(exc).__name__}: {exc}")
-        data = payload.get("data") if isinstance(payload, Mapping) else None
+        data: Any = payload.get("data") if isinstance(payload, Mapping) else None
         if not isinstance(data, Mapping):
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney kline returned no data")
-        rows = self._kline_rows(data.get("klines") or [])
+        rows: Any = self._kline_rows(data.get("klines") or [])
         if not rows:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney kline returned no usable OHLCV rows")
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_eastmoney_kline_raw.json")
@@ -1564,8 +1594,8 @@ class EastmoneyQuoteKlineProvider:
 
     @staticmethod
     def _kline_interval(interval: str) -> Optional[str]:
-        normalized = interval.strip().lower()
-        mapping = {
+        normalized: Any = interval.strip().lower()
+        mapping: Any = {
             "1d": "101",
             "day": "101",
             "daily": "101",
@@ -1586,16 +1616,16 @@ class EastmoneyQuoteKlineProvider:
         for item in klines:
             if not isinstance(item, str):
                 continue
-            parts = item.split(",")
+            parts: Any = item.split(",")
             if len(parts) < 6:
                 continue
-            trade_date = parts[0]
-            open_ = _safe_float(parts[1])
-            close = _safe_float(parts[2])
-            high = _safe_float(parts[3])
-            low = _safe_float(parts[4])
-            volume = _safe_int(parts[5])
-            amount = _safe_float(parts[6]) if len(parts) > 6 else None
+            trade_date: Any = parts[0]
+            open_: Any = _safe_float(parts[1])
+            close: Any = _safe_float(parts[2])
+            high: Any = _safe_float(parts[3])
+            low: Any = _safe_float(parts[4])
+            volume: Any = _safe_int(parts[5])
+            amount: Any = _safe_float(parts[6]) if len(parts) > 6 else None
             if not trade_date or open_ is None or high is None or low is None or close is None or volume is None:
                 continue
             rows.append({
@@ -1620,14 +1650,14 @@ class CninfoAnnouncementsProvider:
     financials should be provided by an official/licensed data adapter.
     """
 
-    name = "CNINFO_Announcements_L0"
-    level = SourceLevel.L0
-    markets = [Market.CN_A]
-    datasets = [Dataset.FILINGS]
-    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
-    top_search_url = "http://www.cninfo.com.cn/new/information/topSearch/query"
-    announcement_url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
-    referer = "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search"
+    name: Any = "CNINFO_Announcements_L0"
+    level: Any = SourceLevel.L0
+    markets: Any = [Market.CN_A]
+    datasets: Any = [Dataset.FILINGS]
+    user_agent: Any = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    top_search_url: Any = "http://www.cninfo.com.cn/new/information/topSearch/query"
+    announcement_url: Any = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
+    referer: Any = "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search"
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.CN_A:
@@ -1635,17 +1665,22 @@ class CninfoAnnouncementsProvider:
         if dataset != Dataset.FILINGS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
         try:
+            code: Any
+            _: Any
+            suffix: Any
             code, _, suffix = symbol.symbol.partition(".")
-            listing = self._lookup_listing(code)
+            listing: Any = self._lookup_listing(code)
             if not listing:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve CNINFO orgId for {symbol.symbol}")
-            payload = self._query_announcements(code, str(listing.get("orgId") or ""), suffix)
-            announcements = payload.get("announcements") or []
+            payload: Any = self._query_announcements(code, str(listing.get("orgId") or ""), suffix)
+            announcements: Any = payload.get("announcements") or []
             if not isinstance(announcements, list) or not announcements:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "CNINFO returned no announcements")
 
+            raw_path: Any
+            raw_hash: Any
             raw_path = raw_hash = None
-            raw_dir = kwargs.get("raw_dir")
+            raw_dir: Any = kwargs.get("raw_dir")
             if raw_dir:
                 raw_path, raw_hash = save_raw_json(
                     {"lookup": listing, "announcements": payload},
@@ -1653,11 +1688,11 @@ class CninfoAnnouncementsProvider:
                     f"{symbol.symbol}_cninfo_announcements_raw.json",
                 )
 
-            records = [self._normalize_announcement(item) for item in announcements[:80] if isinstance(item, Mapping)]
+            records: Any = [self._normalize_announcement(item) for item in announcements[:80] if isinstance(item, Mapping)]
             records = [record for record in records if record]
             if not records:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "CNINFO announcements could not be normalized")
-            as_of = records[0].get("announcement_date")
+            as_of: Any = records[0].get("announcement_date")
             return DataResult(
                 True,
                 Dataset.FILINGS,
@@ -1682,7 +1717,7 @@ class CninfoAnnouncementsProvider:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"CNINFO fetch failed: {type(exc).__name__}: {exc}")
 
     def _lookup_listing(self, code: str) -> Optional[Mapping[str, Any]]:
-        payload = form_json(
+        payload: Any = form_json(
             self.top_search_url,
             {"keyWord": code, "maxNum": "10"},
             user_agent=self.user_agent,
@@ -1698,8 +1733,8 @@ class CninfoAnnouncementsProvider:
         return None
 
     def _query_announcements(self, code: str, org_id: str, suffix: str, *, page_num: int = 1, page_size: int = 30) -> Mapping[str, Any]:
-        column = "sse" if suffix == "SH" else "szse" if suffix == "SZ" else "bj"
-        payload = form_json(
+        column: Any = "sse" if suffix == "SH" else "szse" if suffix == "SZ" else "bj"
+        payload: Any = form_json(
             self.announcement_url,
             {
                 "stock": f"{code},{org_id}",
@@ -1717,8 +1752,9 @@ class CninfoAnnouncementsProvider:
 
     @staticmethod
     def _normalize_announcement(item: Mapping[str, Any]) -> Dict[str, Any]:
-        adjunct = str(item.get("adjunctUrl") or "")
-        pdf_url = f"https://static.cninfo.com.cn/{adjunct}" if adjunct else None
+        adjunct: Any = str(item.get("adjunctUrl") or "")
+        pdf_url: Any = f"https://static.cninfo.com.cn/{adjunct}" if adjunct else None
+        title: Any = str(item.get("announcementTitle") or item.get("shortTitle") or "")
         return {
             "sec_code": item.get("secCode"),
             "sec_name": item.get("secName"),
@@ -1730,8 +1766,44 @@ class CninfoAnnouncementsProvider:
             "document_type": item.get("adjunctType"),
             "document_size_kb": item.get("adjunctSize"),
             "announcement_type": item.get("announcementType"),
+            "document_category": CninfoAnnouncementsProvider._classify_announcement_title(title),
             "page_column": item.get("pageColumn"),
         }
+
+    @staticmethod
+    def _classify_announcement_title(title: str) -> str:
+        compact: Any = re.sub(r"\s+", "", str(title or ""))
+        if "半年度报告" in compact and "摘要" not in compact:
+            return "interim_report"
+        if "年度报告" in compact and "摘要" not in compact:
+            return "annual_report"
+        if any(token in compact for token in ["第一季度报告", "一季度报告", "第三季度报告", "三季度报告", "季度报告"]) and "摘要" not in compact:
+            return "quarterly_report"
+        if any(token in compact for token in ["业绩预告", "业绩快报", "盈利预告"]):
+            return "earnings_preannouncement"
+        if any(token in compact for token in ["向特定对象发行", "非公开发行", "定增", "募集说明书"]):
+            return "private_placement"
+        if any(token in compact for token in ["可转换公司债券", "可转债"]):
+            return "convertible_bond"
+        if any(token in compact for token in ["回购股份", "股份回购"]):
+            return "share_repurchase"
+        if any(token in compact for token in ["重大合同", "日常经营重大合同", "合同公告"]):
+            return "major_contract"
+        if any(token in compact for token in ["中标", "项目预中标", "收到中标通知书"]):
+            return "bid_win"
+        if any(token in compact for token in ["扩产", "产能", "建设项目", "投资项目", "募投项目"]):
+            return "capacity_expansion"
+        if any(token in compact for token in ["问询函", "监管工作函", "关注函", "回复"]):
+            return "regulatory_inquiry"
+        if any(token in compact for token in ["投资者关系活动", "调研活动", "业绩说明会"]):
+            return "investor_relations_activity"
+        if any(token in compact for token in ["减持", "权益变动"]):
+            return "shareholding_reduction"
+        if any(token in compact for token in ["限售股上市流通", "解除限售"]):
+            return "lockup_release"
+        if any(token in compact for token in ["股权激励", "员工持股计划"]):
+            return "equity_incentive"
+        return "other"
 
 
 class PdfTextExtractionMixin:
@@ -1740,11 +1812,11 @@ class PdfTextExtractionMixin:
     @staticmethod
     def _pdf_python_candidates() -> List[str]:
         candidates: List[str] = []
-        env_python = os.getenv("SERENITY_PDF_PYTHON")
+        env_python: Any = os.getenv("SERENITY_PDF_PYTHON")
         if env_python:
             candidates.append(env_python)
         candidates.append(sys.executable)
-        runtime_python = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+        runtime_python: Any = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
         candidates.append(str(runtime_python))
         output: List[str] = []
         seen: set[str] = set()
@@ -1777,40 +1849,30 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 '''
 
     def _extract_pdf_pages(self, pdf_path: str | Path, *, max_pages: int = 220, timeout: int = 60) -> Dict[str, Any]:
-        path = Path(pdf_path)
+        path: Any = Path(pdf_path)
         errors: List[str] = []
-
-        try:
-            import pdfplumber  # type: ignore
-
-            pages: List[Dict[str, Any]] = []
-            with pdfplumber.open(str(path)) as pdf:
-                total_pages = len(pdf.pages)
-                for index, page in enumerate(pdf.pages[:max_pages], start=1):
-                    text = page.extract_text() or ""
-                    if text.strip():
-                        pages.append({"page_number": index, "text": text})
-            return {"ok": True, "parser": "pdfplumber", "page_count": total_pages, "pages": pages, "errors": []}
-        except Exception as exc:
-            errors.append(f"in-process pdfplumber unavailable: {type(exc).__name__}: {exc}")
-
-        script = self._pdfplumber_extract_script()
+        script: Any = self._pdfplumber_extract_script()
+        deadline: Any = time.monotonic() + max(1, int(timeout))
         for python_exe in self._pdf_python_candidates():
+            remaining: Any = int(deadline - time.monotonic())
+            if remaining <= 0:
+                errors.append(f"PDF extraction exceeded {timeout}s before trying {python_exe}")
+                break
             try:
-                completed = subprocess.run(
+                completed: Any = subprocess.run(
                     [python_exe, "-", str(path), str(max_pages)],
                     input=script.encode("utf-8"),
                     capture_output=True,
-                    timeout=timeout,
+                    timeout=max(1, remaining),
                     check=True,
                 )
-                payload = json.loads(completed.stdout.decode("utf-8"))
+                payload: Any = json.loads(completed.stdout.decode("utf-8"))
                 payload["ok"] = True
                 payload["python"] = python_exe
                 payload.setdefault("errors", [])
                 return payload
             except Exception as exc:
-                stderr = ""
+                stderr: Any = ""
                 if isinstance(exc, subprocess.CalledProcessError):
                     stderr = exc.stderr.decode("utf-8", errors="replace")[:500]
                 errors.append(f"{python_exe}: {type(exc).__name__}: {exc} {stderr}".strip())
@@ -1824,27 +1886,27 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
     @classmethod
     def _pdf_number_tokens(cls, line: str) -> List[str]:
-        normalized = cls._normalize_pdf_line(line)
+        normalized: Any = cls._normalize_pdf_line(line)
         return re.findall(r"\(?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?|\(?-?\d+(?:\.\d+)?\)?|(?<!\w)[-–](?!\w)", normalized)
 
     @staticmethod
     def _parse_pdf_number(token: str) -> Optional[float]:
-        text = token.strip()
+        text: Any = token.strip()
         if text in {"-", "–", ""}:
             return None
-        negative = text.startswith("(") and text.endswith(")")
+        negative: Any = text.startswith("(") and text.endswith(")")
         text = text.strip("()").replace(",", "")
         try:
-            value = float(text)
+            value: Any = float(text)
         except Exception:
             return None
         return -value if negative else value
 
     @classmethod
     def _line_values(cls, line: str, *, expected_columns: int) -> List[Optional[float]]:
-        tokens = cls._pdf_number_tokens(line)
+        tokens: Any = cls._pdf_number_tokens(line)
         while len(tokens) > expected_columns:
-            first = tokens[0].strip("()")
+            first: Any = tokens[0].strip("()")
             if "," not in first and "." not in first and first.lstrip("-").isdigit() and abs(int(first)) <= 80:
                 tokens.pop(0)
                 continue
@@ -1855,11 +1917,11 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
     @staticmethod
     def _page_texts_containing(pages: Sequence[Mapping[str, Any]], *needles: str) -> List[Mapping[str, Any]]:
-        lower_needles = [needle.lower() for needle in needles]
+        lower_needles: Any = [needle.lower() for needle in needles]
         output: List[Mapping[str, Any]] = []
         for page in pages:
-            text = str(page.get("text") or "")
-            lower_text = text.lower()
+            text: Any = str(page.get("text") or "")
+            lower_text: Any = text.lower()
             if all(needle in lower_text for needle in lower_needles):
                 output.append(page)
         return output
@@ -1873,15 +1935,15 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         expected_columns: int,
         value_index: int,
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
-        lower_labels = [label.lower() for label in labels]
+        lower_labels: Any = [label.lower() for label in labels]
         for page in pages:
-            text = str(page.get("text") or "")
+            text: Any = str(page.get("text") or "")
             for line in text.splitlines():
-                clean = cls._normalize_pdf_line(line)
-                clean_lower = clean.lower()
+                clean: Any = cls._normalize_pdf_line(line)
+                clean_lower: Any = clean.lower()
                 if not any(clean_lower.startswith(label) or label in clean_lower for label in lower_labels):
                     continue
-                values = cls._line_values(clean, expected_columns=expected_columns)
+                values: Any = cls._line_values(clean, expected_columns=expected_columns)
                 if len(values) <= value_index or values[value_index] is None:
                     continue
                 return values[value_index], {
@@ -1900,7 +1962,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         value_index: int,
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
         for page in pages:
-            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            lines: Any = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
             for index, line in enumerate(lines):
                 if line.lower() != "revenues":
                     continue
@@ -1908,7 +1970,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
                     if candidate.lower().startswith("cost of revenues"):
                         break
                     if re.match(r"^\d+[A-Za-z()]?\s+", candidate):
-                        values = cls._line_values(candidate, expected_columns=expected_columns)
+                        values: Any = cls._line_values(candidate, expected_columns=expected_columns)
                         if len(values) > value_index and values[value_index] is not None:
                             return values[value_index], {
                                 "page_number": page.get("page_number"),
@@ -1920,7 +1982,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
 
 class CninfoFinancialReportBase:
-    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    user_agent: Any = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
 
     def _locate_official_report_evidence(
         self,
@@ -1929,6 +1991,9 @@ class CninfoFinancialReportBase:
         raw_dir: Optional[str | Path] = None,
         download_limit: int = 2,
     ) -> Dict[str, Any]:
+        code: Any
+        _: Any
+        suffix: Any
         code, _, suffix = symbol.symbol.partition(".")
         evidence: Dict[str, Any] = {
             "status": "FAILED",
@@ -1939,24 +2004,24 @@ class CninfoFinancialReportBase:
             "errors": [],
         }
         try:
-            cninfo = CninfoAnnouncementsProvider()
-            listing = cninfo._lookup_listing(code)
+            cninfo: Any = CninfoAnnouncementsProvider()
+            listing: Any = cninfo._lookup_listing(code)
             if not listing:
                 evidence["errors"].append(f"could not resolve CNINFO orgId for {symbol.symbol}")
                 return evidence
             announcements: List[Any] = []
-            queried_pages = 0
+            queried_pages: Any = 0
             seen_report_keys: set[str] = set()
             reports: List[Dict[str, Any]] = []
-            issuer_name = str(listing.get("zwjc") or "")
+            issuer_name: Any = str(listing.get("zwjc") or "")
             for scan_attempt in range(2):
                 announcements = []
                 queried_pages = 0
                 seen_report_keys = set()
                 reports = []
                 for page_num in range(1, 7):
-                    payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
-                    page_announcements = payload.get("announcements") or []
+                    payload: Any = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
+                    page_announcements: Any = payload.get("announcements") or []
                     if not isinstance(page_announcements, list) or not page_announcements:
                         break
                     queried_pages += 1
@@ -1964,13 +2029,13 @@ class CninfoFinancialReportBase:
                     for item in page_announcements:
                         if not isinstance(item, Mapping):
                             continue
-                        record = cninfo._normalize_announcement(item)
-                        title = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
+                        record: Any = cninfo._normalize_announcement(item)
+                        title: Any = self._clean_title(str(record.get("title") or record.get("short_title") or ""))
                         if not self._is_periodic_report_title(title, issuer_name=issuer_name):
                             continue
                         record["title"] = title
                         record["report_kind"] = self._report_kind(title)
-                        report_key = str(record.get("announcement_id") or record.get("pdf_url") or title)
+                        report_key: Any = str(record.get("announcement_id") or record.get("pdf_url") or title)
                         if report_key in seen_report_keys:
                             continue
                         seen_report_keys.add(report_key)
@@ -1991,13 +2056,13 @@ class CninfoFinancialReportBase:
                     errors=evidence["errors"],
                 )
 
-            selected_reports = self._select_reports_for_download(reports, download_limit) if reports and download_limit > 0 else []
-            downloaded_reports = [
+            selected_reports: Any = self._select_reports_for_download(reports, download_limit) if reports and download_limit > 0 else []
+            downloaded_reports: Any = [
                 report for report in reports
                 if report.get("download_status") == "OK" and report.get("pdf_path")
             ]
             if not reports:
-                evidence_status = "PARTIAL"
+                evidence_status: Any = "PARTIAL"
             elif raw_dir and selected_reports and len(downloaded_reports) < len(selected_reports):
                 evidence_status = "PARTIAL"
             else:
@@ -2040,12 +2105,14 @@ class CninfoFinancialReportBase:
     def _is_periodic_report_title(title: str, *, issuer_name: str = "") -> bool:
         if not title or "摘要" in title:
             return False
-        excluded = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
+        excluded: Any = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
         if any(token in title for token in excluded):
             return False
         if "关于披露" in title:
             return False
         if issuer_name and "：" in title:
+            _: Any
+            right: Any
             _, _, right = title.partition("：")
             if right and not right.startswith(issuer_name) and re.search(r"(股份有限公司|有限公司).*(年度报告|季度报告|半年度报告)", right):
                 return False
@@ -2065,22 +2132,111 @@ class CninfoFinancialReportBase:
             return "quarterly"
         return "periodic"
 
+    @staticmethod
+    def _report_period_key(report: Mapping[str, Any]) -> str:
+        title: Any = str(report.get("title") or "")
+        kind: Any = str(report.get("report_kind") or "periodic")
+        compact: Any = re.sub(r"\s+", "", title)
+        year_match: Any = re.search(r"((?:19|20)\d{2})年", compact)
+        year: Any = year_match.group(1) if year_match else ""
+        if year:
+            if kind == "annual":
+                return f"{year}-12-31"
+            if kind == "semiannual":
+                return f"{year}-06-30"
+            if kind == "q1":
+                return f"{year}-03-31"
+            if kind == "q3":
+                return f"{year}-09-30"
+        return str(report.get("announcement_date") or "")
+
+    @staticmethod
+    def _report_variant_rank(report: Mapping[str, Any]) -> int:
+        title: Any = str(report.get("title") or "")
+        if "英文版" in title or re.search(r"\benglish\b", title, flags=re.I):
+            return 1
+        return 0
+
+    @classmethod
+    def _rank_report_candidate(cls, report: Mapping[str, Any]) -> Tuple[str, int, str]:
+        return (
+            str(report.get("announcement_date") or ""),
+            -cls._report_variant_rank(report),
+            str(report.get("title") or ""),
+        )
+
     @classmethod
     def _select_reports_for_download(cls, reports: Sequence[Mapping[str, Any]], limit: int) -> List[Mapping[str, Any]]:
         selected: List[Mapping[str, Any]] = []
-        preferred_order = ["annual", "q1", "semiannual", "q3", "quarterly", "periodic"]
+        preferred_order: Any = ["annual", "q1", "semiannual", "q3", "quarterly", "periodic"]
+        seen_periods: set[Tuple[str, str]] = set()
+        grouped: Dict[str, List[Mapping[str, Any]]] = {}
+        for report in reports:
+            kind: Any = str(report.get("report_kind") or "")
+            if not report.get("pdf_url") or kind not in preferred_order:
+                continue
+            grouped.setdefault(kind, []).append(report)
         for kind in preferred_order:
-            candidates = [
-                report for report in reports
-                if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
-            ]
-            candidates.sort(key=lambda report: str(report.get("announcement_date") or ""), reverse=True)
+            candidates: Any = sorted(grouped.get(kind, []), key=cls._rank_report_candidate, reverse=True)
+            for report in candidates:
+                period_key: Any = (kind, cls._report_period_key(report))
+                if period_key in seen_periods:
+                    continue
+                selected.append(report)
+                seen_periods.add(period_key)
+                break
+            if len(selected) >= limit:
+                return selected
+        for kind in preferred_order:
+            candidates = sorted(grouped.get(kind, []), key=cls._rank_report_candidate, reverse=True)
+            for report in candidates:
+                period_key = (kind, cls._report_period_key(report))
+                if report in selected or period_key in seen_periods:
+                    continue
+                selected.append(report)
+                seen_periods.add(period_key)
+                if len(selected) >= limit:
+                    return selected
+        for kind in preferred_order:
+            candidates = sorted(grouped.get(kind, []), key=cls._rank_report_candidate, reverse=True)
             for report in candidates:
                 if report not in selected:
                     selected.append(report)
                 if len(selected) >= limit:
                     return selected
         return selected
+
+    @staticmethod
+    def _financial_period_row_key(row: Mapping[str, Any]) -> Tuple[str, str]:
+        return (
+            str(row.get("period") or ""),
+            str(row.get("source_report_kind") or row.get("period_type") or row.get("fp") or row.get("form") or ""),
+        )
+
+    @classmethod
+    def _financial_period_row_rank(cls, row: Mapping[str, Any]) -> Tuple[int, int, str, str]:
+        core_fields: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+        core_count: Any = sum(1 for field in core_fields if row.get(field) is not None)
+        title: Any = str(row.get("source_title") or row.get("title") or "")
+        return (
+            core_count,
+            -cls._report_variant_rank({"title": title}),
+            str(row.get("source_announcement_date") or row.get("filed") or ""),
+            title,
+        )
+
+    @classmethod
+    def _dedupe_financial_period_rows(cls, rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+        by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for row in rows:
+            key: Any = cls._financial_period_row_key(row)
+            if not key[0]:
+                continue
+            candidate: Any = dict(row)
+            existing: Any = by_key.get(key)
+            if existing is None or cls._financial_period_row_rank(candidate) > cls._financial_period_row_rank(existing):
+                by_key[key] = candidate
+        return sorted(by_key.values(), key=lambda row: str(row.get("period") or ""))
 
     def _attach_official_report_downloads(
         self,
@@ -2091,18 +2247,18 @@ class CninfoFinancialReportBase:
         limit: int,
         errors: List[str],
     ) -> None:
-        selected = self._select_reports_for_download(reports, limit)
+        selected: Any = self._select_reports_for_download(reports, limit)
         for report in reports:
             if report not in selected:
                 report["download_status"] = "NOT_SELECTED"
         for report in selected:
-            url = str(report.get("pdf_url") or "")
-            report_kind = str(report.get("report_kind") or "periodic")
-            announcement_date = str(report.get("announcement_date") or "")
-            title = str(report.get("title") or report_kind)
-            filename = _safe_artifact_name(f"{symbol}_{announcement_date}_{report_kind}_{title}") + ".pdf"
+            url: Any = str(report.get("pdf_url") or "")
+            report_kind: Any = str(report.get("report_kind") or "periodic")
+            announcement_date: Any = str(report.get("announcement_date") or "")
+            title: Any = str(report.get("title") or report_kind)
+            filename: Any = _safe_artifact_name(f"{symbol}_{announcement_date}_{report_kind}_{title}") + ".pdf"
             try:
-                payload = https_bytes(
+                payload: Any = https_bytes(
                     url,
                     user_agent=self.user_agent,
                     headers={"Referer": "https://www.cninfo.com.cn/"},
@@ -2111,6 +2267,8 @@ class CninfoFinancialReportBase:
                 )
                 if not payload.startswith(b"%PDF"):
                     raise RuntimeError("downloaded artifact does not start with a PDF header")
+                pdf_path: Any
+                pdf_hash: Any
                 pdf_path, pdf_hash = save_raw_bytes(payload, raw_dir, filename)
                 report["download_status"] = "OK"
                 report["pdf_path"] = pdf_path
@@ -2124,7 +2282,7 @@ class CninfoFinancialReportBase:
 
 def _first_non_empty(row: Mapping[str, Any], keys: Sequence[str]) -> Any:
     for key in keys:
-        value = row.get(key)
+        value: Any = row.get(key)
         if value is not None and value != "":
             return value
     return None
@@ -2132,7 +2290,7 @@ def _first_non_empty(row: Mapping[str, Any], keys: Sequence[str]) -> Any:
 
 def _first_number(row: Mapping[str, Any], keys: Sequence[str]) -> Optional[float]:
     for key in keys:
-        value = _safe_float(row.get(key))
+        value: Any = _safe_float(row.get(key))
         if value is not None:
             return value
     return None
@@ -2141,14 +2299,14 @@ def _first_number(row: Mapping[str, Any], keys: Sequence[str]) -> Optional[float
 def _date10(value: Any) -> Optional[str]:
     if value is None:
         return None
-    text = str(value).strip()
+    text: Any = str(value).strip()
     if not text:
         return None
     return text[:10]
 
 
 def _put_number(target: Dict[str, Any], key: str, value: Any) -> None:
-    number = _safe_float(value)
+    number: Any = _safe_float(value)
     if number is not None:
         target[key] = number
 
@@ -2156,21 +2314,21 @@ def _put_number(target: Dict[str, Any], key: str, value: Any) -> None:
 class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractionMixin):
     """Official CNINFO periodic-report PDF line-item adapter for A-share financials."""
 
-    name = "CNINFO_FinancialReports_L0"
-    level = SourceLevel.L0
-    markets = [Market.CN_A]
-    datasets = [Dataset.FINANCIALS]
+    name: Any = "CNINFO_FinancialReports_L0"
+    level: Any = SourceLevel.L0
+    markets: Any = [Market.CN_A]
+    datasets: Any = [Dataset.FINANCIALS]
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.CN_A:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "CNINFO financial reports only support A-share symbols")
         if dataset != Dataset.FINANCIALS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
-        raw_dir = kwargs.get("raw_dir")
+        raw_dir: Any = kwargs.get("raw_dir")
         try:
-            download_limit = int(kwargs.get("official_report_download_limit", 2) or 2)
-            evidence = self._locate_official_report_evidence(symbol, raw_dir=raw_dir, download_limit=download_limit)
-            reports = evidence.get("reports", []) if isinstance(evidence.get("reports"), list) else []
+            download_limit: Any = int(kwargs.get("official_report_download_limit", 2) or 2)
+            evidence: Any = self._locate_official_report_evidence(symbol, raw_dir=raw_dir, download_limit=download_limit)
+            reports: Any = evidence.get("reports", []) if isinstance(evidence.get("reports"), list) else []
             if not reports:
                 return DataResult(
                     False,
@@ -2187,11 +2345,11 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             extracted_periods: List[Dict[str, Any]] = []
             extraction_errors: List[str] = []
             extraction_warnings: List[str] = []
-            extraction_raw_dir = Path(raw_dir) / "official_reports" if raw_dir else None
+            extraction_raw_dir: Any = Path(raw_dir) / "official_reports" if raw_dir else None
             for report in reports:
                 if report.get("download_status") != "OK" or not report.get("pdf_path"):
                     continue
-                extraction = self._extract_cninfo_report_period(report, raw_dir=extraction_raw_dir)
+                extraction: Any = self._extract_cninfo_report_period(report, raw_dir=extraction_raw_dir)
                 report["line_extraction"] = {
                     key: value
                     for key, value in extraction.items()
@@ -2205,37 +2363,42 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                         f"{report.get('report_kind')} {report.get('announcement_date')} extraction status={extraction.get('status')} missing={extraction.get('missing_fields')}"
                     )
 
-            core_statement_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+            raw_extracted_period_count: Any = len(extracted_periods)
+            extracted_periods = self._dedupe_financial_period_rows(extracted_periods)
+            if len(extracted_periods) < raw_extracted_period_count:
+                extraction_warnings.append("Duplicate official report versions were collapsed into unique financial periods.")
+
+            core_statement_fields: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
             extracted_periods.sort(key=lambda row: str(row.get("period") or ""))
-            ok_periods = [
+            ok_periods: Any = [
                 row for row in extracted_periods
                 if all(row.get(field) is not None for field in core_statement_fields)
             ]
-            latest_extracted_period = extracted_periods[-1] if extracted_periods else None
-            latest_period = str(latest_extracted_period.get("period") or "") if latest_extracted_period else None
-            latest_core_statement_missing_fields = [
+            latest_extracted_period: Any = extracted_periods[-1] if extracted_periods else None
+            latest_period: Any = str(latest_extracted_period.get("period") or "") if latest_extracted_period else None
+            latest_core_statement_missing_fields: Any = [
                 field for field in core_statement_fields
                 if not latest_extracted_period or latest_extracted_period.get(field) is None
             ]
-            latest_core_statement_complete = bool(latest_extracted_period) and not latest_core_statement_missing_fields
-            latest_core_complete_period = max((str(row.get("period") or "") for row in ok_periods), default=None)
+            latest_core_statement_complete: Any = bool(latest_extracted_period) and not latest_core_statement_missing_fields
+            latest_core_complete_period: Any = max((str(row.get("period") or "") for row in ok_periods), default=None)
             if latest_extracted_period and latest_core_statement_missing_fields:
                 extraction_warnings.append(
                     f"latest period {latest_period} missing core statement fields={latest_core_statement_missing_fields}"
                 )
-            downloaded_reports = [
+            downloaded_reports: Any = [
                 report for report in reports
                 if report.get("download_status") == "OK" and report.get("pdf_path")
             ]
-            extracted_financial_sector_profile = any(
+            extracted_financial_sector_profile: Any = any(
                 isinstance(row.get("financial_sector_profile"), Mapping)
                 for row in extracted_periods
             )
-            financial_sector_profile_required = (
+            financial_sector_profile_required: Any = (
                 self._requires_financial_sector_profile(evidence, reports)
                 or extracted_financial_sector_profile
             )
-            financial_sector_profile_status = self._financial_sector_profile_status(
+            financial_sector_profile_status: Any = self._financial_sector_profile_status(
                 extracted_periods,
                 required=financial_sector_profile_required,
             )
@@ -2267,6 +2430,8 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 "errors": list(evidence.get("errors", []) or []) + extraction_errors,
             })
 
+            raw_path: Any
+            raw_hash: Any
             raw_path = raw_hash = None
             if raw_dir:
                 raw_path, raw_hash = save_raw_json(
@@ -2290,7 +2455,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                     errors=["CNINFO official PDFs were downloaded, but no core financial statement lines could be extracted."],
                 )
 
-            output_unit = self._period_unit(extracted_periods)
+            output_unit: Any = self._period_unit(extracted_periods)
             return DataResult(
                 True,
                 dataset,
@@ -2343,48 +2508,76 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"CNINFO financial report fetch failed: {type(exc).__name__}: {exc}")
 
     def _extract_cninfo_report_period(self, report: Mapping[str, Any], *, raw_dir: Optional[Path] = None) -> Dict[str, Any]:
-        pdf_path = str(report.get("pdf_path") or "")
-        report_kind = str(report.get("report_kind") or "periodic")
-        title = str(report.get("title") or "")
+        pdf_path: Any = str(report.get("pdf_path") or "")
+        report_kind: Any = str(report.get("report_kind") or "periodic")
+        title: Any = str(report.get("title") or "")
         if not pdf_path:
             return {"status": "FAILED", "errors": ["report has no downloaded pdf_path"]}
 
-        page_bundle = self._extract_pdf_pages(pdf_path, max_pages=260, timeout=90)
+        page_bundle: Any = self._extract_pdf_pages(pdf_path, max_pages=260, timeout=90)
         if not page_bundle.get("ok"):
             return {"status": "FAILED", "errors": page_bundle.get("errors", ["PDF text extraction failed"])}
-        pages = page_bundle.get("pages", [])
+        pages: Any = page_bundle.get("pages", [])
         if not isinstance(pages, list) or not pages:
             return {"status": "FAILED", "errors": ["PDF text extraction returned no text pages"]}
 
         if raw_dir:
-            text_name = _safe_artifact_name(f"{Path(pdf_path).stem}_pdf_text") + ".txt"
-            combined_text = "\n\n".join(
+            text_name: Any = _safe_artifact_name(f"{Path(pdf_path).stem}_pdf_text") + ".txt"
+            combined_text: Any = "\n\n".join(
                 f"--- page {page.get('page_number')} ---\n{page.get('text') or ''}"
                 for page in pages
             )
+            text_path: Any
+            text_hash: Any
             text_path, text_hash = save_raw_text(combined_text, raw_dir / "extracted_text", text_name)
         else:
             text_path = text_hash = None
 
-        balance_pages = self._cn_statement_pages(
+        balance_pages: Any = self._cn_statement_pages(
             pages,
             "合并资产负债表",
             stop_titles=["母公司资产负债表", "公司资产负债表", "合并利润表", "母公司利润表", "合并现金流量表"],
             signals=["资产总计", "资产合计", "负债合计", "所有者权益", "股东权益"],
         )
-        income_pages = self._cn_statement_pages(
+        if not balance_pages:
+            balance_pages = self._cn_statement_pages(
+                pages,
+                "Consolidated balance sheet",
+                stop_titles=[
+                    "Parent company balance sheet",
+                    "Consolidated income statement",
+                    "Parent company income statement",
+                    "Consolidated cash flow statement",
+                ],
+                signals=["Totalassets", "Totalliabilities", "Totalequity", "Liabilities&Equity"],
+            )
+        income_pages: Any = self._cn_statement_pages(
             pages,
             "合并利润表",
             stop_titles=["母公司利润表", "公司利润表", "合并现金流量表", "母公司现金流量表"],
             signals=["营业总收入", "营业收入", "归属于母公司"],
         )
-        cashflow_pages = self._cn_statement_pages(
+        if not income_pages:
+            income_pages = self._cn_statement_pages(
+                pages,
+                "Consolidated income statement",
+                stop_titles=["Parent company income statement", "Consolidated cash flow statement", "Parent company cash flow statement"],
+                signals=["Totaloperatingrevenue", "Operatingrevenue", "Netprofitattributabletoownersofparentcompany"],
+            )
+        cashflow_pages: Any = self._cn_statement_pages(
             pages,
             "合并现金流量表",
             stop_titles=["母公司现金流量表", "公司现金流量表", "所有者权益变动表", "合并所有者权益变动表"],
             signals=["经营活动产生的现金流量净额", "经营活动产生的现金流"],
         )
-        unit = self._cn_unit_from_pages(balance_pages + income_pages + cashflow_pages)
+        if not cashflow_pages:
+            cashflow_pages = self._cn_statement_pages(
+                pages,
+                "Consolidated cash flow statement",
+                stop_titles=["Parent company cash flow statement", "Consolidated statement of changes in equity"],
+                signals=["Netcashflowsfromoperatingactivities", "Cashflowsfromoperatingactivities"],
+            )
+        unit: Any = self._cn_unit_from_pages(balance_pages + income_pages + cashflow_pages)
 
         fields: Dict[str, Any] = {}
         evidence: Dict[str, Any] = {}
@@ -2396,6 +2589,8 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             if source:
                 evidence[field] = source
 
+        value: Any
+        source: Any
         value, source = self._extract_cn_value(balance_pages, [["资产总计"]], exclude_groups=[["负债", "权益"]])
         if value is None:
             value, source = self._extract_cn_value(
@@ -2403,53 +2598,81 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 [["资产合计"], ["资产总额"]],
                 exclude_groups=[["流动资产合计"], ["非流动资产合计"], ["负债", "权益"]],
             )
+        if value is None:
+            value, source = self._extract_cn_value(balance_pages, [["Totalassets"]], exclude_groups=[["liabilities", "equity"]])
         put("assets", value, source)
         value, source = self._extract_cn_value(balance_pages, [["负债合计"]], exclude_groups=[["流动负债合计"], ["非流动负债合计"]])
+        if value is None:
+            value, source = self._extract_cn_value(balance_pages, [["Totalliabilities"]], exclude_groups=[["currentliabilities"], ["non-currentliabilities"], ["liabilities&equity"]])
         put("liabilities", value, source)
         value, source = self._extract_cn_value(
             balance_pages,
             [["所有者权益", "计"], ["股东权益", "计"]],
             exclude_groups=[["归属于母公司"], ["少数股东"], ["负债", "所有者权益"]],
         )
+        if value is None:
+            value, source = self._extract_cn_value(balance_pages, [["Totalequity"]], exclude_groups=[["attributable"], ["liabilities&equity"]])
         put("equity", value, source)
         value, source = self._extract_cn_value(balance_pages, [["归属于母公司", "权益", "合计"]])
+        if value is None:
+            value, source = self._extract_cn_value(balance_pages, [["Totalequityattributabletotheparentcompany"]])
         put("parent_equity", value, source)
         value, source = self._extract_cn_value(balance_pages, [["货币资金"]])
+        if value is None:
+            value, source = self._extract_cn_value(balance_pages, [["Cashandbankbalances"], ["Cashandcashequivalents"]])
         put("cash", value, source)
 
         value, source = self._extract_cn_value(income_pages, [["其中", "营业收入"], ["营业收入"]], exclude_groups=[["营业总收入"], ["营业成本"], ["增长率"], ["比重"]])
         if value is None:
             value, source = self._extract_cn_value(income_pages, [["营业总收入"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["Including:Operatingrevenue"], ["Operatingrevenue"]], exclude_groups=[["Totaloperatingrevenue"], ["Operatingcost"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["Totaloperatingrevenue"]])
         put("revenue", value, source)
         value, source = self._extract_cn_value(income_pages, [["营业利润"]], exclude_groups=[["二、营业总成本"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["Operatingprofit"]])
         put("operating_income", value, source)
         value, source = self._extract_cn_value(income_pages, [["利润总额"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["Profitbeforetax"]])
         put("profit_before_tax", value, source)
         value, source = self._extract_cn_value(income_pages, [["五", "净利润"], ["净利润"]], exclude_groups=[["归属于母公司"], ["少数股东"], ["综合收益"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["Netprofit"]], exclude_groups=[["attributable"], ["continuingoperations"], ["discontinuedoperations"]])
         put("total_net_profit", value, source)
         value, source = self._extract_cn_value(income_pages, [["归属于母公司", "净利润"], ["归属于母公司股东", "净利润"]], exclude_groups=[["综合收益"]])
+        if value is None:
+            value, source = self._extract_cn_value(income_pages, [["Netprofitattributabletoownersofparentcompany"]])
         if value is None:
             value, source = fields.get("total_net_profit"), evidence.get("total_net_profit")
         put("net_income", value, source)
 
         value, source = self._extract_cn_value(cashflow_pages, [["经营活动产生的现金流量净额"], ["经营活动产生的现金流", "量净额"], ["经营活动产生的现金流量净"]])
+        if value is None:
+            value, source = self._extract_cn_value(cashflow_pages, [["Netcashflowsfromoperatingactivities"]])
         put("operating_cash_flow", value, source)
         value, source = self._extract_cn_value(cashflow_pages, [["投资活动产生的现金流量净额"], ["投资活动产生的现金流", "量净额"], ["投资活动产生的现金流量净"]])
+        if value is None:
+            value, source = self._extract_cn_value(cashflow_pages, [["Netcashflowsfrominvestingactivities"]])
         put("investing_cash_flow", value, source)
         value, source = self._extract_cn_value(cashflow_pages, [["筹资活动产生的现金流量净额"], ["筹资活动产生的现金流", "量净额"], ["筹资活动产生的现金流量净"]])
+        if value is None:
+            value, source = self._extract_cn_value(cashflow_pages, [["Netcashflowsfromfinancingactivities"]])
         put("financing_cash_flow", value, source)
 
-        financial_sector_profile = self._extract_financial_sector_profile(pages, unit=unit)
-        period = self._cn_period_from_report(report, balance_pages + income_pages + cashflow_pages)
-        required = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
-        missing = [field for field in required if fields.get(field) is None]
-        status = "OK" if not missing else ("PARTIAL" if fields else "FAILED")
-        section_pages = {
+        financial_sector_profile: Any = self._extract_financial_sector_profile(pages, unit=unit)
+        period: Any = self._cn_period_from_report(report, balance_pages + income_pages + cashflow_pages)
+        required: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+        missing: Any = [field for field in required if fields.get(field) is None]
+        status: Any = "OK" if not missing else ("PARTIAL" if fields else "FAILED")
+        section_pages: Any = {
             "balance": [page.get("page_number") for page in balance_pages],
             "income": [page.get("page_number") for page in income_pages],
             "cashflow": [page.get("page_number") for page in cashflow_pages],
         }
-        period_row = {
+        period_row: Any = {
             "period": period,
             "period_type": report_kind,
             "source": self.name,
@@ -2489,24 +2712,24 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         signals: Sequence[str],
         max_section_pages: int = 8,
     ) -> List[Dict[str, Any]]:
-        start_index = cls._cn_statement_start_index(pages, title, signals)
+        start_index: Any = cls._cn_statement_start_index(pages, title, signals)
         if start_index is None:
             return []
-        title_compact = cls._compact_cn(title)
-        stop_compacts = [cls._compact_cn(stop) for stop in stop_titles]
+        title_compact: Any = cls._compact_cn(title)
+        stop_compacts: Any = [cls._compact_cn(stop) for stop in stop_titles]
         output: List[Dict[str, Any]] = []
         for page in pages[start_index:start_index + max_section_pages]:
-            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            lines: Any = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
             if not lines:
                 continue
-            start_line = 0
+            start_line: Any = 0
             for idx, line in enumerate(lines):
                 if title_compact in cls._compact_cn(line):
                     start_line = idx
                     break
             kept: List[str] = []
             for idx, line in enumerate(lines[start_line:], start=start_line):
-                compact = cls._compact_cn(line)
+                compact: Any = cls._compact_cn(line)
                 if idx > start_line and any(stop in compact for stop in stop_compacts):
                     break
                 kept.append(line)
@@ -2518,44 +2741,44 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _cn_statement_start_index(cls, pages: Sequence[Mapping[str, Any]], title: str, signals: Sequence[str]) -> Optional[int]:
-        title_compact = cls._compact_cn(title)
-        signal_compacts = [cls._compact_cn(signal) for signal in signals]
+        title_compact: Any = cls._compact_cn(title)
+        signal_compacts: Any = [cls._compact_cn(signal) for signal in signals]
         scored: List[Tuple[int, int, int]] = []
         for idx, page in enumerate(pages):
-            text = str(page.get("text") or "")
-            compact_text = cls._compact_cn(text)
+            text: Any = str(page.get("text") or "")
+            compact_text: Any = cls._compact_cn(text)
             if title_compact not in compact_text:
                 continue
-            lines = [cls._normalize_pdf_line(line) for line in text.splitlines()]
-            score = 0
+            lines: Any = [cls._normalize_pdf_line(line) for line in text.splitlines()]
+            score: Any = 0
             for line_index, line in enumerate(lines):
-                compact_line = cls._compact_cn(line)
+                compact_line: Any = cls._compact_cn(line)
                 if title_compact not in compact_line:
                     continue
                 score += 8
-                is_continuation_page = "续" in compact_line[:len(title_compact) + 8]
+                is_continuation_page: Any = "续" in compact_line[:len(title_compact) + 8] or "continued" in compact_line
                 if is_continuation_page:
                     score -= 10
                 else:
                     score += 10
                 if len(compact_line) <= len(title_compact) + 6:
                     score += 6
-                nearby = cls._compact_cn("".join(lines[line_index:line_index + 8]))
+                nearby: Any = cls._compact_cn("".join(lines[line_index:line_index + 8]))
                 if "项目" in nearby:
                     score += 3
                 if "单位" in nearby:
                     score += 2
                 break
-            signal_hits = sum(1 for signal in signal_compacts if signal in compact_text)
+            signal_hits: Any = sum(1 for signal in signal_compacts if signal in compact_text)
             score += signal_hits * 2
             if "财务报表附注" in text or "附注" in text and score < 14:
                 score -= 4
             scored.append((score, idx, signal_hits))
         if not scored:
             return None
-        candidate_pool = [item for item in scored if item[2] > 0] or scored
-        best_score = max(score for score, _, _ in candidate_pool)
-        high_confidence = [
+        candidate_pool: Any = [item for item in scored if item[2] > 0] or scored
+        best_score: Any = max(score for score, _, _ in candidate_pool)
+        high_confidence: Any = [
             (score, idx)
             for score, idx, _ in candidate_pool
             if score >= max(20, best_score - 4)
@@ -2575,18 +2798,18 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         value_index: int = 0,
         exclude_groups: Sequence[Sequence[str]] = (),
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
-        compact_groups = [[cls._compact_cn(label) for label in group] for group in label_groups]
-        compact_excludes = [[cls._compact_cn(label) for label in group] for group in exclude_groups]
+        compact_groups: Any = [[cls._compact_cn(label) for label in group] for group in label_groups]
+        compact_excludes: Any = [[cls._compact_cn(label) for label in group] for group in exclude_groups]
         for page in pages:
-            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            lines: Any = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
             for idx in range(len(lines)):
                 for width in range(1, 5):
-                    window = lines[idx:idx + width]
+                    window: Any = lines[idx:idx + width]
                     if not window:
                         continue
-                    joined = " ".join(window)
-                    compact = cls._compact_cn(joined)
-                    first_line = cls._compact_cn(window[0])
+                    joined: Any = " ".join(window)
+                    compact: Any = cls._compact_cn(joined)
+                    first_line: Any = cls._compact_cn(window[0])
                     if not any(
                         group
                         and group[0] in first_line
@@ -2596,7 +2819,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                         continue
                     if any(all(label in compact for label in group) for group in compact_excludes):
                         continue
-                    values = cls._cn_line_values(joined, expected_columns=expected_columns)
+                    values: Any = cls._cn_line_values(joined, expected_columns=expected_columns)
                     if len(values) <= value_index or values[value_index] is None:
                         continue
                     return values[value_index], {
@@ -2610,11 +2833,11 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
     def _cn_line_values(cls, line: str, *, expected_columns: int) -> List[Optional[float]]:
         values: List[float] = []
         for token in cls._pdf_number_tokens(line):
-            value = cls._parse_pdf_number(token)
+            value: Any = cls._parse_pdf_number(token)
             if value is None:
                 continue
-            token_text = token.strip("()")
-            is_small_index = (
+            token_text: Any = token.strip("()")
+            is_small_index: Any = (
                 "," not in token_text
                 and "." not in token_text
                 and token_text.lstrip("-").isdigit()
@@ -2629,26 +2852,20 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _extract_financial_sector_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
-        sector = cls._financial_sector_kind_from_pages(pages)
-        extractors = {
+        sector: Any = cls._financial_sector_kind_from_pages(pages)
+        if not sector:
+            return None
+        extractors: Any = {
             "insurance": cls._extract_insurance_profile,
             "securities": cls._extract_securities_profile,
             "bank": cls._extract_bank_profile,
         }
-        ordered = [sector] if sector else []
-        ordered.extend(name for name in ["insurance", "securities", "bank"] if name not in ordered)
-        for name in ordered:
-            extractor = extractors.get(name)
-            if extractor is None:
-                continue
-            profile = extractor(pages, unit=unit)
-            if profile:
-                return profile
-        return None
+        extractor: Any = extractors.get(sector)
+        return extractor(pages, unit=unit) if extractor else None
 
     @classmethod
     def _financial_sector_kind_from_pages(cls, pages: Sequence[Mapping[str, Any]]) -> Optional[str]:
-        text = cls._compact_cn(" ".join(str(page.get("text") or "") for page in pages[:80]))
+        text: Any = cls._compact_cn(" ".join(str(page.get("text") or "") for page in pages[:80]))
         if any(token in text for token in ["保险合同负债", "偿付能力", "保险服务收入", "内含价值", "合同服务边际"]):
             return "insurance"
         if any(token in text for token in ["净资本", "风险覆盖率", "代理买卖证券款", "证券及其衍生品/净资本", "证券及证券衍生品净资本"]):
@@ -2659,13 +2876,13 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _extract_bank_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
-        amount_specs = {
+        amount_specs: Any = {
             "net_interest_income": [["净利息收入"]],
             "non_interest_income": [["非利息净收入总额"], ["非利息净收入"]],
             "loans_and_advances": [["贷款和垫款总额"]],
             "customer_deposits": [["客户存款总额"], ["客户存款"]],
         }
-        percent_specs = {
+        percent_specs: Any = {
             "net_interest_margin_pct": [["净利息收益率"], ["净息差"]],
             "non_performing_loan_ratio_pct": [["不良贷款率"]],
             "provision_coverage_ratio_pct": [["拨备覆盖率"]],
@@ -2676,6 +2893,8 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         metrics: Dict[str, Any] = {}
         evidence: Dict[str, Any] = {}
         for field, groups in amount_specs.items():
+            value: Any
+            source: Any
             value, source = cls._extract_bank_amount(pages, groups)
             if value is None:
                 continue
@@ -2690,7 +2909,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             if source:
                 evidence[field] = source
 
-        required = [
+        required: Any = [
             "net_interest_income",
             "net_interest_margin_pct",
             "non_performing_loan_ratio_pct",
@@ -2702,8 +2921,8 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         ]
         if not any(field in metrics for field in required):
             return None
-        sanity_warnings = cls._bank_profile_sanity_warnings(metrics)
-        missing = [field for field in required if field not in metrics]
+        sanity_warnings: Any = cls._bank_profile_sanity_warnings(metrics)
+        missing: Any = [field for field in required if field not in metrics]
         return {
             "sector": "bank",
             "status": "OK" if not missing and not sanity_warnings else "PARTIAL",
@@ -2716,7 +2935,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _extract_securities_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
-        amount_specs = {
+        amount_specs: Any = {
             "net_capital": [["净资本"]],
             "net_assets_parent": [["净资产"]],
             "customer_fund_deposits": [["客户资金存款"]],
@@ -2725,7 +2944,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             "investment_income": [["投资收益"]],
             "net_interest_income": [["利息净收入"]],
         }
-        percent_specs = {
+        percent_specs: Any = {
             "risk_coverage_ratio_pct": [["风险覆盖率"]],
             "capital_leverage_ratio_pct": [["资本杠杆率"]],
             "liquidity_coverage_ratio_pct": [["流动性覆盖率"]],
@@ -2735,8 +2954,10 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             "proprietary_equity_to_net_capital_pct": [["自营权益类证券", "净资本"]],
             "proprietary_non_equity_to_net_capital_pct": [["自营非权益类证券", "净资本"]],
         }
+        metrics: Any
+        evidence: Any
         metrics, evidence = cls._extract_profile_metrics(pages, amount_specs, percent_specs)
-        required = [
+        required: Any = [
             "net_capital",
             "risk_coverage_ratio_pct",
             "capital_leverage_ratio_pct",
@@ -2745,7 +2966,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         ]
         if not any(field in metrics for field in required):
             return None
-        sanity_warnings = cls._profile_sanity_warnings(
+        sanity_warnings: Any = cls._profile_sanity_warnings(
             metrics,
             amount_fields=["net_capital", "net_assets_parent", "customer_fund_deposits", "agency_securities_liabilities"],
             ratio_bounds={
@@ -2759,7 +2980,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 "proprietary_non_equity_to_net_capital_pct": (0.0, 1000.0),
             },
         )
-        missing = [field for field in required if field not in metrics]
+        missing: Any = [field for field in required if field not in metrics]
         return {
             "sector": "securities",
             "status": "OK" if not missing and not sanity_warnings else "PARTIAL",
@@ -2772,7 +2993,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _extract_insurance_profile(cls, pages: Sequence[Mapping[str, Any]], *, unit: str) -> Optional[Dict[str, Any]]:
-        amount_specs = {
+        amount_specs: Any = {
             "insurance_service_revenue": [["保险服务收入"]],
             "insurance_contract_liabilities": [["保险合同负债"]],
             "operating_profit_parent": [["归属于母公司股东", "营运利润"]],
@@ -2780,7 +3001,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             "new_business_value": [["新业务价值"]],
             "contract_service_margin": [["合同服务边际余额"], ["合同服务边际"]],
         }
-        percent_specs = {
+        percent_specs: Any = {
             "core_solvency_ratio_pct": [["核心偿付能力充足率"]],
             "comprehensive_solvency_ratio_pct": [["综合偿付能力充足率"]],
             "combined_ratio_pct": [["综合成本率"]],
@@ -2788,13 +3009,15 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             "net_investment_yield_pct": [["净投资收益率"]],
             "comprehensive_investment_yield_pct": [["综合投资收益率"]],
         }
+        metrics: Any
+        evidence: Any
         metrics, evidence = cls._extract_profile_metrics(
             pages,
             amount_specs,
             percent_specs,
             amount_selects={"insurance_service_revenue": "max_abs"},
         )
-        required = [
+        required: Any = [
             "insurance_service_revenue",
             "insurance_contract_liabilities",
             "core_solvency_ratio_pct",
@@ -2802,7 +3025,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         ]
         if not any(field in metrics for field in required):
             return None
-        sanity_warnings = cls._profile_sanity_warnings(
+        sanity_warnings: Any = cls._profile_sanity_warnings(
             metrics,
             amount_fields=[
                 "insurance_service_revenue",
@@ -2821,7 +3044,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 "comprehensive_investment_yield_pct": (-50.0, 50.0),
             },
         )
-        missing = [field for field in required if field not in metrics]
+        missing: Any = [field for field in required if field not in metrics]
         return {
             "sector": "insurance",
             "status": "OK" if not missing and not sanity_warnings else "PARTIAL",
@@ -2844,6 +3067,8 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         metrics: Dict[str, Any] = {}
         evidence: Dict[str, Any] = {}
         for field, groups in amount_specs.items():
+            value: Any
+            source: Any
             value, source = cls._extract_bank_amount(
                 pages,
                 groups,
@@ -2872,7 +3097,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         exclude_groups: Sequence[Sequence[str]] = (),
         select: str = "first",
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
-        excluded = list(exclude_groups) + [["占营业收入百分比"], ["占比"], ["比例"], ["平均余额"], ["日均余额"], ["利息支出"], ["亿元"]]
+        excluded: Any = list(exclude_groups) + [["占营业收入百分比"], ["占比"], ["比例"], ["平均余额"], ["日均余额"], ["利息支出"], ["亿元"]]
         return cls._extract_bank_metric(
             pages,
             label_groups,
@@ -2907,15 +3132,15 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         exclude_groups: Sequence[Sequence[str]] = (),
         select: str = "first",
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
-        compact_groups = [[cls._compact_cn(label) for label in group] for group in label_groups]
-        compact_excludes = [[cls._compact_cn(label) for label in group] for group in exclude_groups]
+        compact_groups: Any = [[cls._compact_cn(label) for label in group] for group in label_groups]
+        compact_excludes: Any = [[cls._compact_cn(label) for label in group] for group in exclude_groups]
         matches: List[Tuple[float, Dict[str, Any]]] = []
         for page in pages:
-            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            lines: Any = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
             for line in lines:
-                compact = cls._compact_cn(line)
-                leading = cls._leading_metric_compact(compact)
-                matched_group = next(
+                compact: Any = cls._compact_cn(line)
+                leading: Any = cls._leading_metric_compact(compact)
+                matched_group: Any = next(
                     (
                         group
                         for group in compact_groups
@@ -2929,10 +3154,10 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                     continue
                 if any(all(label in compact for label in group) for group in compact_excludes):
                     continue
-                tokens = cls._bank_metric_values(line, value_kind=value_kind)
+                tokens: Any = cls._bank_metric_values(line, value_kind=value_kind)
                 if not tokens:
                     continue
-                source = {
+                source: Any = {
                     "page_number": page.get("page_number"),
                     "line": line,
                     "value_index": 0,
@@ -2951,11 +3176,11 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
     def _bank_metric_values(cls, line: str, *, value_kind: str) -> List[float]:
         values: List[float] = []
         for token in cls._pdf_number_tokens(line):
-            value = cls._parse_pdf_number(token)
+            value: Any = cls._parse_pdf_number(token)
             if value is None:
                 continue
-            token_text = token.strip("()")
-            is_small_index = (
+            token_text: Any = token.strip("()")
+            is_small_index: Any = (
                 "," not in token_text
                 and "." not in token_text
                 and token_text.lstrip("-").isdigit()
@@ -2981,17 +3206,17 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         warnings: List[str] = []
 
         def number(key: str) -> Optional[float]:
-            value = metrics.get(key)
+            value: Any = metrics.get(key)
             if isinstance(value, (int, float)) and math.isfinite(float(value)):
                 return float(value)
             return None
 
         for key in ["net_interest_income", "non_interest_income", "loans_and_advances", "customer_deposits"]:
-            value = number(key)
+            value: Any = number(key)
             if value is not None and abs(value) < 1000:
                 warnings.append(f"{key} is too small for a reported bank amount: {value}")
 
-        bounded_specs = {
+        bounded_specs: Any = {
             "net_interest_margin_pct": (0.0, 10.0),
             "non_performing_loan_ratio_pct": (0.0, 20.0),
             "provision_coverage_ratio_pct": (20.0, 1000.0),
@@ -3004,9 +3229,9 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             if value is not None and not (lower <= value <= upper):
                 warnings.append(f"{key} is outside the expected bank ratio range {lower}-{upper}: {value}")
 
-        core = number("core_tier1_capital_adequacy_ratio_pct")
-        tier1 = number("tier1_capital_adequacy_ratio_pct")
-        total = number("capital_adequacy_ratio_pct")
+        core: Any = number("core_tier1_capital_adequacy_ratio_pct")
+        tier1: Any = number("tier1_capital_adequacy_ratio_pct")
+        total: Any = number("capital_adequacy_ratio_pct")
         if core is not None and tier1 is not None and tier1 + 1e-9 < core:
             warnings.append("tier1_capital_adequacy_ratio_pct is below core_tier1_capital_adequacy_ratio_pct")
         if tier1 is not None and total is not None and total + 1e-9 < tier1:
@@ -3026,13 +3251,13 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         warnings: List[str] = []
 
         def number(key: str) -> Optional[float]:
-            value = metrics.get(key)
+            value: Any = metrics.get(key)
             if isinstance(value, (int, float)) and math.isfinite(float(value)):
                 return float(value)
             return None
 
         for key in amount_fields:
-            value = number(key)
+            value: Any = number(key)
             if value is not None and abs(value) < 1000:
                 warnings.append(f"{key} is too small for a reported financial-sector amount: {value}")
 
@@ -3047,14 +3272,14 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
     def _financial_sector_profile_status(periods: Sequence[Mapping[str, Any]], *, required: bool) -> str:
         if not required:
             return "not_applicable"
-        sorted_periods = sorted(periods, key=lambda row: str(row.get("period") or ""))
-        profiles = []
+        sorted_periods: Any = sorted(periods, key=lambda row: str(row.get("period") or ""))
+        profiles: Any = []
         for period in sorted_periods:
-            profile = period.get("financial_sector_profile")
+            profile: Any = period.get("financial_sector_profile")
             if isinstance(profile, Mapping):
                 profiles.append(profile)
-        latest_period = sorted_periods[-1] if sorted_periods else None
-        latest_profile = (
+        latest_period: Any = sorted_periods[-1] if sorted_periods else None
+        latest_profile: Any = (
             latest_period.get("financial_sector_profile")
             if isinstance(latest_period, Mapping) and isinstance(latest_period.get("financial_sector_profile"), Mapping)
             else None
@@ -3067,15 +3292,18 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _cn_period_from_report(cls, report: Mapping[str, Any], section_pages: Sequence[Mapping[str, Any]]) -> str:
-        text = " ".join([str(report.get("title") or "")] + [str(page.get("text") or "") for page in section_pages[:3]])
-        match = re.search(r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日", text)
+        text: Any = " ".join([str(report.get("title") or "")] + [str(page.get("text") or "") for page in section_pages[:3]])
+        match: Any = re.search(r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日", text)
         if match:
+            year: Any
+            month: Any
+            day: Any
             year, month, day = match.groups()
             return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
-        title = str(report.get("title") or "")
-        year_match = re.search(r"(\d{4})年", title)
+        title: Any = str(report.get("title") or "")
+        year_match: Any = re.search(r"(\d{4})年", title)
         year = int(year_match.group(1)) if year_match else dt.datetime.now().year
-        report_kind = str(report.get("report_kind") or "")
+        report_kind: Any = str(report.get("report_kind") or "")
         if report_kind == "q1":
             return f"{year:04d}-03-31"
         if report_kind == "semiannual":
@@ -3086,7 +3314,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @classmethod
     def _cn_unit_from_pages(cls, pages: Sequence[Mapping[str, Any]]) -> str:
-        text = cls._compact_cn(" ".join(str(page.get("text") or "") for page in pages[:3]))
+        text: Any = cls._compact_cn(" ".join(str(page.get("text") or "") for page in pages[:3]))
         if "人民币百万元" in text or "单位:百万元" in text or "单位:人民币百万元" in text:
             return "million_yuan"
         if "人民币千元" in text or "单位:千元" in text or "单位:人民币千元" in text:
@@ -3097,7 +3325,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
 
     @staticmethod
     def _period_unit(periods: Sequence[Mapping[str, Any]]) -> str:
-        units = {str(period.get("unit") or "") for period in periods if period.get("unit")}
+        units: Any = {str(period.get("unit") or "") for period in periods if period.get("unit")}
         if len(units) == 1:
             return next(iter(units))
         if units:
@@ -3110,20 +3338,21 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         evidence: Mapping[str, Any],
         reports: Sequence[Mapping[str, Any]],
     ) -> bool:
-        text_parts = [str(evidence.get("name") or "")]
+        text_parts: Any = [str(evidence.get("name") or "")]
         text_parts.extend(str(report.get("title") or "") for report in reports)
-        compact = cls._compact_cn(" ".join(text_parts))
+        compact: Any = cls._compact_cn(" ".join(text_parts))
         return any(token in compact for token in ["银行", "保险", "证券", "信托", "期货", "券商"])
 
     @staticmethod
     def _compact_cn(text: str) -> str:
-        normalized = (
+        normalized: Any = (
             text.replace("：", ":")
             .replace("（", "(")
             .replace("）", ")")
             .replace("－", "-")
             .replace("—", "-")
             .replace(" ", "")
+            .lower()
         )
         return re.sub(r"\s+", "", normalized)
 
@@ -3136,14 +3365,14 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
     conclusions require L0/L1 verification of the key financial lines.
     """
 
-    name = "Eastmoney_F10_Financials_L3"
-    level = SourceLevel.L3
-    markets = [Market.CN_A]
-    datasets = [Dataset.FINANCIALS]
-    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
-    api_url = "https://datacenter.eastmoney.com/securities/api/data/v1/get"
-    referer = "https://emweb.securities.eastmoney.com/"
-    table_specs = {
+    name: Any = "Eastmoney_F10_Financials_L3"
+    level: Any = SourceLevel.L3
+    markets: Any = [Market.CN_A]
+    datasets: Any = [Dataset.FINANCIALS]
+    user_agent: Any = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    api_url: Any = "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+    referer: Any = "https://emweb.securities.eastmoney.com/"
+    table_specs: Any = {
         "income": "RPT_F10_FINANCE_GINCOME",
         "balance": "RPT_F10_FINANCE_GBALANCE",
         "cashflow": "RPT_F10_FINANCE_GCASHFLOW",
@@ -3155,12 +3384,12 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
         if dataset != Dataset.FINANCIALS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
 
-        official_report_evidence = self._locate_official_report_evidence(
+        official_report_evidence: Any = self._locate_official_report_evidence(
             symbol,
             raw_dir=kwargs.get("raw_dir"),
             download_limit=int(kwargs.get("official_report_download_limit", 2) or 2),
         )
-        page_size = int(kwargs.get("page_size", 16) or 16)
+        page_size: Any = int(kwargs.get("page_size", 16) or 16)
         raw_payloads: Dict[str, Any] = {"official_report_evidence": official_report_evidence}
         table_rows: Dict[str, List[Mapping[str, Any]]] = {}
         warnings: List[str] = [
@@ -3173,12 +3402,12 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
 
         for table_name, report_name in self.table_specs.items():
             try:
-                payload = self._fetch_table(symbol.symbol, report_name, page_size=page_size)
+                payload: Any = self._fetch_table(symbol.symbol, report_name, page_size=page_size)
             except Exception as exc:
                 errors.append(f"{table_name}: {type(exc).__name__}: {exc}")
                 continue
             raw_payloads[table_name] = payload
-            rows = self._extract_rows(payload)
+            rows: Any = self._extract_rows(payload)
             if rows:
                 table_rows[table_name] = rows
             else:
@@ -3189,12 +3418,14 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney F10 returned no usable financial tables: " + " | ".join(errors))
             warnings.append("One or more Eastmoney F10 financial tables were unavailable: " + " | ".join(errors))
 
-        periods = self._merge_period_rows(table_rows)
+        periods: Any = self._merge_period_rows(table_rows)
         if not periods:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Eastmoney F10 rows could not be normalized")
 
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
-        raw_dir = kwargs.get("raw_dir")
+        raw_dir: Any = kwargs.get("raw_dir")
         if raw_dir:
             raw_path, raw_hash = save_raw_json(
                 raw_payloads,
@@ -3202,8 +3433,8 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
                 f"{symbol.symbol}_eastmoney_f10_financials_raw.json",
             )
 
-        latest_period = max((str(row.get("period") or "") for row in periods), default=None)
-        latest_notice = max((str(row.get("notice_date") or "") for row in periods if row.get("notice_date")), default=None)
+        latest_period: Any = max((str(row.get("period") or "") for row in periods), default=None)
+        latest_notice: Any = max((str(row.get("notice_date") or "") for row in periods if row.get("notice_date")), default=None)
         return DataResult(
             True,
             Dataset.FINANCIALS,
@@ -3243,7 +3474,7 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
         )
 
     def _fetch_table(self, secucode: str, report_name: str, *, page_size: int) -> Mapping[str, Any]:
-        params = urllib.parse.urlencode({
+        params: Any = urllib.parse.urlencode({
             "reportName": report_name,
             "columns": "ALL",
             "filter": f'(SECUCODE="{secucode}")',
@@ -3254,7 +3485,7 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
             "source": "HSF10",
             "client": "PC",
         })
-        payload = https_json(
+        payload: Any = https_json(
             f"{self.api_url}?{params}",
             user_agent=self.user_agent,
             headers={"Referer": self.referer},
@@ -3267,21 +3498,21 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
 
     @staticmethod
     def _extract_rows(payload: Mapping[str, Any]) -> List[Mapping[str, Any]]:
-        result = payload.get("result") if isinstance(payload.get("result"), Mapping) else {}
-        rows = result.get("data") if isinstance(result, Mapping) else []
+        result: Any = payload.get("result") if isinstance(payload.get("result"), Mapping) else {}
+        rows: Any = result.get("data") if isinstance(result, Mapping) else []
         return [row for row in rows if isinstance(row, Mapping)]
 
     def _merge_period_rows(self, table_rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
         periods: Dict[str, Dict[str, Any]] = {}
 
         for row in table_rows.get("income", []):
-            period = _date10(row.get("REPORT_DATE"))
+            period: Any = _date10(row.get("REPORT_DATE"))
             if not period:
                 continue
-            target = periods.setdefault(period, {"period": period})
+            target: Any = periods.setdefault(period, {"period": period})
             self._copy_common_fields(target, row)
-            revenue = _first_number(row, ["TOTAL_OPERATE_INCOME", "OPERATE_INCOME"])
-            operating_cost = _first_number(row, ["OPERATE_COST", "TOTAL_OPERATE_COST"])
+            revenue: Any = _first_number(row, ["TOTAL_OPERATE_INCOME", "OPERATE_INCOME"])
+            operating_cost: Any = _first_number(row, ["OPERATE_COST", "TOTAL_OPERATE_COST"])
             _put_number(target, "revenue", revenue)
             _put_number(target, "operating_income", _first_number(row, ["OPERATE_PROFIT"]))
             _put_number(target, "net_income", _first_number(row, ["PARENT_NETPROFIT", "NETPROFIT"]))
@@ -3302,9 +3533,9 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
                 continue
             target = periods.setdefault(period, {"period": period})
             self._copy_common_fields(target, row)
-            assets = _first_number(row, ["TOTAL_ASSETS"])
-            liabilities = _first_number(row, ["TOTAL_LIABILITIES"])
-            equity = _first_number(row, ["TOTAL_EQUITY"])
+            assets: Any = _first_number(row, ["TOTAL_ASSETS"])
+            liabilities: Any = _first_number(row, ["TOTAL_LIABILITIES"])
+            equity: Any = _first_number(row, ["TOTAL_EQUITY"])
             _put_number(target, "assets", assets)
             _put_number(target, "total_assets", assets)
             _put_number(target, "liabilities", liabilities)
@@ -3331,8 +3562,8 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
                 continue
             target = periods.setdefault(period, {"period": period})
             self._copy_common_fields(target, row)
-            ocf = _first_number(row, ["NETCASH_OPERATE", "NETCASH_OPERATENOTE"])
-            capex = _first_number(row, ["CONSTRUCT_LONG_ASSET"])
+            ocf: Any = _first_number(row, ["NETCASH_OPERATE", "NETCASH_OPERATENOTE"])
+            capex: Any = _first_number(row, ["CONSTRUCT_LONG_ASSET"])
             _put_number(target, "operating_cash_flow", ocf)
             _put_number(target, "investing_cash_flow", _first_number(row, ["NETCASH_INVEST"]))
             _put_number(target, "financing_cash_flow", _first_number(row, ["NETCASH_FINANCE"]))
@@ -3343,7 +3574,7 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
             if ocf is not None and capex is not None:
                 target["free_cash_flow_after_capex"] = ocf - capex
 
-        rows = list(periods.values())
+        rows: Any = list(periods.values())
         rows.sort(key=lambda item: str(item.get("period") or ""))
         return rows[-16:]
 
@@ -3357,7 +3588,7 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
             "update_date": ["UPDATE_DATE"],
             "currency": ["CURRENCY"],
         }.items():
-            value = _first_non_empty(row, candidates)
+            value: Any = _first_non_empty(row, candidates)
             if value is None:
                 continue
             if output_key.endswith("_date"):
@@ -3366,13 +3597,13 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
 
 
 class HkexNewsBase:
-    level = SourceLevel.L0
-    markets = [Market.HK]
-    user_agent = "Mozilla/5.0"
-    base_url = "https://www1.hkexnews.hk"
-    active_stock_url = "https://www1.hkexnews.hk/ncms/script/eds/activestock_sehk_e.json"
-    title_search_url = "https://www1.hkexnews.hk/search/titleSearchServlet.do"
-    referer = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en"
+    level: Any = SourceLevel.L0
+    markets: Any = [Market.HK]
+    user_agent: Any = "Mozilla/5.0"
+    base_url: Any = "https://www1.hkexnews.hk"
+    active_stock_url: Any = "https://www1.hkexnews.hk/ncms/script/eds/activestock_sehk_e.json"
+    title_search_url: Any = "https://www1.hkexnews.hk/search/titleSearchServlet.do"
+    referer: Any = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en"
 
     def _headers(self, *, accept: str = "application/json, text/javascript, */*; q=0.01") -> Dict[str, str]:
         return {
@@ -3381,6 +3612,36 @@ class HkexNewsBase:
             "Accept": accept,
             "X-Requested-With": "XMLHttpRequest",
         }
+
+    def _fetch_bytes_via_curl(self, url: str, headers: Mapping[str, str], *, timeout: int) -> bytes:
+        cmd: Any = [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--compressed",
+            "--connect-timeout",
+            str(min(5, timeout)),
+            "--max-time",
+            str(timeout),
+            "-H",
+            f"User-Agent: {headers['User-Agent']}",
+        ]
+        for key, value in headers.items():
+            if key == "User-Agent":
+                continue
+            cmd.extend(["-H", f"{key}: {value}"])
+        cmd.append(url)
+        completed: Any = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout + 2,
+            check=True,
+        )
+        if completed.stdout:
+            return completed.stdout
+        raise RuntimeError("bounded curl returned empty response")
 
     def _fetch_bytes(
         self,
@@ -3391,58 +3652,49 @@ class HkexNewsBase:
         curl_retries: int = 1,
         use_urllib_secondary_route: bool = True,
     ) -> bytes:
-        headers = self._headers(accept=accept)
-        curl_error: Optional[BaseException] = None
-        bounded_timeout = max(5, int(timeout))
-        connect_timeout = min(10, max(3, bounded_timeout // 2))
-        cmd = [
-            "curl",
-            "-L",
-            "--http1.1",
-            "--connect-timeout",
-            str(connect_timeout),
-            "--max-time",
-            str(bounded_timeout),
-            "--retry",
-            str(max(0, int(curl_retries))),
-            "--retry-delay",
-            "1",
-            "-sS",
-            url,
-        ]
-        for key, value in headers.items():
-            cmd.extend(["-H", f"{key}: {value}"])
-        try:
-            completed = subprocess.run(cmd, check=True, capture_output=True, timeout=bounded_timeout + 5)
-            if completed.stdout:
-                return completed.stdout
-            curl_error = RuntimeError("curl returned an empty response body")
-        except subprocess.TimeoutExpired as exc:
-            curl_error = TimeoutError(f"curl exceeded hard timeout after {bounded_timeout + 5}s for {url}")
-        except Exception as exc:
-            curl_error = exc
+        headers: Any = self._headers(accept=accept)
+        bounded_timeout: Any = max(5, int(timeout))
+        curl_primary_error: Optional[BaseException] = None
+        if "application/pdf" in accept.lower():
+            try:
+                return self._fetch_bytes_via_curl(url, headers, timeout=bounded_timeout)
+            except Exception as exc:
+                curl_primary_error = exc
+                if not use_urllib_secondary_route:
+                    raise
 
-        if not use_urllib_secondary_route:
-            raise RuntimeError(f"HKEX fetch failed: curl={type(curl_error).__name__}: {curl_error}") from curl_error
-
+        urllib_error: Optional[BaseException] = None
         try:
             return https_bytes(
                 url,
                 user_agent=headers["User-Agent"],
                 headers={k: v for k, v in headers.items() if k != "User-Agent"},
                 timeout=bounded_timeout,
+                retries=max(0, int(curl_retries)),
                 max_bytes=120 * 1024 * 1024,
             )
-        except Exception as urllib_error:
-            if curl_error:
-                raise RuntimeError(f"HKEX fetch failed: curl={type(curl_error).__name__}: {curl_error}; urllib={type(urllib_error).__name__}: {urllib_error}") from urllib_error
-            raise
+        except Exception as exc:
+            urllib_error = exc
+            if not use_urllib_secondary_route:
+                raise
 
-    def _fetch_json(self, url: str, *, timeout: int = 30, attempts: int = 2) -> Any:
+        try:
+            return self._fetch_bytes_via_curl(url, headers, timeout=bounded_timeout)
+        except Exception as exc:
+            curl_detail: Any = f"{type(exc).__name__}: {exc}"
+            if isinstance(exc, subprocess.CalledProcessError):
+                stderr: Any = exc.stderr.decode("utf-8", errors="replace")[:500]
+                curl_detail = f"CalledProcessError: {exc}; stderr={stderr}"
+            primary_detail: Any = ""
+            if curl_primary_error is not None:
+                primary_detail = f" after primary bounded curl failed ({type(curl_primary_error).__name__}: {curl_primary_error})"
+            raise RuntimeError(f"HKEX HTTPS fetch failed{primary_detail} via urllib ({type(urllib_error).__name__}: {urllib_error}) and bounded curl ({curl_detail})") from exc
+
+    def _fetch_json(self, url: str, *, timeout: int = 12, attempts: int = 1) -> Any:
         errors: List[str] = []
-        max_attempts = max(1, int(attempts))
+        max_attempts: Any = max(1, int(attempts))
         for attempt in range(1, max_attempts + 1):
-            payload = self._fetch_bytes(url, timeout=timeout)
+            payload: Any = self._fetch_bytes(url, timeout=timeout, curl_retries=0)
             try:
                 return json.loads(payload.decode("utf-8-sig"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -3454,21 +3706,21 @@ class HkexNewsBase:
 
     @staticmethod
     def _json_error_detail(payload: bytes, exc: BaseException, *, attempt: int) -> str:
-        text = payload.decode("utf-8-sig", errors="replace")
-        pos = int(getattr(exc, "pos", 0) or 0)
-        start = max(0, pos - 120)
-        end = min(len(text), pos + 120)
-        snippet = re.sub(r"\s+", " ", text[start:end])[:260]
+        text: Any = payload.decode("utf-8-sig", errors="replace")
+        pos: Any = int(getattr(exc, "pos", 0) or 0)
+        start: Any = max(0, pos - 120)
+        end: Any = min(len(text), pos + 120)
+        snippet: Any = re.sub(r"\s+", " ", text[start:end])[:260]
         return (
             f"attempt={attempt} {type(exc).__name__} at char={pos} "
             f"bytes={len(payload)} sha256={sha256(payload).hexdigest()} near={snippet!r}"
         )
 
     def _lookup_listing(self, code: str) -> Optional[Dict[str, Any]]:
-        data = self._fetch_json(self.active_stock_url, timeout=25, attempts=3)
+        data: Any = self._fetch_json(self.active_stock_url, timeout=12, attempts=1)
         if not isinstance(data, list):
             return None
-        normalized = code.zfill(5)
+        normalized: Any = code.zfill(5)
         for item in data:
             if isinstance(item, Mapping) and str(item.get("c") or "").zfill(5) == normalized:
                 return {
@@ -3488,7 +3740,7 @@ class HkexNewsBase:
         title: str = "",
         row_range: int = 100,
     ) -> Dict[str, Any]:
-        params = urllib.parse.urlencode({
+        params: Any = urllib.parse.urlencode({
             "sortDir": "0",
             "sortByOptions": "DateTime",
             "category": "0",
@@ -3505,20 +3757,20 @@ class HkexNewsBase:
             "rowRange": str(row_range),
             "lang": "en",
         })
-        payload = self._fetch_json(f"{self.title_search_url}?{params}", timeout=25, attempts=3)
+        payload: Any = self._fetch_json(f"{self.title_search_url}?{params}", timeout=10, attempts=1)
         if not isinstance(payload, Mapping):
             raise RuntimeError("HKEX title search response is not a JSON object")
         return dict(payload)
 
     def _date_window(self, *, years: int = 2) -> Tuple[str, str]:
-        today = dt.datetime.now().date()
-        start = today - dt.timedelta(days=years * 366)
+        today: Any = dt.datetime.now().date()
+        start: Any = today - dt.timedelta(days=years * 366)
         return start.strftime("%Y%m%d"), today.strftime("%Y%m%d")
 
     def _records_from_payload(self, payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
-        raw_result = payload.get("result") or "[]"
+        raw_result: Any = payload.get("result") or "[]"
         try:
-            records = json.loads(str(raw_result))
+            records: Any = json.loads(str(raw_result))
         except Exception:
             return []
         if not isinstance(records, list):
@@ -3526,9 +3778,9 @@ class HkexNewsBase:
         return [self._normalize_record(record) for record in records if isinstance(record, Mapping)]
 
     def _normalize_record(self, record: Mapping[str, Any]) -> Dict[str, Any]:
-        file_link = str(record.get("FILE_LINK") or "")
-        pdf_url = urllib.parse.urljoin(self.base_url, file_link)
-        date_time = self._parse_hkex_datetime(record.get("DATE_TIME"))
+        file_link: Any = str(record.get("FILE_LINK") or "")
+        pdf_url: Any = urllib.parse.urljoin(self.base_url, file_link)
+        date_time: Any = self._parse_hkex_datetime(record.get("DATE_TIME"))
         return {
             "news_id": str(record.get("NEWS_ID") or ""),
             "announcement_datetime": date_time,
@@ -3546,14 +3798,14 @@ class HkexNewsBase:
 
     @staticmethod
     def _clean_text(value: Any) -> str:
-        text = html.unescape(str(value or ""))
+        text: Any = html.unescape(str(value or ""))
         text = re.sub(r"<br\s*/?>", " / ", text, flags=re.I)
         text = re.sub(r"<[^>]+>", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
     @staticmethod
     def _parse_hkex_datetime(value: Any) -> Optional[str]:
-        text = str(value or "").strip()
+        text: Any = str(value or "").strip()
         try:
             return dt.datetime.strptime(text, "%d/%m/%Y %H:%M").isoformat()
         except Exception:
@@ -3562,11 +3814,11 @@ class HkexNewsBase:
     @staticmethod
     def _pdf_python_candidates() -> List[str]:
         candidates: List[str] = []
-        env_python = os.getenv("SERENITY_PDF_PYTHON")
+        env_python: Any = os.getenv("SERENITY_PDF_PYTHON")
         if env_python:
             candidates.append(env_python)
         candidates.append(sys.executable)
-        runtime_python = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+        runtime_python: Any = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
         candidates.append(str(runtime_python))
         output: List[str] = []
         seen: set[str] = set()
@@ -3599,7 +3851,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 '''
 
     def _extract_pdf_pages(self, pdf_path: str | Path, *, max_pages: int = 220, timeout: int = 60) -> Dict[str, Any]:
-        path = Path(pdf_path)
+        path: Any = Path(pdf_path)
         errors: List[str] = []
 
         try:
@@ -3607,32 +3859,32 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
             pages: List[Dict[str, Any]] = []
             with pdfplumber.open(str(path)) as pdf:
-                total_pages = len(pdf.pages)
+                total_pages: Any = len(pdf.pages)
                 for index, page in enumerate(pdf.pages[:max_pages], start=1):
-                    text = page.extract_text() or ""
+                    text: Any = page.extract_text() or ""
                     if text.strip():
                         pages.append({"page_number": index, "text": text})
             return {"ok": True, "parser": "pdfplumber", "page_count": total_pages, "pages": pages, "errors": []}
         except Exception as exc:
             errors.append(f"in-process pdfplumber unavailable: {type(exc).__name__}: {exc}")
 
-        script = self._pdfplumber_extract_script()
+        script: Any = self._pdfplumber_extract_script()
         for python_exe in self._pdf_python_candidates():
             try:
-                completed = subprocess.run(
+                completed: Any = subprocess.run(
                     [python_exe, "-", str(path), str(max_pages)],
                     input=script.encode("utf-8"),
                     capture_output=True,
                     timeout=timeout,
                     check=True,
                 )
-                payload = json.loads(completed.stdout.decode("utf-8"))
+                payload: Any = json.loads(completed.stdout.decode("utf-8"))
                 payload["ok"] = True
                 payload["python"] = python_exe
                 payload.setdefault("errors", [])
                 return payload
             except Exception as exc:
-                stderr = ""
+                stderr: Any = ""
                 if isinstance(exc, subprocess.CalledProcessError):
                     stderr = exc.stderr.decode("utf-8", errors="replace")[:500]
                 errors.append(f"{python_exe}: {type(exc).__name__}: {exc} {stderr}".strip())
@@ -3646,27 +3898,27 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
     @classmethod
     def _pdf_number_tokens(cls, line: str) -> List[str]:
-        normalized = cls._normalize_pdf_line(line)
+        normalized: Any = cls._normalize_pdf_line(line)
         return re.findall(r"\(?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?|\(?-?\d+(?:\.\d+)?\)?|(?<!\w)[-–](?!\w)", normalized)
 
     @staticmethod
     def _parse_pdf_number(token: str) -> Optional[float]:
-        text = token.strip()
+        text: Any = token.strip()
         if text in {"-", "–", ""}:
             return None
-        negative = text.startswith("(") and text.endswith(")")
+        negative: Any = text.startswith("(") and text.endswith(")")
         text = text.strip("()").replace(",", "")
         try:
-            value = float(text)
+            value: Any = float(text)
         except Exception:
             return None
         return -value if negative else value
 
     @classmethod
     def _line_values(cls, line: str, *, expected_columns: int) -> List[Optional[float]]:
-        tokens = cls._pdf_number_tokens(line)
+        tokens: Any = cls._pdf_number_tokens(line)
         while len(tokens) > expected_columns:
-            first = tokens[0].strip("()")
+            first: Any = tokens[0].strip("()")
             if "," not in first and "." not in first and first.lstrip("-").isdigit() and abs(int(first)) <= 80:
                 tokens.pop(0)
                 continue
@@ -3677,7 +3929,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
     @staticmethod
     def _month_number(name: str) -> str:
-        months = {
+        months: Any = {
             "january": "01",
             "february": "02",
             "march": "03",
@@ -3695,19 +3947,22 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
     @classmethod
     def _period_from_report_text(cls, text: str) -> Optional[str]:
-        match = re.search(r"(?:ended|at)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", text, flags=re.I)
+        match: Any = re.search(r"(?:ended|at)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", text, flags=re.I)
         if not match:
             return None
+        day: Any
+        month: Any
+        year: Any
         day, month, year = match.groups()
         return f"{year}-{cls._month_number(month)}-{int(day):02d}"
 
     @staticmethod
     def _page_texts_containing(pages: Sequence[Mapping[str, Any]], *needles: str) -> List[Mapping[str, Any]]:
-        lower_needles = [needle.lower() for needle in needles]
+        lower_needles: Any = [needle.lower() for needle in needles]
         output: List[Mapping[str, Any]] = []
         for page in pages:
-            text = str(page.get("text") or "")
-            lower_text = text.lower()
+            text: Any = str(page.get("text") or "")
+            lower_text: Any = text.lower()
             if all(needle in lower_text for needle in lower_needles):
                 output.append(page)
         return output
@@ -3721,15 +3976,15 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         expected_columns: int,
         value_index: int,
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
-        lower_labels = [label.lower() for label in labels]
+        lower_labels: Any = [label.lower() for label in labels]
         for page in pages:
-            text = str(page.get("text") or "")
+            text: Any = str(page.get("text") or "")
             for line in text.splitlines():
-                clean = cls._normalize_pdf_line(line)
-                clean_lower = clean.lower()
+                clean: Any = cls._normalize_pdf_line(line)
+                clean_lower: Any = clean.lower()
                 if not any(clean_lower.startswith(label) or label in clean_lower for label in lower_labels):
                     continue
-                values = cls._line_values(clean, expected_columns=expected_columns)
+                values: Any = cls._line_values(clean, expected_columns=expected_columns)
                 if len(values) <= value_index or values[value_index] is None:
                     continue
                 return values[value_index], {
@@ -3748,7 +4003,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         value_index: int,
     ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
         for page in pages:
-            lines = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
+            lines: Any = [cls._normalize_pdf_line(line) for line in str(page.get("text") or "").splitlines()]
             for index, line in enumerate(lines):
                 if line.lower() != "revenues":
                     continue
@@ -3756,7 +4011,7 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
                     if candidate.lower().startswith("cost of revenues"):
                         break
                     if re.match(r"^\d+[A-Za-z()]?\s+", candidate):
-                        values = cls._line_values(candidate, expected_columns=expected_columns)
+                        values: Any = cls._line_values(candidate, expected_columns=expected_columns)
                         if len(values) > value_index and values[value_index] is not None:
                             return values[value_index], {
                                 "page_number": page.get("page_number"),
@@ -3767,42 +4022,44 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         return None, None
 
     def _extract_hkex_report_period(self, report: Mapping[str, Any], *, raw_dir: Optional[Path] = None) -> Dict[str, Any]:
-        pdf_path = str(report.get("pdf_path") or "")
-        title = str(report.get("title") or "")
-        report_kind = str(report.get("report_kind") or "periodic")
+        pdf_path: Any = str(report.get("pdf_path") or "")
+        title: Any = str(report.get("title") or "")
+        report_kind: Any = str(report.get("report_kind") or "periodic")
         if not pdf_path:
             return {"status": "FAILED", "errors": ["report has no downloaded pdf_path"]}
 
-        page_bundle = self._extract_pdf_pages(pdf_path, max_pages=220, timeout=70)
+        page_bundle: Any = self._extract_pdf_pages(pdf_path, max_pages=160, timeout=18)
         if not page_bundle.get("ok"):
             return {"status": "FAILED", "errors": page_bundle.get("errors", ["PDF text extraction failed"])}
 
-        pages = page_bundle.get("pages", [])
+        pages: Any = page_bundle.get("pages", [])
         if not isinstance(pages, list) or not pages:
             return {"status": "FAILED", "errors": ["PDF text extraction returned no text pages"]}
 
         if raw_dir:
-            text_name = _safe_artifact_name(f"{Path(pdf_path).stem}_pdf_text") + ".txt"
-            combined_text = "\n\n".join(
+            text_name: Any = _safe_artifact_name(f"{Path(pdf_path).stem}_pdf_text") + ".txt"
+            combined_text: Any = "\n\n".join(
                 f"--- page {page.get('page_number')} ---\n{page.get('text') or ''}"
                 for page in pages
             )
+            text_path: Any
+            text_hash: Any
             text_path, text_hash = save_raw_text(combined_text, raw_dir / "extracted_text", text_name)
         else:
             text_path = text_hash = None
 
-        income_pages = self._page_texts_containing(pages, "income statement")
+        income_pages: Any = self._page_texts_containing(pages, "income statement")
         income_pages = [page for page in income_pages if "comprehensive income" not in str(page.get("text") or "").lower()]
-        position_pages = self._page_texts_containing(pages, "statement of financial position")
-        cashflow_pages = self._page_texts_containing(pages, "statement of cash flows")
+        position_pages: Any = self._page_texts_containing(pages, "statement of financial position")
+        cashflow_pages: Any = self._page_texts_containing(pages, "statement of cash flows")
 
-        income_text = "\n".join(str(page.get("text") or "") for page in income_pages)
-        position_text = "\n".join(str(page.get("text") or "") for page in position_pages)
-        cashflow_text = "\n".join(str(page.get("text") or "") for page in cashflow_pages)
-        period = self._period_from_report_text(income_text) or self._period_from_report_text(position_text) or str(report.get("announcement_date") or "")
-        period_type = "annual" if report_kind == "annual" else "interim"
-        income_columns = 4 if "six months ended" in income_text.lower() else 2
-        income_index = 2 if income_columns == 4 else 0
+        income_text: Any = "\n".join(str(page.get("text") or "") for page in income_pages)
+        position_text: Any = "\n".join(str(page.get("text") or "") for page in position_pages)
+        cashflow_text: Any = "\n".join(str(page.get("text") or "") for page in cashflow_pages)
+        period: Any = self._period_from_report_text(income_text) or self._period_from_report_text(position_text) or str(report.get("announcement_date") or "")
+        period_type: Any = "annual" if report_kind == "annual" else "interim"
+        income_columns: Any = 4 if "six months ended" in income_text.lower() else 2
+        income_index: Any = 2 if income_columns == 4 else 0
 
         fields: Dict[str, Any] = {}
         evidence: Dict[str, Any] = {}
@@ -3814,6 +4071,8 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
             if source:
                 evidence[field] = source
 
+        value: Any
+        source: Any
         value, source = self._extract_revenue_value(income_pages, expected_columns=income_columns, value_index=income_index)
         put("revenue", value, source)
         for field, labels in {
@@ -3845,10 +4104,10 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
             value, source = self._extract_label_value(cashflow_pages, labels, expected_columns=2, value_index=0)
             put(field, value, source)
 
-        required = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
-        missing = [field for field in required if fields.get(field) is None]
-        status = "OK" if not missing else ("PARTIAL" if fields else "FAILED")
-        period_row = {
+        required: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+        missing: Any = [field for field in required if fields.get(field) is None]
+        status: Any = "OK" if not missing else ("PARTIAL" if fields else "FAILED")
+        period_row: Any = {
             "period": period,
             "period_type": period_type,
             "source": self.name,
@@ -3876,7 +4135,11 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 
     @classmethod
     def _report_kind(cls, record: Mapping[str, Any]) -> str:
-        text = f"{record.get('title') or ''} {record.get('category') or ''}".lower()
+        text: Any = f"{record.get('title') or ''} {record.get('category') or ''}".lower()
+        if "monthly return" in text:
+            return "monthly_return"
+        if "next day disclosure return" in text:
+            return "next_day_disclosure"
         if "annual report" in text:
             return "annual"
         if "interim" in text or "half-year" in text or "half year" in text:
@@ -3894,9 +4157,9 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
     @classmethod
     def _select_reports_for_download(cls, reports: Sequence[Mapping[str, Any]], limit: int) -> List[Mapping[str, Any]]:
         selected: List[Mapping[str, Any]] = []
-        preferred_order = ["annual", "interim", "quarterly", "final_results", "quarterly_results", "results", "periodic"]
+        preferred_order: Any = ["annual", "interim", "monthly_return", "next_day_disclosure", "quarterly", "final_results", "quarterly_results", "results", "periodic"]
         for kind in preferred_order:
-            candidates = [
+            candidates: Any = [
                 report for report in reports
                 if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
             ]
@@ -3927,25 +4190,40 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         limit: int,
         errors: List[str],
     ) -> None:
-        selected = self._select_reports_for_download(reports, limit)
+        selected: Any = self._select_reports_for_download(reports, limit)
         for report in reports:
-            if report not in selected:
-                report["download_status"] = "NOT_SELECTED"
-        for report in selected:
-            url = str(report.get("pdf_url") or "")
-            title = str(report.get("title") or "hkex_report")
-            report_kind = str(report.get("report_kind") or "periodic")
-            announcement_date = str(report.get("announcement_date") or "")
-            filename = _safe_artifact_name(f"{symbol}_{announcement_date}_{report_kind}_{title}") + ".pdf"
+            report["download_status"] = "SELECTED" if report in selected else "NOT_SELECTED"
+        fallback_candidates: Any = [
+            report for report in reports
+            if report not in selected and report.get("pdf_url")
+        ]
+        attempt_limit: Any = max(limit, int(os.getenv("SERENITY_HKEX_REPORT_DOWNLOAD_ATTEMPT_LIMIT", str(limit + 2))))
+        downloaded_count: Any = 0
+        attempted_count: Any = 0
+        for report in [*selected, *fallback_candidates]:
+            if downloaded_count >= limit or attempted_count >= attempt_limit:
+                break
+            url: Any = str(report.get("pdf_url") or "")
+            if not url:
+                continue
+            attempted_count += 1
+            title: Any = str(report.get("title") or "hkex_report")
+            report_kind: Any = str(report.get("report_kind") or "periodic")
+            announcement_date: Any = str(report.get("announcement_date") or "")
+            filename: Any = _safe_artifact_name(f"{symbol}_{announcement_date}_{report_kind}_{title}") + ".pdf"
             try:
-                payload = self._fetch_bytes(url, accept="application/pdf,*/*", timeout=30, curl_retries=0)
+                pdf_download_timeout: Any = int(os.getenv("SERENITY_HKEX_PDF_DOWNLOAD_TIMEOUT_SECONDS", "15"))
+                payload: Any = self._fetch_bytes(url, accept="application/pdf,*/*", timeout=max(5, pdf_download_timeout), curl_retries=0)
                 if not payload.startswith(b"%PDF"):
                     raise RuntimeError("downloaded artifact does not start with a PDF header")
+                pdf_path: Any
+                pdf_hash: Any
                 pdf_path, pdf_hash = save_raw_bytes(payload, raw_dir, filename)
                 report["download_status"] = "OK"
                 report["pdf_path"] = pdf_path
                 report["pdf_hash"] = pdf_hash
                 report["pdf_size_bytes"] = len(payload)
+                downloaded_count += 1
             except Exception as exc:
                 report["download_status"] = "FAILED"
                 report["download_error"] = f"{type(exc).__name__}: {exc}"
@@ -3955,33 +4233,79 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
 class HkexAnnouncementsProvider(HkexNewsBase):
     """Official HKEXnews announcement metadata adapter for HK-listed securities."""
 
-    name = "HKEXnews_Announcements_L0"
-    datasets = [Dataset.FILINGS]
+    name: Any = "HKEXnews_Announcements_L0"
+    datasets: Any = [Dataset.FILINGS]
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.HK:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEXnews announcements only support HK symbols")
         if dataset != Dataset.FILINGS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
-        code = symbol.symbol.partition(".")[0].zfill(5)
+        code: Any = symbol.symbol.partition(".")[0].zfill(5)
         try:
-            listing = self._lookup_listing(code)
+            listing: Any = self._lookup_listing(code)
             if not listing:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve HKEX stock id for {symbol.symbol}")
+            from_date: Any
+            to_date: Any
             from_date, to_date = self._date_window(years=int(kwargs.get("years", 2) or 2))
-            payload = self._query_title_search(
-                stock_id=str(listing["stock_id"]),
-                from_date=from_date,
-                to_date=to_date,
-                row_range=int(kwargs.get("row_range", 100) or 100),
-            )
-            announcements = self._records_from_payload(payload)
+            payloads: Dict[str, Any] = {}
+            errors: List[str] = []
+            announcements: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+
+            def add_records(query_name: str, payload: Mapping[str, Any]) -> None:
+                payloads[query_name] = dict(payload)
+                for record in self._records_from_payload(payload):
+                    key: Any = str(record.get("news_id") or record.get("file_link") or "")
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    announcements.append(record)
+
+            try:
+                payload: Any = self._query_title_search(
+                    stock_id=str(listing["stock_id"]),
+                    from_date=from_date,
+                    to_date=to_date,
+                    row_range=int(kwargs.get("row_range", 100) or 100),
+                )
+                add_records("broad", payload)
+            except Exception as exc:
+                errors.append(f"HKEX broad announcement search failed: {type(exc).__name__}: {exc}")
+
             if not announcements:
-                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEXnews returned no announcements")
+                for title in ["Annual Report", "Interim Report", "Results", "Monthly Return", "Next Day Disclosure Return", "Announcement"]:
+                    try:
+                        payload = self._query_title_search(
+                            stock_id=str(listing["stock_id"]),
+                            from_date=from_date,
+                            to_date=to_date,
+                            title=title,
+                            row_range=30,
+                        )
+                        add_records(f"title:{title}", payload)
+                    except Exception as exc:
+                        errors.append(f"HKEX targeted announcement search failed for {title}: {type(exc).__name__}: {exc}")
+            if not announcements:
+                reason: Any = "HKEXnews returned no announcements"
+                if errors:
+                    reason += ": " + " | ".join(errors)
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, reason)
+            announcements.sort(key=lambda row: str(row.get("announcement_datetime") or ""), reverse=True)
+            raw_path: Any
+            raw_hash: Any
             raw_path = raw_hash = None
-            raw_dir = kwargs.get("raw_dir")
+            raw_dir: Any = kwargs.get("raw_dir")
             if raw_dir:
-                raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_{dataset.value}_hkex_announcements_raw.json")
+                raw_path, raw_hash = save_raw_json(
+                    {"payloads": payloads, "errors": errors},
+                    raw_dir,
+                    f"{symbol.symbol}_{dataset.value}_hkex_announcements_raw.json",
+                )
+            warnings: Any = ["HKEXnews metadata/PDF links fetched; document contents are not parsed by this adapter."]
+            if "broad" not in payloads:
+                warnings.append("HKEX broad announcement search was unavailable; targeted title searches supplied announcement metadata.")
             return DataResult(
                 True,
                 dataset,
@@ -3994,14 +4318,15 @@ class HkexAnnouncementsProvider(HkexNewsBase):
                     "source": self.name,
                     "source_level": self.level.value,
                     "stock": listing,
-                    "record_count": _safe_int(payload.get("recordCnt")),
+                    "record_count": sum(_safe_int(payload.get("recordCnt")) or 0 for payload in payloads.values() if isinstance(payload, Mapping)),
                     "loaded_record_count": len(announcements),
+                    "query_count": len(payloads),
                     "announcements": announcements,
                 },
                 raw_path=raw_path,
                 raw_hash=raw_hash,
                 currency=symbol.currency or "HKD",
-                warnings=["HKEXnews metadata/PDF links fetched; document contents are not parsed by this adapter."],
+                warnings=warnings,
             )
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"HKEXnews fetch failed: {type(exc).__name__}: {exc}")
@@ -4010,19 +4335,21 @@ class HkexAnnouncementsProvider(HkexNewsBase):
 class HkexFinancialReportsProvider(HkexNewsBase):
     """Official HKEX annual/interim report PDF evidence adapter for HK financials."""
 
-    name = "HKEXnews_FinancialReports_L0"
-    datasets = [Dataset.FINANCIALS]
+    name: Any = "HKEXnews_FinancialReports_L0"
+    datasets: Any = [Dataset.FINANCIALS]
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.HK:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEX financial reports only support HK symbols")
         if dataset != Dataset.FINANCIALS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
-        code = symbol.symbol.partition(".")[0].zfill(5)
+        code: Any = symbol.symbol.partition(".")[0].zfill(5)
         try:
-            listing = self._lookup_listing(code)
+            listing: Any = self._lookup_listing(code)
             if not listing:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve HKEX stock id for {symbol.symbol}")
+            from_date: Any
+            to_date: Any
             from_date, to_date = self._date_window(years=int(kwargs.get("years", 3) or 3))
             payloads: Dict[str, Any] = {}
             reports: List[Dict[str, Any]] = []
@@ -4030,7 +4357,7 @@ class HkexFinancialReportsProvider(HkexNewsBase):
             errors: List[str] = []
             for title in ["Annual Report", "Interim Report", "Quarterly Report"]:
                 try:
-                    payload = self._query_title_search(
+                    payload: Any = self._query_title_search(
                         stock_id=str(listing["stock_id"]),
                         from_date=from_date,
                         to_date=to_date,
@@ -4039,7 +4366,7 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                     )
                     payloads[title] = payload
                     for record in self._records_from_payload(payload):
-                        key = str(record.get("news_id") or record.get("file_link") or "")
+                        key: Any = str(record.get("news_id") or record.get("file_link") or "")
                         if key in seen:
                             continue
                         seen.add(key)
@@ -4057,7 +4384,7 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                     )
                     payloads["all_announcements_report_scan"] = payload
                     for record in self._records_from_payload(payload):
-                        report_kind = self._report_kind(record)
+                        report_kind: Any = self._report_kind(record)
                         if report_kind not in {"annual", "interim", "quarterly"}:
                             continue
                         key = str(record.get("news_id") or record.get("file_link") or "")
@@ -4069,8 +4396,8 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                 except Exception as exc:
                     errors.append(f"HKEX broad announcement report scan failed: {type(exc).__name__}: {exc}")
             reports.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
-            raw_dir = kwargs.get("raw_dir")
-            download_limit = int(kwargs.get("official_report_download_limit", 2) or 2)
+            raw_dir: Any = kwargs.get("raw_dir")
+            download_limit: Any = int(kwargs.get("official_report_download_limit", 2) or 2)
             if raw_dir and reports and download_limit > 0:
                 self._attach_report_downloads(
                     reports,
@@ -4079,15 +4406,15 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                     limit=download_limit,
                     errors=errors,
                 )
-            selected_reports = self._select_reports_for_download(reports, download_limit) if reports and download_limit > 0 else []
+            selected_reports: Any = self._select_reports_for_download(reports, download_limit) if reports and download_limit > 0 else []
             extracted_periods: List[Dict[str, Any]] = []
             extraction_errors: List[str] = []
             extraction_warnings: List[str] = []
-            extraction_raw_dir = Path(raw_dir) / "official_reports" if raw_dir else None
+            extraction_raw_dir: Any = Path(raw_dir) / "official_reports" if raw_dir else None
             for report in reports:
                 if report.get("download_status") != "OK" or not report.get("pdf_path"):
                     continue
-                extraction = self._extract_hkex_report_period(report, raw_dir=extraction_raw_dir)
+                extraction: Any = self._extract_hkex_report_period(report, raw_dir=extraction_raw_dir)
                 report["line_extraction"] = {
                     key: value
                     for key, value in extraction.items()
@@ -4101,17 +4428,17 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                         f"{report.get('report_kind')} {report.get('announcement_date')} extraction status={extraction.get('status')} missing={extraction.get('missing_fields')}"
                     )
             extracted_periods.sort(key=lambda row: str(row.get("period") or ""))
-            downloaded_reports = [
+            downloaded_reports: Any = [
                 report for report in reports
                 if report.get("download_status") == "OK" and report.get("pdf_path")
             ]
             if not reports:
-                evidence_status = "FAILED"
+                evidence_status: Any = "FAILED"
             elif raw_dir and selected_reports and len(downloaded_reports) < len(selected_reports):
                 evidence_status = "PARTIAL"
             else:
                 evidence_status = "OK"
-            evidence = {
+            evidence: Any = {
                 "status": evidence_status,
                 "source": self.name,
                 "source_level": self.level.value,
@@ -4135,6 +4462,8 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                 ],
                 "errors": errors + extraction_errors,
             }
+            raw_path: Any
+            raw_hash: Any
             raw_path = raw_hash = None
             if raw_dir:
                 raw_path, raw_hash = save_raw_json(
@@ -4143,7 +4472,7 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                     f"{symbol.symbol}_{dataset.value}_hkex_financial_reports_raw.json",
                 )
             if not reports:
-                reason = "HKEXnews returned no annual/interim report PDFs"
+                reason: Any = "HKEXnews returned no annual/interim report PDFs"
                 if errors:
                     reason += ": " + " | ".join(errors)
                 return DataResult(
@@ -4202,63 +4531,116 @@ class HkexFinancialReportsProvider(HkexNewsBase):
 class HkexValuationInputsProvider(HkexFinancialReportsProvider):
     """HK valuation inputs from official HKEX report share count plus L2 quote price."""
 
-    name = "HKEX_Yahoo_Valuation_L0L2"
-    level = SourceLevel.L2
-    datasets = [Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
+    name: Any = "HKEX_Yahoo_Valuation_L0L2"
+    level: Any = SourceLevel.L2
+    datasets: Any = [Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.HK:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HK valuation inputs only support HK symbols")
         if dataset not in self.datasets:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
-        code = symbol.symbol.partition(".")[0].zfill(5)
-        raw_dir = Path(kwargs["raw_dir"]) if kwargs.get("raw_dir") else None
+        code: Any = symbol.symbol.partition(".")[0].zfill(5)
+        raw_dir: Any = Path(kwargs["raw_dir"]) if kwargs.get("raw_dir") else None
         try:
-            listing = self._lookup_listing(code)
+            listing: Any = self._lookup_listing(code)
             if not listing:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve HKEX stock id for {symbol.symbol}")
-            reports = self._latest_share_count_reports(str(listing["stock_id"]))
-            download_limit = int(kwargs.get("valuation_report_download_limit", 3) or 3)
-            share_evidence = self._latest_issued_shares_from_reports(
+
+            cached_quote_result: Any = kwargs.get("current_quote_result")
+            quote: Mapping[str, Any] = {}
+            quote_as_of: Optional[str] = None
+            quote_source_name: Any = "current_quote_cache"
+            quote_source_level: Any = SourceLevel.L2.value
+            warnings: List[str] = []
+            if isinstance(cached_quote_result, Mapping):
+                cached_quote: Any = cached_quote_result.get("data")
+                if isinstance(cached_quote, Mapping):
+                    quote = cached_quote
+                    quote_as_of = str(cached_quote_result.get("as_of_date") or "")
+                    quote_source_name = str(cached_quote_result.get("source_name") or quote_source_name)
+                    quote_source_level = str(cached_quote_result.get("source_level") or quote_source_level)
+            if not quote:
+                quote_errors: List[str] = []
+                for quote_provider in [
+                    YahooChartProvider(),
+                    YahooChartProvider(name="Yahoo_Chart_Query2_L2", host="query2.finance.yahoo.com"),
+                ]:
+                    quote_result: Any = quote_provider.fetch(symbol, Dataset.CURRENT_QUOTE, raw_dir=raw_dir)
+                    if quote_result.ok and isinstance(quote_result.data, Mapping):
+                        quote = quote_result.data
+                        quote_as_of = quote_result.as_of_date
+                        quote_source_name = quote_result.source_name
+                        quote_source_level = quote_result.source_level.value
+                        break
+                    quote_errors.extend(quote_result.errors)
+                if not quote and quote_errors:
+                    warnings.extend(quote_errors)
+            price: Any = _safe_float(quote.get("regular_market_price"))
+            quote_market_cap: Any = _safe_float(quote.get("market_cap"))
+            if dataset == Dataset.VALUATION_INPUTS and (price is None or price <= 0):
+                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Yahoo current quote did not expose a usable HK regular market price")
+
+            reports: Any = self._latest_share_count_reports(str(listing["stock_id"]))
+            download_limit: Any = int(kwargs.get("valuation_report_download_limit", 1) or 1)
+            share_evidence: Any = self._latest_issued_shares_from_reports(
                 reports,
                 raw_dir=raw_dir / "valuation_reports" if raw_dir else None,
                 symbol=symbol.symbol,
                 download_limit=max(1, download_limit),
             )
-            if not share_evidence:
-                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEX reports did not expose a usable issued-share count")
-            total_shares = _safe_float(share_evidence.get("total_shares"))
+            total_shares: Any = _safe_float(share_evidence.get("total_shares")) if share_evidence else None
+            total_market_cap: Optional[float] = None
+            source_basis: Any = "official_disclosure"
+            share_count_basis: Any = str(share_evidence.get("basis") or "HKEX official annual/interim report issued-share disclosure.") if share_evidence else ""
+            market_cap_basis: Any = "Yahoo HK regular_market_price * HKEX official issued shares; listing currency HKD."
             if total_shares is None or total_shares <= 0:
-                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "HKEX issued-share count is not positive")
+                if quote_market_cap is None or quote_market_cap <= 0 or price is None or price <= 0:
+                    return DataResult.failed(
+                        dataset,
+                        symbol.symbol,
+                        self.name,
+                        self.level,
+                        "HKEX reports did not expose a usable issued-share count and Yahoo quote did not expose both market_cap and regular_market_price",
+                    )
+                total_shares = quote_market_cap / price
+                total_market_cap = quote_market_cap
+                source_basis = "quote_derived_preflight"
+                share_count_basis = "Yahoo HK market_cap / regular_market_price preflight; replace with HKEX issued-share evidence before final valuation claims."
+                market_cap_basis = "Yahoo HK market_cap field; listing currency HKD."
+                share_evidence = {
+                    "total_shares": total_shares,
+                    "basis": share_count_basis,
+                    "as_of_date": quote_as_of,
+                    "source": quote_source_name,
+                    "source_level": quote_source_level,
+                    "market_cap": quote_market_cap,
+                    "regular_market_price": price,
+                }
+                warnings.append("HKEX issued-share evidence was unavailable in the automated path; HK valuation inputs use Yahoo market_cap/price as preflight data.")
 
-            quote_result = YahooChartProvider().fetch(symbol, Dataset.CURRENT_QUOTE, raw_dir=raw_dir)
-            quote = quote_result.data if quote_result.ok and isinstance(quote_result.data, Mapping) else {}
-            price = _safe_float(quote.get("regular_market_price"))
-            warnings: List[str] = []
-            if not quote_result.ok:
-                warnings.extend(quote_result.errors)
-            if dataset == Dataset.VALUATION_INPUTS and (price is None or price <= 0):
-                return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Yahoo current quote did not expose a usable HK regular market price")
-
-            total_market_cap = price * total_shares if price is not None and price > 0 else None
-            data = {
+            if total_market_cap is None and price is not None and price > 0:
+                total_market_cap = price * total_shares
+            data: Any = {
                 "symbol": symbol.symbol,
                 "name": quote.get("name") or listing.get("stock_name") or symbol.name,
                 "currency": quote.get("currency") or symbol.currency or "HKD",
                 "exchange": symbol.exchange,
-                "as_of_date": quote_result.as_of_date or share_evidence.get("as_of_date"),
+                "as_of_date": quote_as_of or share_evidence.get("as_of_date"),
                 "regular_market_price": round(price, 6) if price is not None else None,
                 "regular_market_time": str(quote.get("regular_market_time") or ""),
                 "total_shares": round(total_shares, 6),
                 "float_shares": None,
                 "total_market_cap": round(total_market_cap, 6) if total_market_cap is not None else None,
                 "float_market_cap": None,
-                "source_basis": "quote_derived_preflight",
-                "share_count_basis": str(share_evidence.get("basis") or "HKEX official annual/interim report issued-share disclosure."),
-                "market_cap_basis": "Yahoo HK regular_market_price * HKEX official issued shares; listing currency HKD.",
+                "source_basis": source_basis,
+                "share_count_basis": share_count_basis,
+                "market_cap_basis": market_cap_basis,
                 "requires_l0_l1_verification": True,
                 "official_share_evidence": share_evidence,
             }
+            raw_path: Any
+            raw_hash: Any
             raw_path = raw_hash = None
             if raw_dir:
                 raw_path, raw_hash = save_raw_json(
@@ -4284,12 +4666,14 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"HK valuation input fetch failed: {type(exc).__name__}: {exc}")
 
     def _latest_share_count_reports(self, stock_id: str) -> List[Dict[str, Any]]:
+        from_date: Any
+        to_date: Any
         from_date, to_date = self._date_window(years=3)
         reports: List[Dict[str, Any]] = []
         seen: set[str] = set()
-        for title in ["Annual Report", "Interim Report"]:
+        for title in ["Monthly Return", "Next Day Disclosure Return", "Annual Report", "Interim Report"]:
             try:
-                payload = self._query_title_search(
+                payload: Any = self._query_title_search(
                     stock_id=stock_id,
                     from_date=from_date,
                     to_date=to_date,
@@ -4299,15 +4683,15 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
             except Exception:
                 continue
             for record in self._records_from_payload(payload):
-                key = str(record.get("news_id") or record.get("file_link") or "")
+                key: Any = str(record.get("news_id") or record.get("file_link") or "")
                 if key in seen:
                     continue
                 seen.add(key)
                 record["report_kind"] = self._report_kind(record)
-                if record["report_kind"] in {"annual", "interim"}:
+                if record["report_kind"] in {"monthly_return", "next_day_disclosure", "annual", "interim"}:
                     reports.append(record)
         reports.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
-        return reports[:4]
+        return reports[:6]
 
     def _latest_issued_shares_from_reports(
         self,
@@ -4329,23 +4713,25 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
                     limit=1,
                     errors=download_errors,
                 )
-            pdf_path = str(report.get("pdf_path") or "")
+            pdf_path: Any = str(report.get("pdf_path") or "")
             if not pdf_path:
                 continue
-            page_bundle = self._extract_pdf_pages(pdf_path, max_pages=220, timeout=70)
-            pages = page_bundle.get("pages", []) if isinstance(page_bundle, Mapping) else []
+            page_bundle: Any = self._extract_pdf_pages(pdf_path, max_pages=80, timeout=8)
+            pages: Any = page_bundle.get("pages", []) if isinstance(page_bundle, Mapping) else []
             if not isinstance(pages, list) or not pages:
                 continue
-            combined_text = "\n\n".join(
+            combined_text: Any = "\n\n".join(
                 f"--- page {page.get('page_number')} ---\n{page.get('text') or ''}"
                 for page in pages
                 if isinstance(page, Mapping)
             )
+            text_path: Any
+            text_hash: Any
             text_path = text_hash = None
             if raw_dir:
-                text_name = _safe_artifact_name(f"{Path(pdf_path).stem}_valuation_text") + ".txt"
+                text_name: Any = _safe_artifact_name(f"{Path(pdf_path).stem}_valuation_text") + ".txt"
                 text_path, text_hash = save_raw_text(combined_text, raw_dir / "extracted_text", text_name)
-            extracted = self._extract_issued_shares_from_text(combined_text)
+            extracted: Any = self._extract_issued_shares_from_text(combined_text)
             if not extracted:
                 continue
             extracted.update({
@@ -4365,10 +4751,13 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
 
     @classmethod
     def _extract_issued_shares_from_text(cls, text: str) -> Optional[Dict[str, Any]]:
-        normalized = re.sub(r"\s+", " ", text)
-        patterns = [
+        normalized: Any = re.sub(r"\s+", " ", text)
+        patterns: Any = [
+            r"closing\s+balance\s+as\s+at.{0,180}?\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+([0-9][0-9,]{5,})\s+\d+\s+([0-9][0-9,]{5,})",
             r"total\s+number\s+of\s+issued\s+shares\s+of\s+the\s+company\s+was\s+([0-9][0-9,]{5,})",
             r"total\s+number\s+of\s+issued\s+shares\s+was\s+([0-9][0-9,]{5,})",
+            r"(?:number|no\.)\s+of\s+issued\s+shares[^0-9]{0,120}([0-9][0-9,]{5,})",
+            r"balance\s+at\s+close\s+of\s+(?:the\s+)?(?:preceding|current)\s+month[^0-9]{0,160}([0-9][0-9,]{5,})",
             r"number\s+of\s+issued\s+shares(?:\s+of\s+the\s+company)?[^.]{0,180}?\b(?:was|were|is|are|:)\s*([0-9][0-9,]{5,})",
             r"(?:shares\s+in\s+issue|issued\s+shares)\s+(?:as\s+at|at|on)[^.]{0,180}?\b(?:was|were|is|are|:)?\s*([0-9][0-9,]{5,})",
             r"([0-9][0-9,]{5,})\s+(?:ordinary\s+)?shares\s+(?:in\s+issue|issued\s+and\s+fully\s+paid)",
@@ -4376,10 +4765,11 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
             r"issued\s+share\s+capital[^.]{0,240}?([0-9][0-9,]{5,})\s+(?:shares|ordinary\s+shares)",
         ]
         for pattern in patterns:
-            match = re.search(pattern, normalized, flags=re.I)
+            match: Any = re.search(pattern, normalized, flags=re.I)
             if not match:
                 continue
-            value = _safe_float(match.group(1).replace(",", ""))
+            captured: Any = next((group for group in reversed(match.groups()) if group), "")
+            value: Any = _safe_float(captured.replace(",", ""))
             if value is None or value <= 0:
                 continue
             return {
@@ -4399,11 +4789,11 @@ class CninfoTencentAdjustedKlineProvider:
     as adjusted.
     """
 
-    name = "CNINFO_Tencent_Adjusted_Kline_L0L2"
-    level = SourceLevel.L2
-    markets = [Market.CN_A]
-    datasets = [Dataset.PRICE_HISTORY_ADJUSTED]
-    user_agent = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
+    name: Any = "CNINFO_Tencent_Adjusted_Kline_L0L2"
+    level: Any = SourceLevel.L2
+    markets: Any = [Market.CN_A]
+    datasets: Any = [Dataset.PRICE_HISTORY_ADJUSTED]
+    user_agent: Any = "Mozilla/5.0 serenity-chan-stock-skill/0.1"
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.CN_A:
@@ -4411,9 +4801,9 @@ class CninfoTencentAdjustedKlineProvider:
         if dataset != Dataset.PRICE_HISTORY_ADJUSTED:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
 
-        raw_dir = Path(kwargs["raw_dir"]) if kwargs.get("raw_dir") else None
-        tencent = TencentQuoteKlineProvider()
-        base = tencent.fetch(
+        raw_dir: Any = Path(kwargs["raw_dir"]) if kwargs.get("raw_dir") else None
+        tencent: Any = TencentQuoteKlineProvider()
+        base: Any = tencent.fetch(
             symbol,
             dataset,
             range=str(kwargs.get("range", "2y")),
@@ -4426,14 +4816,18 @@ class CninfoTencentAdjustedKlineProvider:
             base.source_name = self.name
             return base
 
-        rows = [dict(row) for row in base.data]
-        start_date = str(rows[0].get("trade_date") or "")
-        end_date = str(rows[-1].get("trade_date") or "")
+        rows: Any = [dict(row) for row in base.data]
+        start_date: Any = str(rows[0].get("trade_date") or "")
+        end_date: Any = str(rows[-1].get("trade_date") or "")
+        actions: Any
+        action_errors: Any
         actions, action_errors = self._load_distribution_actions(symbol, raw_dir=raw_dir, start_date=start_date, end_date=end_date)
         if action_errors:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Official corporate-action lookup failed: " + " | ".join(action_errors))
-        applicable = [action for action in actions if start_date <= str(action.get("ex_date") or "") <= end_date]
+        applicable: Any = [action for action in actions if start_date <= str(action.get("ex_date") or "") <= end_date]
         if not applicable:
+            raw_path: Any
+            raw_hash: Any
             raw_path = raw_hash = None
             if raw_dir:
                 raw_path, raw_hash = save_raw_json(
@@ -4457,7 +4851,7 @@ class CninfoTencentAdjustedKlineProvider:
                 warnings=["Tencent daily rows were accepted as qfq-equivalent because CNINFO official announcements show no distribution event inside the fetched window."],
             )
 
-        adjustment_events = self._apply_forward_adjustments(rows, applicable)
+        adjustment_events: Any = self._apply_forward_adjustments(rows, applicable)
         if not adjustment_events:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Official distribution events were found but no prior trading-day factor could be computed")
 
@@ -4503,12 +4897,15 @@ class CninfoTencentAdjustedKlineProvider:
         start_date: str,
         end_date: str,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        code: Any
+        _: Any
+        suffix: Any
         code, _, suffix = symbol.symbol.partition(".")
-        cninfo = CninfoAnnouncementsProvider()
+        cninfo: Any = CninfoAnnouncementsProvider()
         errors: List[str] = []
         actions: List[Dict[str, Any]] = []
         try:
-            listing = cninfo._lookup_listing(code)
+            listing: Any = cninfo._lookup_listing(code)
         except Exception as exc:
             return [], [f"CNINFO listing lookup failed: {type(exc).__name__}: {exc}"]
         if not listing:
@@ -4517,25 +4914,25 @@ class CninfoTencentAdjustedKlineProvider:
         seen: set[str] = set()
         for page_num in range(1, 9):
             try:
-                payload = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
+                payload: Any = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
             except Exception as exc:
                 errors.append(f"page {page_num}: {type(exc).__name__}: {exc}")
                 continue
-            page_announcements = payload.get("announcements") if isinstance(payload, Mapping) else None
+            page_announcements: Any = payload.get("announcements") if isinstance(payload, Mapping) else None
             if not isinstance(page_announcements, list) or not page_announcements:
                 break
             for item in page_announcements:
                 if not isinstance(item, Mapping):
                     continue
-                record = cninfo._normalize_announcement(item)
-                title = str(record.get("title") or "")
+                record: Any = cninfo._normalize_announcement(item)
+                title: Any = str(record.get("title") or "")
                 if "权益分派实施公告" not in title:
                     continue
-                key = str(record.get("announcement_id") or record.get("pdf_url") or title)
+                key: Any = str(record.get("announcement_id") or record.get("pdf_url") or title)
                 if key in seen:
                     continue
                 seen.add(key)
-                action = self._parse_distribution_announcement(record, raw_dir=raw_dir)
+                action: Any = self._parse_distribution_announcement(record, raw_dir=raw_dir)
                 if action:
                     actions.append(action)
         actions.sort(key=lambda action: str(action.get("ex_date") or ""))
@@ -4553,17 +4950,19 @@ class CninfoTencentAdjustedKlineProvider:
         return actions, errors
 
     def _parse_distribution_announcement(self, record: Mapping[str, Any], *, raw_dir: Optional[Path]) -> Optional[Dict[str, Any]]:
-        pdf_url = str(record.get("pdf_url") or "")
+        pdf_url: Any = str(record.get("pdf_url") or "")
         if not pdf_url:
             return None
         try:
-            payload = https_bytes(
+            payload: Any = https_bytes(
                 pdf_url,
                 user_agent=self.user_agent,
                 headers={"Referer": "https://www.cninfo.com.cn/"},
                 timeout=30,
                 max_bytes=20 * 1024 * 1024,
             )
+            pdf_path: Any
+            pdf_hash: Any
             pdf_path = pdf_hash = None
             if raw_dir:
                 pdf_path, pdf_hash = save_raw_bytes(
@@ -4571,25 +4970,27 @@ class CninfoTencentAdjustedKlineProvider:
                     raw_dir / "corporate_actions",
                     _safe_artifact_name(f"{record.get('sec_code')}_{record.get('announcement_date')}_{record.get('title')}") + ".pdf",
                 )
-                page_bundle = HkexNewsBase()._extract_pdf_pages(pdf_path, max_pages=20, timeout=30)
+                page_bundle: Any = HkexNewsBase()._extract_pdf_pages(pdf_path, max_pages=20, timeout=30)
             else:
-                temp_dir = Path(os.getenv("SERENITY_TMP_DIR", "/tmp/serenity-chan-corporate-actions"))
+                temp_dir: Any = Path(os.getenv("SERENITY_TMP_DIR", "/tmp/serenity-chan-corporate-actions"))
                 pdf_path, pdf_hash = save_raw_bytes(payload, temp_dir, _safe_artifact_name(str(record.get("announcement_id") or "distribution")) + ".pdf")
                 page_bundle = HkexNewsBase()._extract_pdf_pages(pdf_path, max_pages=20, timeout=30)
             if not page_bundle.get("ok"):
                 return None
-            text = "\n".join(str(page.get("text") or "") for page in page_bundle.get("pages", []) if isinstance(page, Mapping))
-            compact = re.sub(r"\s+", "", text)
-            ex_date = self._parse_cn_date(compact, r"除权除息日为[:：]?(\d{4})年(\d{1,2})月(\d{1,2})日")
-            record_date = self._parse_cn_date(compact, r"权益登记日为[:：]?(\d{4})年(\d{1,2})月(\d{1,2})日")
-            cash_match = re.search(r"每10股派([0-9.]+)元", compact)
-            transfer_match = re.search(r"每10股转增([0-9.]+)股", compact)
-            bonus_match = re.search(r"每10股送(?:红股)?([0-9.]+)股", compact)
-            cash_per_share = float(cash_match.group(1)) / 10.0 if cash_match else 0.0
-            transfer_ratio = float(transfer_match.group(1)) / 10.0 if transfer_match else 0.0
-            bonus_ratio = float(bonus_match.group(1)) / 10.0 if bonus_match else 0.0
+            text: Any = "\n".join(str(page.get("text") or "") for page in page_bundle.get("pages", []) if isinstance(page, Mapping))
+            compact: Any = re.sub(r"\s+", "", text)
+            ex_date: Any = self._parse_cn_date(compact, r"除权除息日为[:：]?(\d{4})年(\d{1,2})月(\d{1,2})日")
+            record_date: Any = self._parse_cn_date(compact, r"权益登记日为[:：]?(\d{4})年(\d{1,2})月(\d{1,2})日")
+            cash_match: Any = re.search(r"每10股派([0-9.]+)元", compact)
+            transfer_match: Any = re.search(r"每10股转增([0-9.]+)股", compact)
+            bonus_match: Any = re.search(r"每10股送(?:红股)?([0-9.]+)股", compact)
+            cash_per_share: Any = float(cash_match.group(1)) / 10.0 if cash_match else 0.0
+            transfer_ratio: Any = float(transfer_match.group(1)) / 10.0 if transfer_match else 0.0
+            bonus_ratio: Any = float(bonus_match.group(1)) / 10.0 if bonus_match else 0.0
             if not ex_date:
                 return None
+            text_path: Any
+            text_hash: Any
             text_path = text_hash = None
             if raw_dir:
                 text_path, text_hash = save_raw_text(
@@ -4619,9 +5020,12 @@ class CninfoTencentAdjustedKlineProvider:
 
     @staticmethod
     def _parse_cn_date(text: str, pattern: str) -> Optional[str]:
-        match = re.search(pattern, text)
+        match: Any = re.search(pattern, text)
         if not match:
             return None
+        year: Any
+        month: Any
+        day: Any
         year, month, day = match.groups()
         return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
 
@@ -4629,27 +5033,27 @@ class CninfoTencentAdjustedKlineProvider:
     def _apply_forward_adjustments(rows: List[Dict[str, Any]], actions: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []
         for action in sorted(actions, key=lambda item: str(item.get("ex_date") or "")):
-            ex_date = str(action.get("ex_date") or "")
-            prior_indexes = [idx for idx, row in enumerate(rows) if str(row.get("trade_date") or "") < ex_date]
+            ex_date: Any = str(action.get("ex_date") or "")
+            prior_indexes: Any = [idx for idx, row in enumerate(rows) if str(row.get("trade_date") or "") < ex_date]
             if not prior_indexes:
                 continue
-            previous_index = prior_indexes[-1]
-            previous_close = _safe_float(rows[previous_index].get("raw_close") or rows[previous_index].get("close"))
+            previous_index: Any = prior_indexes[-1]
+            previous_close: Any = _safe_float(rows[previous_index].get("raw_close") or rows[previous_index].get("close"))
             if previous_close is None or previous_close <= 0:
                 continue
-            cash_per_share = _safe_float(action.get("cash_per_share")) or 0.0
-            share_ratio = (_safe_float(action.get("share_ratio")) or 0.0)
-            ex_right_reference = (previous_close - cash_per_share) / (1.0 + share_ratio)
+            cash_per_share: Any = _safe_float(action.get("cash_per_share")) or 0.0
+            share_ratio: Any = (_safe_float(action.get("share_ratio")) or 0.0)
+            ex_right_reference: Any = (previous_close - cash_per_share) / (1.0 + share_ratio)
             if ex_right_reference <= 0:
                 continue
-            factor = ex_right_reference / previous_close
+            factor: Any = ex_right_reference / previous_close
             for idx in prior_indexes:
-                row = rows[idx]
+                row: Any = rows[idx]
                 for field in ("open", "high", "low", "close", "adj_close"):
-                    value = _safe_float(row.get(field))
+                    value: Any = _safe_float(row.get(field))
                     if value is not None:
                         row[field] = round(value * factor, 6)
-                raw_close = _safe_float(row.get("raw_close"))
+                raw_close: Any = _safe_float(row.get("raw_close"))
                 if raw_close is not None:
                     row["raw_close"] = round(raw_close, 6)
             events.append({
@@ -4667,7 +5071,7 @@ class CninfoTencentAdjustedKlineProvider:
 
 
 def _sec_user_agent() -> Tuple[str, List[str]]:
-    identity = os.getenv("SEC_USER_AGENT") or os.getenv("EDGAR_IDENTITY")
+    identity: Any = os.getenv("SEC_USER_AGENT") or os.getenv("EDGAR_IDENTITY")
     if identity:
         return identity, []
     return (
@@ -4682,7 +5086,7 @@ _SEC_SUBMISSIONS_CACHE: Dict[str, Mapping[str, Any]] = {}
 def _sec_text_tokens(values: Iterable[str]) -> set[str]:
     output: set[str] = set()
     for token in values:
-        cleaned = str(token).strip().upper()
+        cleaned: Any = str(token).strip().upper()
         if not cleaned:
             continue
         output.add(cleaned)
@@ -4696,9 +5100,9 @@ def _sec_symbol_tokens(symbol: SymbolInfo) -> set[str]:
 
 
 def _fetch_sec_submissions_payload(cik: str, *, user_agent: str) -> Mapping[str, Any]:
-    padded_cik = f"{int(str(cik)):010d}"
+    padded_cik: Any = f"{int(str(cik)):010d}"
     if padded_cik not in _SEC_SUBMISSIONS_CACHE:
-        payload = https_json(f"https://data.sec.gov/submissions/CIK{padded_cik}.json", user_agent=user_agent)
+        payload: Any = https_json(f"https://data.sec.gov/submissions/CIK{padded_cik}.json", user_agent=user_agent)
         if not isinstance(payload, Mapping):
             raise ValueError("SEC submissions payload is not an object")
         _SEC_SUBMISSIONS_CACHE[padded_cik] = payload
@@ -4706,11 +5110,11 @@ def _fetch_sec_submissions_payload(cik: str, *, user_agent: str) -> Mapping[str,
 
 
 def _sec_submission_matches_tokens(expected: set[str], payload: Mapping[str, Any]) -> bool:
-    tickers = payload.get("tickers", [])
+    tickers: Any = payload.get("tickers", [])
     if not isinstance(tickers, list):
         return False
-    actual = {str(ticker).strip().upper() for ticker in tickers if str(ticker).strip()}
-    expanded_actual = set(actual)
+    actual: Any = {str(ticker).strip().upper() for ticker in tickers if str(ticker).strip()}
+    expanded_actual: Any = set(actual)
     for ticker in actual:
         expanded_actual.add(ticker.replace(".", "-"))
         expanded_actual.add(ticker.replace("-", "."))
@@ -4755,12 +5159,12 @@ _NUMBER_WORDS: Dict[str, float] = {
 
 
 def _number_token(value: str) -> Optional[float]:
-    token = re.sub(r"[^0-9A-Za-z.]+", " ", value).strip().lower()
+    token: Any = re.sub(r"[^0-9A-Za-z.]+", " ", value).strip().lower()
     if not token:
         return None
-    numeric = re.search(r"\d+(?:\.\d+)?", token)
+    numeric: Any = re.search(r"\d+(?:\.\d+)?", token)
     if numeric:
-        parsed = _safe_float(numeric.group(0))
+        parsed: Any = _safe_float(numeric.group(0))
         return parsed if parsed and parsed > 0 else None
     for word, number in _NUMBER_WORDS.items():
         if re.search(rf"\b{re.escape(word)}\b", token):
@@ -4769,18 +5173,18 @@ def _number_token(value: str) -> Optional[float]:
 
 
 def _extract_ads_ratio_from_text(text: str) -> Optional[Dict[str, Any]]:
-    plain = re.sub(r"<[^>]+>", " ", text)
+    plain: Any = re.sub(r"<[^>]+>", " ", text)
     plain = html.unescape(re.sub(r"\s+", " ", plain))
-    patterns = [
+    patterns: Any = [
         r"(?i)(each|one|1)\s+(?:american\s+depositary\s+share|ads)\s+represents\s+([A-Za-z0-9().\- ]{1,60})\s+(?:common|ordinary)\s+shares?",
         r"(?i)([A-Za-z0-9().\- ]{1,60})\s+(?:common|ordinary)\s+shares?\s+(?:per|for each)\s+(?:american\s+depositary\s+share|ads)",
     ]
     for pattern in patterns:
-        match = re.search(pattern, plain)
+        match: Any = re.search(pattern, plain)
         if not match:
             continue
-        token = match.group(2) if "represents" in pattern else match.group(1)
-        ratio = _number_token(token)
+        token: Any = match.group(2) if "represents" in pattern else match.group(1)
+        ratio: Any = _number_token(token)
         if ratio is None or ratio <= 0:
             continue
         return {
@@ -4797,22 +5201,22 @@ def _latest_sec_primary_document(
     *,
     forms: set[str],
 ) -> Optional[Dict[str, str]]:
-    recent = submissions_payload.get("filings", {}).get("recent", {}) if isinstance(submissions_payload.get("filings"), Mapping) else {}
-    form_values = recent.get("form", []) or []
-    accession_numbers = recent.get("accessionNumber", []) or []
-    primary_documents = recent.get("primaryDocument", []) or []
-    filing_dates = recent.get("filingDate", []) or []
-    report_dates = recent.get("reportDate", []) or []
+    recent: Any = submissions_payload.get("filings", {}).get("recent", {}) if isinstance(submissions_payload.get("filings"), Mapping) else {}
+    form_values: Any = recent.get("form", []) or []
+    accession_numbers: Any = recent.get("accessionNumber", []) or []
+    primary_documents: Any = recent.get("primaryDocument", []) or []
+    filing_dates: Any = recent.get("filingDate", []) or []
+    report_dates: Any = recent.get("reportDate", []) or []
     candidates: List[Dict[str, str]] = []
     for idx, form in enumerate(form_values):
-        form_value = str(form or "").upper()
+        form_value: Any = str(form or "").upper()
         if form_value not in forms:
             continue
-        accession = str(accession_numbers[idx] if idx < len(accession_numbers) else "")
-        document = str(primary_documents[idx] if idx < len(primary_documents) else "")
+        accession: Any = str(accession_numbers[idx] if idx < len(accession_numbers) else "")
+        document: Any = str(primary_documents[idx] if idx < len(primary_documents) else "")
         if not accession or not document:
             continue
-        url = f"https://www.sec.gov/Archives/edgar/data/{int(str(cik))}/{accession.replace('-', '')}/{document}"
+        url: Any = f"https://www.sec.gov/Archives/edgar/data/{int(str(cik))}/{accession.replace('-', '')}/{document}"
         candidates.append({
             "form": form_value,
             "accession_number": accession,
@@ -4831,11 +5235,11 @@ def _ads_ratio_from_sec_report(
     *,
     user_agent: str,
 ) -> Optional[Dict[str, Any]]:
-    document = _latest_sec_primary_document(cik, submissions_payload, forms={"20-F", "20-F/A", "40-F", "40-F/A"})
+    document: Any = _latest_sec_primary_document(cik, submissions_payload, forms={"20-F", "20-F/A", "40-F", "40-F/A"})
     if not document:
         return None
-    text = https_text(str(document["url"]), user_agent=user_agent, timeout=30, retries=1)
-    ratio = _extract_ads_ratio_from_text(text)
+    text: Any = https_text(str(document["url"]), user_agent=user_agent, timeout=30, retries=1)
+    ratio: Any = _extract_ads_ratio_from_text(text)
     if not ratio:
         return None
     ratio.update({
@@ -4854,56 +5258,56 @@ def _ads_ratio_from_paired_otc_history(
     *,
     raw_dir: Optional[str | Path],
 ) -> Optional[Dict[str, Any]]:
-    tickers = [
+    tickers: Any = [
         str(ticker).strip().upper()
         for ticker in submissions_payload.get("tickers", [])
         if str(ticker).strip()
     ]
-    requested = symbol.symbol.upper()
-    candidates = [ticker for ticker in tickers if ticker != requested and ticker.endswith("F")]
+    requested: Any = symbol.symbol.upper()
+    candidates: Any = [ticker for ticker in tickers if ticker != requested and ticker.endswith("F")]
     if not candidates:
         return None
-    provider = YahooChartProvider(name="Yahoo_ADR_Ratio_History_L2")
-    requested_history = provider.fetch(symbol, Dataset.PRICE_HISTORY_ADJUSTED, raw_dir=raw_dir, range="6mo")
+    provider: Any = YahooChartProvider(name="Yahoo_ADR_Ratio_History_L2")
+    requested_history: Any = provider.fetch(symbol, Dataset.PRICE_HISTORY_ADJUSTED, raw_dir=raw_dir, range="6mo")
     if not requested_history.ok or not isinstance(requested_history.data, list):
         return None
-    requested_by_date = {
+    requested_by_date: Any = {
         str(row.get("trade_date")): _safe_float(row.get("close"))
         for row in requested_history.data
         if isinstance(row, Mapping)
     }
     requested_by_date = {date: close for date, close in requested_by_date.items() if close and close > 0}
     for candidate in candidates:
-        candidate_symbol = SymbolInfo(
+        candidate_symbol: Any = SymbolInfo(
             input_value=candidate,
             symbol=candidate,
             market=Market.US,
             exchange="US",
             currency=symbol.currency or "USD",
         )
-        candidate_history = provider.fetch(candidate_symbol, Dataset.PRICE_HISTORY_ADJUSTED, raw_dir=raw_dir, range="6mo")
+        candidate_history: Any = provider.fetch(candidate_symbol, Dataset.PRICE_HISTORY_ADJUSTED, raw_dir=raw_dir, range="6mo")
         if not candidate_history.ok or not isinstance(candidate_history.data, list):
             continue
-        candidate_by_date = {
+        candidate_by_date: Any = {
             str(row.get("trade_date")): _safe_float(row.get("close"))
             for row in candidate_history.data
             if isinstance(row, Mapping)
         }
         candidate_by_date = {date: close for date, close in candidate_by_date.items() if close and close > 0}
-        common_dates = sorted(set(requested_by_date) & set(candidate_by_date))
+        common_dates: Any = sorted(set(requested_by_date) & set(candidate_by_date))
         ratios: List[float] = []
         for date in common_dates[-20:]:
-            ratio = requested_by_date[date] / candidate_by_date[date]
+            ratio: Any = requested_by_date[date] / candidate_by_date[date]
             if math.isfinite(ratio) and ratio > 0:
                 ratios.append(ratio)
         if not ratios:
             continue
         ratios.sort()
-        median_ratio = ratios[len(ratios) // 2]
-        integer_ratio = round(median_ratio)
+        median_ratio: Any = ratios[len(ratios) // 2]
+        integer_ratio: Any = round(median_ratio)
         if integer_ratio < 1 or integer_ratio > 10:
             continue
-        relative_error = abs(median_ratio - integer_ratio) / max(integer_ratio, 1)
+        relative_error: Any = abs(median_ratio - integer_ratio) / max(integer_ratio, 1)
         if relative_error > 0.08:
             continue
         return {
@@ -4919,8 +5323,8 @@ def _ads_ratio_from_paired_otc_history(
 
 
 def _ads_ratio_required(symbol: SymbolInfo, submissions_payload: Mapping[str, Any]) -> bool:
-    recent = submissions_payload.get("filings", {}).get("recent", {}) if isinstance(submissions_payload.get("filings"), Mapping) else {}
-    forms = {str(form or "").upper() for form in recent.get("form", []) or []}
+    recent: Any = submissions_payload.get("filings", {}).get("recent", {}) if isinstance(submissions_payload.get("filings"), Mapping) else {}
+    forms: Any = {str(form or "").upper() for form in recent.get("form", []) or []}
     return bool(forms & {"20-F", "20-F/A", "40-F", "40-F/A"})
 
 
@@ -4934,7 +5338,7 @@ def _resolve_ads_ratio(
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     attempts: List[Dict[str, Any]] = []
     try:
-        ratio = _ads_ratio_from_sec_report(cik, submissions_payload, user_agent=user_agent)
+        ratio: Any = _ads_ratio_from_sec_report(cik, submissions_payload, user_agent=user_agent)
         if ratio:
             attempts.append({"source": "SEC_PRIMARY_DOCUMENT", "status": "OK"})
             return ratio, attempts
@@ -4957,43 +5361,43 @@ def _sec_bootstrap_path() -> Path:
 
 
 def _sec_cik_from_bootstrap(ticker: str) -> Optional[str]:
-    path = _sec_bootstrap_path()
+    path: Any = _sec_bootstrap_path()
     if not path.exists():
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload: Any = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    records = payload.get("tickers", {}) if isinstance(payload, Mapping) else {}
-    record = None
+    records: Any = payload.get("tickers", {}) if isinstance(payload, Mapping) else {}
+    record: Any = None
     if isinstance(records, Mapping):
         for token in _sec_text_tokens([ticker]):
-            candidate = records.get(token)
+            candidate: Any = records.get(token)
             if isinstance(candidate, Mapping):
                 record = candidate
                 break
     if not isinstance(record, Mapping):
         return None
-    raw_cik = record.get("cik")
+    raw_cik: Any = record.get("cik")
     if raw_cik is None:
         return None
     try:
         return f"{int(str(raw_cik)):010d}"
     except ValueError:
-        digits = re.sub(r"\D", "", str(raw_cik))
+        digits: Any = re.sub(r"\D", "", str(raw_cik))
         return digits.zfill(10) if digits else None
 
 
 def _sec_cik_from_ticker_exchange_json(ticker: str, *, user_agent: str) -> Optional[str]:
-    payload = https_json("https://www.sec.gov/files/company_tickers_exchange.json", user_agent=user_agent)
-    token = ticker.upper().replace("-", ".")
-    fields = payload.get("fields", []) if isinstance(payload, Mapping) else []
-    data = payload.get("data", []) if isinstance(payload, Mapping) else []
+    payload: Any = https_json("https://www.sec.gov/files/company_tickers_exchange.json", user_agent=user_agent)
+    token: Any = ticker.upper().replace("-", ".")
+    fields: Any = payload.get("fields", []) if isinstance(payload, Mapping) else []
+    data: Any = payload.get("data", []) if isinstance(payload, Mapping) else []
     if not isinstance(fields, list) or not isinstance(data, list):
         return None
     try:
-        ticker_idx = fields.index("ticker")
-        cik_idx = fields.index("cik")
+        ticker_idx: Any = fields.index("ticker")
+        cik_idx: Any = fields.index("cik")
     except ValueError:
         return None
     for row in data:
@@ -5005,8 +5409,8 @@ def _sec_cik_from_ticker_exchange_json(ticker: str, *, user_agent: str) -> Optio
 
 
 def _sec_cik_from_company_tickers_json(ticker: str, *, user_agent: str) -> Optional[str]:
-    payload = https_json("https://www.sec.gov/files/company_tickers.json", user_agent=user_agent)
-    token = ticker.upper().replace("-", ".")
+    payload: Any = https_json("https://www.sec.gov/files/company_tickers.json", user_agent=user_agent)
+    token: Any = ticker.upper().replace("-", ".")
     if not isinstance(payload, Mapping):
         return None
     for row in payload.values():
@@ -5018,12 +5422,14 @@ def _sec_cik_from_company_tickers_json(ticker: str, *, user_agent: str) -> Optio
 
 
 def _sec_cik_from_ticker_txt(ticker: str, *, user_agent: str) -> Optional[str]:
-    text = https_text("https://www.sec.gov/include/ticker.txt", user_agent=user_agent)
-    token = ticker.lower().replace("-", ".")
+    text: Any = https_text("https://www.sec.gov/include/ticker.txt", user_agent=user_agent)
+    token: Any = ticker.lower().replace("-", ".")
     for line in text.splitlines():
-        parts = line.strip().split()
+        parts: Any = line.strip().split()
         if len(parts) != 2:
             continue
+        raw_ticker: Any
+        raw_cik: Any
         raw_ticker, raw_cik = parts
         if raw_ticker.lower() == token:
             return f"{int(raw_cik):010d}"
@@ -5031,37 +5437,37 @@ def _sec_cik_from_ticker_txt(ticker: str, *, user_agent: str) -> Optional[str]:
 
 
 def _sec_cik_from_ticker(ticker: str, *, user_agent: str) -> Optional[str]:
-    token = ticker.upper().replace("-", ".")
+    token: Any = ticker.upper().replace("-", ".")
     candidates: List[str] = []
 
     def add_candidate(cik: Optional[str]) -> None:
         if not cik:
             return
         try:
-            normalized = f"{int(str(cik)):010d}"
+            normalized: Any = f"{int(str(cik)):010d}"
         except ValueError:
-            digits = re.sub(r"\D", "", str(cik))
+            digits: Any = re.sub(r"\D", "", str(cik))
             normalized = digits.zfill(10) if digits else ""
         if normalized and normalized not in candidates:
             candidates.append(normalized)
 
-    bootstrap_cik = _sec_cik_from_bootstrap(token)
+    bootstrap_cik: Any = _sec_cik_from_bootstrap(token)
     add_candidate(bootstrap_cik)
-    resolvers = [
+    resolvers: Any = [
         _sec_cik_from_ticker_exchange_json,
         _sec_cik_from_company_tickers_json,
         _sec_cik_from_ticker_txt,
     ]
     for resolver in resolvers:
         try:
-            cik = resolver(token, user_agent=user_agent)
+            cik: Any = resolver(token, user_agent=user_agent)
         except Exception:
             continue
         add_candidate(cik)
-    expected_tokens = _sec_text_tokens([token])
+    expected_tokens: Any = _sec_text_tokens([token])
     for cik in candidates:
         try:
-            payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+            payload: Any = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
         except Exception:
             continue
         if _sec_submission_matches_tokens(expected_tokens, payload):
@@ -5069,7 +5475,7 @@ def _sec_cik_from_ticker(ticker: str, *, user_agent: str) -> Optional[str]:
     return None
 
 
-SEC_FINANCIAL_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+SEC_FINANCIAL_FORMS: Any = {"10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 
 SEC_FINANCIAL_CONCEPT_ROUTES: Dict[str, List[Tuple[str, str]]] = {
@@ -5127,7 +5533,7 @@ def _sec_concept_routes_for_names(concept_names: Sequence[str]) -> List[Tuple[st
     routes: List[Tuple[str, str]] = []
     for taxonomy in ("us-gaap", "ifrs-full"):
         for concept in concept_names:
-            route = (taxonomy, concept)
+            route: Any = (taxonomy, concept)
             if route not in routes:
                 routes.append(route)
     return routes
@@ -5150,11 +5556,11 @@ def _facts_from_concept_object(
     concept_priority: int = 0,
 ) -> List[Dict[str, Any]]:
     output: List[Dict[str, Any]] = []
-    units = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
-    unit = "USD" if "USD" in units else next(iter(units), None)
+    units: Any = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
+    unit: Any = "USD" if "USD" in units else next(iter(units), None)
     if not unit:
         return output
-    facts = units.get(unit, [])
+    facts: Any = units.get(unit, [])
     if not isinstance(facts, list):
         return output
     for fact in facts:
@@ -5170,6 +5576,7 @@ def _facts_from_concept_object(
             "concept_priority": concept_priority,
             "label": concept_obj.get("label", concept),
             "unit": unit,
+            "start": fact.get("start"),
             "period": fact.get("end"),
             "fy": fact.get("fy"),
             "fp": fact.get("fp"),
@@ -5184,11 +5591,11 @@ def _facts_from_concept_object(
 
 
 def _latest_facts_by_concept(companyfacts: Mapping[str, Any], concept_names: Sequence[str]) -> List[Dict[str, Any]]:
-    facts = companyfacts.get("facts", {}) if isinstance(companyfacts.get("facts"), Mapping) else {}
+    facts: Any = companyfacts.get("facts", {}) if isinstance(companyfacts.get("facts"), Mapping) else {}
     output: List[Dict[str, Any]] = []
     for concept_priority, (taxonomy, concept) in enumerate(_sec_concept_routes_for_names(concept_names)):
-        taxonomy_obj = facts.get(taxonomy, {}) if isinstance(facts.get(taxonomy), Mapping) else {}
-        concept_obj = taxonomy_obj.get(concept)
+        taxonomy_obj: Any = facts.get(taxonomy, {}) if isinstance(facts.get(taxonomy), Mapping) else {}
+        concept_obj: Any = taxonomy_obj.get(concept)
         if isinstance(concept_obj, Mapping):
             output.extend(_facts_from_concept_object(concept, concept_obj, taxonomy=taxonomy, concept_priority=concept_priority))
     output.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
@@ -5196,25 +5603,25 @@ def _latest_facts_by_concept(companyfacts: Mapping[str, Any], concept_names: Seq
 
 
 def _latest_sec_shares_outstanding(companyfacts: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
-    facts = companyfacts.get("facts", {}) if isinstance(companyfacts.get("facts"), Mapping) else {}
+    facts: Any = companyfacts.get("facts", {}) if isinstance(companyfacts.get("facts"), Mapping) else {}
     candidates: List[Dict[str, Any]] = []
-    concept_routes = [
+    concept_routes: Any = [
         ("dei", "EntityCommonStockSharesOutstanding"),
         ("us-gaap", "CommonStocksIncludingAdditionalPaidInCapital"),
     ]
     for taxonomy, concept in concept_routes:
-        taxonomy_obj = facts.get(taxonomy, {}) if isinstance(facts.get(taxonomy), Mapping) else {}
-        concept_obj = taxonomy_obj.get(concept)
+        taxonomy_obj: Any = facts.get(taxonomy, {}) if isinstance(facts.get(taxonomy), Mapping) else {}
+        concept_obj: Any = taxonomy_obj.get(concept)
         if not isinstance(concept_obj, Mapping):
             continue
-        units = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
+        units: Any = concept_obj.get("units", {}) if isinstance(concept_obj.get("units"), Mapping) else {}
         for unit, rows in units.items():
             if not isinstance(rows, list):
                 continue
             for row in rows:
                 if not isinstance(row, Mapping):
                     continue
-                value = _safe_float(row.get("val"))
+                value: Any = _safe_float(row.get("val"))
                 if value is None or value <= 0:
                     continue
                 if concept == "CommonStocksIncludingAdditionalPaidInCapital" and "share" not in str(unit).lower():
@@ -5236,55 +5643,116 @@ def _latest_sec_shares_outstanding(companyfacts: Mapping[str, Any]) -> Optional[
     return candidates[-1]
 
 
+SEC_FLOW_FIELDS: Any = {"revenue", "gross_profit", "net_income", "operating_cash_flow"}
+SEC_METADATA_FIELDS: Any = ["revenue", "net_income", "operating_cash_flow", "gross_profit", "assets", "liabilities", "equity", "accounts_receivable", "inventory"]
+
+
+def _sec_period_key_for_fact(field: str, fact: Mapping[str, Any]) -> Tuple[str, str]:
+    period: Any = str(fact.get("period") or "")
+    if field in SEC_FLOW_FIELDS:
+        return period, str(fact.get("fp") or fact.get("form") or fact.get("start") or "")
+    return period, ""
+
+
+def _sec_fact_preferred(row: Mapping[str, Any], field: str, fact: Mapping[str, Any]) -> bool:
+    if field not in row:
+        return True
+    existing_priority: Any = _safe_int(row.get(f"{field}_concept_priority"))
+    new_priority: Any = _safe_int(fact.get("concept_priority"))
+    if existing_priority is not None and new_priority is not None and existing_priority != new_priority:
+        return new_priority < existing_priority
+    existing_filed: Any = str(row.get(f"{field}_filed") or "")
+    new_filed: Any = str(fact.get("filed") or "")
+    if field in SEC_FLOW_FIELDS:
+        existing_fy: Any = _safe_int(row.get(f"{field}_fy"))
+        new_fy: Any = _safe_int(fact.get("fy"))
+        if existing_fy is not None and new_fy is not None and existing_fy != new_fy:
+            return bool(new_filed and (not existing_filed or new_filed < existing_filed))
+    return new_filed >= existing_filed
+
+
+def _put_sec_fact(row: Dict[str, Any], field: str, fact: Mapping[str, Any]) -> None:
+    if not _sec_fact_preferred(row, field, fact):
+        return
+    row[field] = fact.get("value")
+    row[f"{field}_concept"] = fact.get("concept")
+    row[f"{field}_taxonomy"] = fact.get("taxonomy")
+    row[f"{field}_unit"] = fact.get("unit")
+    row[f"{field}_concept_priority"] = fact.get("concept_priority")
+    row[f"{field}_filed"] = fact.get("filed")
+    row[f"{field}_form"] = fact.get("form")
+    row[f"{field}_fy"] = fact.get("fy")
+    row[f"{field}_fp"] = fact.get("fp")
+    row[f"{field}_frame"] = fact.get("frame")
+    row[f"{field}_accession"] = fact.get("accession")
+    row[f"{field}_period_start"] = fact.get("start")
+
+
+def _set_sec_row_metadata(row: Dict[str, Any]) -> None:
+    for field in SEC_METADATA_FIELDS:
+        if row.get(field) is None:
+            continue
+        for source_key, target_key in [
+            ("fy", "fy"),
+            ("fp", "fp"),
+            ("form", "form"),
+            ("filed", "filed"),
+            ("frame", "frame"),
+            ("accession", "accession"),
+            ("period_start", "period_start"),
+        ]:
+            value: Any = row.get(f"{field}_{source_key}")
+            if value not in (None, ""):
+                row[target_key] = value
+        return
+
+
 def _period_rows_from_field_facts(field_facts: Mapping[str, Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-    rows_by_period: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    rows_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    rows_by_period: Dict[str, List[Dict[str, Any]]] = {}
+
     for field, facts in field_facts.items():
+        if field not in SEC_FLOW_FIELDS:
+            continue
         for fact in facts:
-            key = (
-                str(fact.get("period") or ""),
-                str(fact.get("fp") or ""),
-            )
-            row = rows_by_period.setdefault(key, {
-                "period": fact.get("period"),
-                "fy": fact.get("fy"),
-                "fp": fact.get("fp"),
-                "form": fact.get("form"),
-                "filed": fact.get("filed"),
-            })
-            existing_priority = _safe_int(row.get(f"{field}_concept_priority"))
-            new_priority = _safe_int(fact.get("concept_priority"))
-            existing_filed = str(row.get(f"{field}_filed") or row.get("filed") or "")
-            new_filed = str(fact.get("filed") or "")
-            if field in row:
-                if existing_priority is not None and new_priority is not None:
-                    if existing_priority < new_priority:
-                        continue
-                    if existing_priority == new_priority and existing_filed > new_filed:
-                        continue
-                elif existing_filed > new_filed:
-                    continue
-            row[field] = fact.get("value")
-            row[f"{field}_concept"] = fact.get("concept")
-            row[f"{field}_taxonomy"] = fact.get("taxonomy")
-            row[f"{field}_unit"] = fact.get("unit")
-            row[f"{field}_concept_priority"] = fact.get("concept_priority")
-            row[f"{field}_filed"] = fact.get("filed")
-            row[f"{field}_form"] = fact.get("form")
-            if new_filed >= str(row.get("filed") or ""):
-                row["fy"] = fact.get("fy")
-                row["fp"] = fact.get("fp")
-                row["form"] = fact.get("form")
-                row["filed"] = fact.get("filed")
-    core_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
-    rows = [
+            key: Any = _sec_period_key_for_fact(field, fact)
+            if not key[0]:
+                continue
+            row: Any = rows_by_key.setdefault(key, {"period": fact.get("period")})
+            period_rows: Any = rows_by_period.setdefault(key[0], [])
+            if row not in period_rows:
+                period_rows.append(row)
+            _put_sec_fact(row, field, fact)
+
+    for field, facts in field_facts.items():
+        if field in SEC_FLOW_FIELDS:
+            continue
+        for fact in facts:
+            period: Any = str(fact.get("period") or "")
+            if not period:
+                continue
+            target_rows: Any = rows_by_period.get(period)
+            if not target_rows:
+                key = _sec_period_key_for_fact(field, fact)
+                row = rows_by_key.setdefault(key, {"period": fact.get("period")})
+                rows_by_period.setdefault(period, []).append(row)
+                target_rows = [row]
+            for row in target_rows:
+                _put_sec_fact(row, field, fact)
+
+    for row in rows_by_key.values():
+        _set_sec_row_metadata(row)
+
+    core_fields: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    rows: Any = [
         row
-        for row in rows_by_period.values()
+        for row in rows_by_key.values()
         if any(row.get(field) is not None for field in core_fields)
     ]
     for row in rows:
         if "liabilities" not in row and "assets" in row and "equity" in row:
-            assets = _safe_float(row.get("assets"))
-            equity = _safe_float(row.get("equity"))
+            assets: Any = _safe_float(row.get("assets"))
+            equity: Any = _safe_float(row.get("equity"))
             if assets is not None and equity is not None:
                 row["liabilities"] = assets - equity
                 row["liabilities_concept"] = "derived_from_assets_minus_equity"
@@ -5304,7 +5772,7 @@ def _period_rows_from_companyconcepts(concept_payloads: Mapping[str, Mapping[str
     for field, routes in SEC_FINANCIAL_CONCEPT_ROUTES.items():
         facts: List[Dict[str, Any]] = []
         for concept_priority, (taxonomy, concept) in enumerate(routes):
-            payload = concept_payloads.get(_sec_concept_key(taxonomy, concept))
+            payload: Any = concept_payloads.get(_sec_concept_key(taxonomy, concept))
             if isinstance(payload, Mapping):
                 facts.extend(_facts_from_concept_object(concept, payload, taxonomy=taxonomy, concept_priority=concept_priority))
         field_facts[field] = facts
@@ -5312,9 +5780,9 @@ def _period_rows_from_companyconcepts(concept_payloads: Mapping[str, Mapping[str
 
 
 def _sec_reporting_currency(periods: Sequence[Mapping[str, Any]]) -> Optional[str]:
-    core_fields = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+    core_fields: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
     for row in reversed(periods):
-        units = {
+        units: Any = {
             str(row.get(f"{field}_unit") or "").strip()
             for field in core_fields
             if row.get(field) is not None and row.get(f"{field}_unit")
@@ -5328,10 +5796,10 @@ def _sec_reporting_currency(periods: Sequence[Mapping[str, Any]]) -> Optional[st
 class SecCompanyFactsProvider:
     """Official SEC JSON adapter for US company facts and submissions."""
 
-    name = "SEC_Companyfacts_L0"
-    level = SourceLevel.L0
-    markets = [Market.US]
-    datasets = [Dataset.FINANCIALS, Dataset.FILINGS, Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
+    name: Any = "SEC_Companyfacts_L0"
+    level: Any = SourceLevel.L0
+    markets: Any = [Market.US]
+    datasets: Any = [Dataset.FINANCIALS, Dataset.FILINGS, Dataset.SHARE_CAPITAL, Dataset.VALUATION_INPUTS]
 
     def __init__(self) -> None:
         self._cik_cache: Dict[str, str] = {}
@@ -5339,9 +5807,9 @@ class SecCompanyFactsProvider:
     def _resolve_cik(self, symbol: SymbolInfo, *, user_agent: str) -> Optional[str]:
         if symbol.cik:
             return str(symbol.cik).zfill(10)
-        token = symbol.symbol.upper()
+        token: Any = symbol.symbol.upper()
         if token not in self._cik_cache:
-            cik = _sec_cik_from_ticker(token, user_agent=user_agent)
+            cik: Any = _sec_cik_from_ticker(token, user_agent=user_agent)
             if cik:
                 self._cik_cache[token] = cik
         return self._cik_cache.get(token)
@@ -5349,12 +5817,14 @@ class SecCompanyFactsProvider:
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.US:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC JSON only supports US/SEC filers")
+        user_agent: Any
+        warnings: Any
         user_agent, warnings = _sec_user_agent()
         try:
-            cik = self._resolve_cik(symbol, user_agent=user_agent)
+            cik: Any = self._resolve_cik(symbol, user_agent=user_agent)
             if not cik:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve SEC CIK for {symbol.symbol}")
-            raw_dir = kwargs.get("raw_dir")
+            raw_dir: Any = kwargs.get("raw_dir")
             if dataset == Dataset.FILINGS:
                 return self._fetch_filings(symbol, cik, user_agent=user_agent, raw_dir=raw_dir, warnings=warnings)
             if dataset == Dataset.FINANCIALS:
@@ -5375,32 +5845,32 @@ class SecCompanyFactsProvider:
         raw_dir: Optional[str | Path],
         warnings: List[str],
     ) -> DataResult:
-        submissions_payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
-        identity_error = _sec_identity_error(symbol, cik, submissions_payload)
+        submissions_payload: Any = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error: Any = _sec_identity_error(symbol, cik, submissions_payload)
         if identity_error:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, identity_error)
-        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-        payload = https_json(url, user_agent=user_agent)
-        share_fact = _latest_sec_shares_outstanding(payload)
+        url: Any = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+        payload: Any = https_json(url, user_agent=user_agent)
+        share_fact: Any = _latest_sec_shares_outstanding(payload)
         if not share_fact:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC companyfacts returned no usable common shares outstanding fact")
-        total_shares = _safe_float(share_fact.get("value"))
+        total_shares: Any = _safe_float(share_fact.get("value"))
         if total_shares is None or total_shares <= 0:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC companyfacts share count is not positive")
-        valuation_shares = total_shares
+        valuation_shares: Any = total_shares
         ads_ratio: Optional[Dict[str, Any]] = None
         quote: Mapping[str, Any] = {}
         quote_result: Optional[DataResult] = None
         price: Optional[float] = None
         total_market_cap: Optional[float] = None
         ads_ratio_attempts: List[Dict[str, Any]] = []
-        source_basis = "official_disclosure"
-        market_cap_basis = "Current market-cap fields were not requested for share_capital."
-        valuation_warnings = list(warnings)
+        source_basis: Any = "official_disclosure"
+        market_cap_basis: Any = "Current market-cap fields were not requested for share_capital."
+        valuation_warnings: Any = list(warnings)
         if dataset == Dataset.VALUATION_INPUTS:
             quote_result = YahooChartProvider().fetch(symbol, Dataset.CURRENT_QUOTE, raw_dir=raw_dir)
             if not quote_result.ok:
-                reason = "; ".join(quote_result.errors) or "Yahoo current quote did not return usable data"
+                reason: Any = "; ".join(quote_result.errors) or "Yahoo current quote did not return usable data"
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"SEC share count resolved, but current quote is unavailable for valuation inputs: {reason}")
             quote = quote_result.data if isinstance(quote_result.data, Mapping) else {}
             price = _safe_float(quote.get("regular_market_price"))
@@ -5408,9 +5878,9 @@ class SecCompanyFactsProvider:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC share count resolved, but current quote price is not positive")
             if _ads_ratio_required(symbol, submissions_payload):
                 ads_ratio, ads_ratio_attempts = _resolve_ads_ratio(symbol, cik, submissions_payload, user_agent=user_agent, raw_dir=raw_dir)
-                ratio_value = _safe_float(ads_ratio.get("ratio") if isinstance(ads_ratio, Mapping) else None)
+                ratio_value: Any = _safe_float(ads_ratio.get("ratio") if isinstance(ads_ratio, Mapping) else None)
                 if ratio_value is None or ratio_value <= 0:
-                    attempt_summary = "; ".join(
+                    attempt_summary: Any = "; ".join(
                         f"{item.get('source')}={item.get('status')}{': ' + str(item.get('reason')) if item.get('reason') else ''}"
                         for item in ads_ratio_attempts
                     ) or "no ADS-ratio source attempted"
@@ -5434,12 +5904,14 @@ class SecCompanyFactsProvider:
             if quote_result.source_level == SourceLevel.L2:
                 valuation_warnings.append("US valuation_inputs combine SEC official share count with an L2 current quote; verify before final valuation claims.")
 
-        share_count_basis = f"SEC {share_fact.get('taxonomy')}:{share_fact.get('concept')} filed={share_fact.get('filed')} form={share_fact.get('form')}"
+        share_count_basis: Any = f"SEC {share_fact.get('taxonomy')}:{share_fact.get('concept')} filed={share_fact.get('filed')} form={share_fact.get('form')}"
         if ads_ratio:
             ratio_value = _safe_float(ads_ratio.get("ratio"))
             if ratio_value is not None:
                 share_count_basis = f"SEC underlying shares converted to ADS-equivalent shares by ADS ratio {ratio_value:g}"
 
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_payload: Mapping[str, Any]
@@ -5458,7 +5930,7 @@ class SecCompanyFactsProvider:
             else:
                 raw_payload = payload
             raw_path, raw_hash = save_raw_json(raw_payload, raw_dir, f"{symbol.symbol}_{dataset.value}_sec_companyfacts_raw.json")
-        data = {
+        data: Any = {
             "symbol": symbol.symbol,
             "name": quote.get("name") or payload.get("entityName") or submissions_payload.get("name"),
             "cik": cik,
@@ -5511,19 +5983,21 @@ class SecCompanyFactsProvider:
         raw_dir: Optional[str | Path],
         warnings: List[str],
     ) -> DataResult:
-        payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
-        identity_error = _sec_identity_error(symbol, cik, payload)
+        payload: Any = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error: Any = _sec_identity_error(symbol, cik, payload)
         if identity_error:
             return DataResult.failed(Dataset.FILINGS, symbol.symbol, self.name, self.level, identity_error)
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_sec_submissions_raw.json")
-        recent = payload.get("filings", {}).get("recent", {}) if isinstance(payload.get("filings"), Mapping) else {}
-        forms = recent.get("form", []) or []
-        filing_dates = recent.get("filingDate", []) or []
-        report_dates = recent.get("reportDate", []) or []
-        accession_numbers = recent.get("accessionNumber", []) or []
-        primary_documents = recent.get("primaryDocument", []) or []
+        recent: Any = payload.get("filings", {}).get("recent", {}) if isinstance(payload.get("filings"), Mapping) else {}
+        forms: Any = recent.get("form", []) or []
+        filing_dates: Any = recent.get("filingDate", []) or []
+        report_dates: Any = recent.get("reportDate", []) or []
+        accession_numbers: Any = recent.get("accessionNumber", []) or []
+        primary_documents: Any = recent.get("primaryDocument", []) or []
         filings: List[Dict[str, Any]] = []
         for idx, form in enumerate(forms[:80]):
             filings.append({
@@ -5564,17 +6038,19 @@ class SecCompanyFactsProvider:
         raw_dir: Optional[str | Path],
         warnings: List[str],
     ) -> DataResult:
-        submissions_payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
-        identity_error = _sec_identity_error(symbol, cik, submissions_payload)
+        submissions_payload: Any = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error: Any = _sec_identity_error(symbol, cik, submissions_payload)
         if identity_error:
             return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, identity_error)
-        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-        payload = https_json(url, user_agent=user_agent)
+        url: Any = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+        payload: Any = https_json(url, user_agent=user_agent)
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(payload, raw_dir, f"{symbol.symbol}_sec_companyfacts_raw.json")
-        periods = _period_rows_from_sec_facts(payload)
-        facts = _latest_facts_by_concept(payload, [
+        periods: Any = _period_rows_from_sec_facts(payload)
+        facts: Any = _latest_facts_by_concept(payload, [
             "RevenueFromContractWithCustomerExcludingAssessedTax",
             "Revenues",
             "SalesRevenueNet",
@@ -5587,8 +6063,8 @@ class SecCompanyFactsProvider:
         ])
         if not periods and not facts:
             return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, "SEC companyfacts returned no usable financial facts")
-        as_of = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
-        reporting_currency = _sec_reporting_currency(periods) or symbol.currency
+        as_of: Any = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
+        reporting_currency: Any = _sec_reporting_currency(periods) or symbol.currency
         return DataResult(
             True,
             Dataset.FINANCIALS,
@@ -5622,10 +6098,10 @@ class SecCompanyConceptsProvider:
     the current network path.
     """
 
-    name = "SEC_CompanyConcepts_L0"
-    level = SourceLevel.L0
-    markets = [Market.US]
-    datasets = [Dataset.FINANCIALS]
+    name: Any = "SEC_CompanyConcepts_L0"
+    level: Any = SourceLevel.L0
+    markets: Any = [Market.US]
+    datasets: Any = [Dataset.FINANCIALS]
 
     def __init__(self) -> None:
         self._cik_cache: Dict[str, str] = {}
@@ -5633,9 +6109,9 @@ class SecCompanyConceptsProvider:
     def _resolve_cik(self, symbol: SymbolInfo, *, user_agent: str) -> Optional[str]:
         if symbol.cik:
             return str(symbol.cik).zfill(10)
-        token = symbol.symbol.upper()
+        token: Any = symbol.symbol.upper()
         if token not in self._cik_cache:
-            cik = _sec_cik_from_ticker(token, user_agent=user_agent)
+            cik: Any = _sec_cik_from_ticker(token, user_agent=user_agent)
             if cik:
                 self._cik_cache[token] = cik
         return self._cik_cache.get(token)
@@ -5645,9 +6121,11 @@ class SecCompanyConceptsProvider:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC companyconcept only supports US/SEC filers")
         if dataset != Dataset.FINANCIALS:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        user_agent: Any
+        warnings: Any
         user_agent, warnings = _sec_user_agent()
         try:
-            cik = self._resolve_cik(symbol, user_agent=user_agent)
+            cik: Any = self._resolve_cik(symbol, user_agent=user_agent)
             if not cik:
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"could not resolve SEC CIK for {symbol.symbol}")
             return self._fetch_financials(symbol, cik, user_agent=user_agent, raw_dir=kwargs.get("raw_dir"), warnings=warnings)
@@ -5663,17 +6141,17 @@ class SecCompanyConceptsProvider:
         raw_dir: Optional[str | Path],
         warnings: List[str],
     ) -> DataResult:
-        submissions_payload = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
-        identity_error = _sec_identity_error(symbol, cik, submissions_payload)
+        submissions_payload: Any = _fetch_sec_submissions_payload(cik, user_agent=user_agent)
+        identity_error: Any = _sec_identity_error(symbol, cik, submissions_payload)
         if identity_error:
             return DataResult.failed(Dataset.FINANCIALS, symbol.symbol, self.name, self.level, identity_error)
         concept_payloads: Dict[str, Mapping[str, Any]] = {}
         concept_errors: List[str] = []
         for taxonomy, concept in _all_sec_financial_concept_routes():
-            concept_key = _sec_concept_key(taxonomy, concept)
-            url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/{taxonomy}/{concept}.json"
+            concept_key: Any = _sec_concept_key(taxonomy, concept)
+            url: Any = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/{taxonomy}/{concept}.json"
             try:
-                payload = https_json(url, user_agent=user_agent, retries=1)
+                payload: Any = https_json(url, user_agent=user_agent, retries=1)
             except urllib.error.HTTPError as exc:
                 if exc.code == 404:
                     concept_errors.append(f"{concept_key}: not reported")
@@ -5695,6 +6173,8 @@ class SecCompanyConceptsProvider:
                 "SEC companyconcept returned no usable concepts: " + " | ".join(concept_errors[:8]),
             )
 
+        raw_path: Any
+        raw_hash: Any
         raw_path = raw_hash = None
         if raw_dir:
             raw_path, raw_hash = save_raw_json(
@@ -5708,9 +6188,12 @@ class SecCompanyConceptsProvider:
                 f"{symbol.symbol}_sec_companyconcepts_raw.json",
             )
 
-        periods = _period_rows_from_companyconcepts(concept_payloads)
+        periods: Any = _period_rows_from_companyconcepts(concept_payloads)
         latest_facts: List[Dict[str, Any]] = []
         for concept_key, payload in concept_payloads.items():
+            taxonomy: Any
+            _: Any
+            concept: Any
             taxonomy, _, concept = concept_key.partition(":")
             latest_facts.extend(_facts_from_concept_object(concept, payload, taxonomy=taxonomy))
         latest_facts.sort(key=lambda row: (str(row.get("period") or ""), str(row.get("filed") or ""), str(row.get("concept") or "")))
@@ -5724,7 +6207,7 @@ class SecCompanyConceptsProvider:
                 "SEC companyconcept returned payloads but no 10-K/10-Q financial facts",
             )
 
-        entity_name = next(
+        entity_name: Any = next(
             (
                 str(payload.get("entityName"))
                 for payload in concept_payloads.values()
@@ -5732,8 +6215,8 @@ class SecCompanyConceptsProvider:
             ),
             None,
         )
-        as_of = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
-        reporting_currency = _sec_reporting_currency(periods) or symbol.currency
+        as_of: Any = max((str(row.get("filed") or row.get("period") or "") for row in periods), default=None)
+        reporting_currency: Any = _sec_reporting_currency(periods) or symbol.currency
         if concept_errors:
             warnings = list(warnings) + ["Some SEC concepts were unavailable: " + " | ".join(concept_errors[:8])]
         return DataResult(
@@ -5771,26 +6254,26 @@ class SecEdgarProvider:
     - This skeleton returns failure if edgartools is unavailable or identity is missing.
     """
 
-    name = "SEC_EDGAR_edgartools"
-    level = SourceLevel.L0
-    markets = [Market.US]
-    datasets = [Dataset.FILINGS, Dataset.FINANCIALS]
+    name: Any = "SEC_EDGAR_edgartools"
+    level: Any = SourceLevel.L0
+    markets: Any = [Market.US]
+    datasets: Any = [Dataset.FILINGS, Dataset.FINANCIALS]
 
     def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
         if symbol.market != Market.US:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "SEC EDGAR only supports US/SEC filers")
-        identity = os.getenv("EDGAR_IDENTITY")
+        identity: Any = os.getenv("EDGAR_IDENTITY")
         if not identity:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "EDGAR_IDENTITY env var is required")
         try:
             from edgar import Company, set_identity  # type: ignore
             set_identity(identity)
-            company = Company(symbol.symbol)
+            company: Any = Company(symbol.symbol)
             if dataset == Dataset.FILINGS:
-                filings = company.get_filings()
+                filings: Any = company.get_filings()
                 return DataResult(True, dataset, symbol.symbol, self.name, self.level, utc_now(), data=filings, currency=symbol.currency)
             if dataset == Dataset.FINANCIALS:
-                financials = company.get_financials()
+                financials: Any = company.get_financials()
                 return DataResult(True, dataset, symbol.symbol, self.name, self.level, utc_now(), data=financials, currency=symbol.currency)
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"edgartools failed: {type(exc).__name__}: {exc}")
@@ -5835,16 +6318,16 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
 
 def main() -> None:
     import argparse
-    parser = argparse.ArgumentParser(description="Serenity + Chan data routing helper")
+    parser: Any = argparse.ArgumentParser(description="Serenity + Chan data routing helper")
     parser.add_argument("symbol", nargs="?", default="688019", help="ticker or stock code")
     parser.add_argument("--plan", action="store_true", help="print data fetch plan JSON")
-    args = parser.parse_args()
+    args: Any = parser.parse_args()
 
     if args.plan:
         print(json.dumps(build_data_fetch_plan(args.symbol), ensure_ascii=False, indent=2, default=str))
         return
 
-    symbol = resolve_symbol(args.symbol)
+    symbol: Any = resolve_symbol(args.symbol)
     print(json.dumps(symbol.__dict__, ensure_ascii=False, indent=2, default=str))
     for d in [Dataset.CURRENT_QUOTE, Dataset.FINANCIALS, Dataset.FILINGS, Dataset.PRICE_HISTORY_ADJUSTED]:
         print(json.dumps(source_policy(symbol.market, d).__dict__, ensure_ascii=False, indent=2, default=str))

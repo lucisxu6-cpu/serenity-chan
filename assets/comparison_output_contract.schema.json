@@ -12,6 +12,7 @@
     "growth_hypothesis_matrix",
     "technical_timing_matrix",
     "capital_actions",
+    "data_consumption_audit",
     "research_debt",
     "candidate_priority_ranking",
     "final_decision"
@@ -89,6 +90,8 @@
           "symbol",
           "valuation_input_ref",
           "status",
+          "valuation_stage",
+          "valuation_confidence",
           "regular_market_price",
           "total_shares",
           "total_market_cap",
@@ -109,6 +112,14 @@
           "status": {
             "type": "string",
             "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+          },
+          "valuation_stage": {
+            "type": "string",
+            "enum": ["unavailable", "preflight", "verified_l0", "verified_l1", "deep_valuation"]
+          },
+          "valuation_confidence": {
+            "type": "string",
+            "enum": ["blocked", "low", "medium", "high"]
           },
           "regular_market_price": { "type": ["number", "null"] },
           "total_shares": { "type": ["number", "null"] },
@@ -147,6 +158,8 @@
           "evidence_supported_growth",
           "gap",
           "h4_h5_evidence_bar_met",
+          "valuation_stage",
+          "valuation_confidence",
           "required_next_evidence"
         ],
         "properties": {
@@ -167,6 +180,14 @@
           "total_shares": { "type": ["number", "null"] },
           "pe_preflight": { "type": ["number", "null"] },
           "ps_preflight": { "type": ["number", "null"] },
+          "valuation_stage": {
+            "type": "string",
+            "enum": ["unavailable", "preflight", "verified_l0", "verified_l1", "deep_valuation"]
+          },
+          "valuation_confidence": {
+            "type": "string",
+            "enum": ["blocked", "low", "medium", "high"]
+          },
           "posterior_basis": { "type": "string" }
         },
         "additionalProperties": true
@@ -181,6 +202,38 @@
       "type": "array",
       "minItems": 2,
       "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
+    "data_consumption_audit": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "dataset", "raw_status", "row_count", "consumed_by", "consumption_status", "selected_period", "selection_rule", "warnings"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "dataset": { "type": "string" },
+          "raw_status": {
+            "type": "string",
+            "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+          },
+          "row_count": { "type": "integer", "minimum": 0 },
+          "consumed_by": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "consumption_status": {
+            "type": "string",
+            "enum": ["OK", "PARTIAL", "DATA_GATED", "MISMATCH"]
+          },
+          "selected_period": { "type": "string" },
+          "selection_rule": { "type": "string" },
+          "warnings": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
     },
     "research_debt": {
       "type": "array",
@@ -223,6 +276,7 @@
         "decision_mode",
         "score_gap_to_runner_up",
         "candidate_count_warning",
+        "ranking_validity",
         "decision",
         "next_research_actions"
       ],
@@ -230,10 +284,27 @@
         "top_candidate": { "type": "string" },
         "decision_mode": {
           "type": "string",
-          "enum": ["single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster"]
+          "enum": ["single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster", "comparison_not_decision_grade"]
         },
         "score_gap_to_runner_up": { "type": ["number", "null"] },
         "candidate_count_warning": { "type": "string" },
+        "ranking_validity": {
+          "type": "object",
+          "required": ["status", "reason", "blocked_by", "partial_axes"],
+          "properties": {
+            "status": { "type": "string", "enum": ["VALID", "PARTIAL", "INVALID"] },
+            "reason": { "type": "string" },
+            "blocked_by": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "partial_axes": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": true
+        },
         "decision": { "type": "string" },
         "next_research_actions": {
           "type": "array",
@@ -281,13 +352,13 @@
         },
         "primary_gate_class": {
           "type": "string",
-          "enum": ["NONE", "DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
+          "enum": ["NONE", "DATA_ACQUISITION", "EVIDENCE_VALIDATION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
         },
         "gate_classes": {
           "type": "object",
           "additionalProperties": {
             "type": "string",
-            "enum": ["DATA_ACQUISITION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
+            "enum": ["DATA_ACQUISITION", "EVIDENCE_VALIDATION", "RESEARCH_VALIDATION", "ACTION_TIMING"]
           }
         },
         "secondary_gates": {

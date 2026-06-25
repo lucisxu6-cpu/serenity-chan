@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Data Consumption Audit",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "symbol",
+      "dataset",
+      "raw_status",
+      "row_count",
+      "consumed_by",
+      "consumption_status",
+      "selected_period",
+      "selection_rule",
+      "warnings"
+    ],
+    "properties": {
+      "symbol": { "type": "string" },
+      "dataset": { "type": "string" },
+      "raw_status": {
+        "type": "string",
+        "enum": ["OK", "PARTIAL", "STALE", "FAILED", "PENDING", "NOT_APPLICABLE", "NOT_REQUESTED"]
+      },
+      "row_count": { "type": "integer", "minimum": 0 },
+      "consumed_by": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "consumption_status": {
+        "type": "string",
+        "enum": ["OK", "PARTIAL", "DATA_GATED", "MISMATCH"]
+      },
+      "selected_period": { "type": "string" },
+      "selection_rule": { "type": "string" },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "additionalProperties": true
+  }
+}

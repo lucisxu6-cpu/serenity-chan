@@ -130,8 +130,8 @@
         "HKEX or licensed vendor"
       ],
       "valuation_inputs": [
-        "HKEX annual/interim report issued-share disclosure plus Yahoo HK current quote",
-        "HKEX announcements / annual reports",
+        "HKEX annual/interim/monthly return/next-day disclosure issued-share evidence plus Yahoo HK current quote",
+        "HKEX announcements, annual/interim reports, monthly returns, and next-day disclosure returns",
         "Wind/Choice/Bloomberg"
       ],
       "financials": [
