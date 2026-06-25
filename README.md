@@ -42,6 +42,8 @@ flowchart LR
 | A 股、美股、港股源混用 | 先解析市场，再走市场专属披露源、行情源和禁用源规则 |
 | 股本、市值、PE/PS 需要决策约束 | `valuation_inputs` 默认取当前价格、总股本、总市值、货币、日期和来源口径；候选对比用 `valuation_input_matrix` 暴露估值输入，缺估值输入进入 `VALUATION_GATED` 且 `primary_gate_class=DATA_ACQUISITION`，估值证据不足进入 `VALUATION_GATED` 且 `primary_gate_class=RESEARCH_VALIDATION` |
 | 数据取到了但下游没用上 | `data_consumption_audit` 检查 financials / valuation_inputs 是否被财务、增长和排序矩阵正确消费；错配时 `ranking_validity=INVALID` |
+| 港股/跨市场币种不一致 | `currency_normalization_matrix` 把市值口径归一到财报口径；FX 失败时保留估值门控，不输出市场隐含增长 |
+| 财报金额单位和市值金额单位不同 | 财务矩阵显式记录 `financial_statement_unit` 与 `financial_unit_multiplier`；PE/PS 只使用绝对金额计算 |
 | 热点题材直接映射股票 | 先排产业链层级和瓶颈，再排公司候选 |
 | 财务数据来源强度不够 | A 股优先抽取 CNINFO L0 官方报告 PDF 核心财务行，覆盖中文与英文版合并报表；仅 F10 预检会生成财报验证债务并封顶到 B |
 | 平均分掩盖关键证据缺口 | 决策矩阵用非线性门控压低优先级，并区分数据获取、研究验证和行动时机 |
@@ -55,7 +57,7 @@ flowchart LR
 | 合同层 | 统一市场、数据状态、缺口类型、评级上限、取数记录 | `scripts/data_contracts.py` |
 | 取数层 | 供应商适配、原始数据保存、基础校验 | `scripts/data_layer.py` |
 | 路由层 | 生成 manifest、attempt ledger、data gaps、research debt、manual tasks | `scripts/data_router.py` |
-| 特征层 | 技术健康、A 股资本动作、财务质量、估值输入矩阵、预检级 PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py` |
+| 特征层 | 技术健康、A 股资本动作、财务质量、财报金额单位归一、估值输入矩阵、预检级 PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py`, `scripts/financial_amounts.py` |
 | AI 覆盖层 | 生成 AI 审阅包、AI 研究委员会包、校验 AI 研究 overlay、合并到候选对比 | `scripts/build_ai_review_packet.py`, `scripts/build_ai_committee_packet.py`, `scripts/validate_ai_overlay.py`, `scripts/merge_ai_research_overlay.py` |
 | 决策层 | Thesis Quality、Evidence Confidence、Market Payoff、Action Readiness | `scripts/serenity_chan_scorecard.py` |
 | 对比层 | 多候选研究债务、层级、财务、增长、技术、资本动作和优先级 | `scripts/build_comparison_report.py` |
@@ -81,7 +83,10 @@ flowchart LR
 | `data_acquisition.manual_retrieval_tasks` | 自动取数无法完成时的人工/agent 补数任务 |
 | `valuation_inputs` | 当前价格、总股本、总市值、货币、日期和来源口径；流通股和流通市值在源可得时记录 |
 | `valuation_input_matrix` | 候选对比中的估值输入审计表，逐候选暴露价格、股本、市值、来源、口径、验证需求和 warning |
+| `currency_normalization_matrix` | 候选对比中的币种归一表，逐候选暴露原始市值币种、财报币种、FX 汇率、归一后市值和失败原因 |
+| `financial_statement_unit` / `financial_unit_multiplier` | 财务矩阵中的金额单位口径；增长矩阵的 PE/PS 使用绝对收入和绝对净利润 |
 | `data_consumption_audit` | 候选对比中的数据消费审计表，确认取到的数据是否被财务、增长和排序矩阵正确消费 |
+| `readiness_matrix` | 候选对比中的三层状态表，拆分 Fetch Status、Research Readiness、Action Readiness 和 Data Evidence Cap |
 | `data_quality` | 当前请求和完整研究的评级上限 |
 | `ai_review` | 需要 AI 判断的源强度、行业口径、warning 和升级条件 |
 | `ai_research_overlay` | AI 对产业层级、卡点、收入传导、反证和下一步问题的结构化判断 |
@@ -109,10 +114,11 @@ flowchart LR
 
 候选对比会把正式评级上限、研究优先级、行动优先级和行动门控拆开呈现。行动门控同时输出 `primary_gate` 与 `primary_gate_class`：缺数据使用 `DATA_ACQUISITION`，财报/公告已取得但证据等级或复核不足使用 `EVIDENCE_VALIDATION`，产业链、估值增长和资本动作判断待验证使用 `RESEARCH_VALIDATION`，买点等待使用 `ACTION_TIMING`。同样是 `rating_cap=B` 时，财务质量、资本动作、技术健康、产业链层级和补证任务仍会形成不同的优先级。最终结论还会输出 `decision_mode`、`ranking_validity`、与第二名分差和候选池数量提示，避免候选差距很小时过度确定。
 
-`ranking_validity` 决定排序能否作为正式结论。`VALID` 可以输出正式候选排序，`PARTIAL` 只能作为研究优先级，`INVALID` 只输出工程诊断和补数/修复任务。
+`ranking_validity` 决定排序能否作为正式结论。`VALID` 可以输出正式候选排序，`PARTIAL` 只能作为研究优先级，`INVALID` 只输出工程诊断和补数/修复任务；报告标题会显示“工程诊断排序｜非投资候选排序”，并将 `decision_grade=false`。
 `MISMATCH` 会使 `ranking_validity=INVALID`；`PARTIAL` / `DATA_GATED` 数据消费或 high/critical `research_debt` 会使 `ranking_validity=PARTIAL`。
 
 AI overlay 提交产业链映射、证据支持增长、反证和下一步问题；`market_implied_growth` 由 `valuation_input_matrix`、PE/PS 和同币种财务口径生成。
+用户可读分析默认使用中文描述；机器字段可以保留英文枚举，但必须用中文解释含义和限制。
 
 ### 快速开始
 
@@ -171,9 +177,12 @@ python scripts/build_ai_committee_packet.py /tmp/serenity-chan-data/688019/manif
   --out /tmp/serenity-chan-data/688019/ai_committee_packet.json
 ```
 
-AI committee 的 `consensus`、`dissent`、`upgrade_conditions`、`downgrade_conditions` 是研究记录；最终 `ai_overlay.json` 只写 `assets/ai_research_overlay.schema.json` 允许字段。
+AI committee 的 `consensus`、`dissent`、`upgrade_conditions`、`downgrade_conditions` 是研究记录；最终 `ai_overlay.json` 只写 `assets/ai_research_overlay.schema.json` 允许字段。可用 `committee_to_overlay.py` 将已有 AI 委员会输出收敛为严格 overlay；脚本只做字段映射和校验，不凭空生成研究判断。
 
 ```bash
+python scripts/committee_to_overlay.py /tmp/serenity-chan-data/688019/ai_committee_output.json \
+  --out /tmp/serenity-chan-data/688019/ai_overlay.json
+
 python scripts/validate_ai_overlay.py /tmp/serenity-chan-data/688019/ai_overlay.json
 
 python scripts/merge_ai_research_overlay.py \

@@ -2402,6 +2402,10 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 extracted_periods,
                 required=financial_sector_profile_required,
             )
+            financial_sector_profile_fallback: Any = self._financial_sector_profile_fallback(
+                extracted_periods,
+                required=financial_sector_profile_required,
+            )
             evidence.update({
                 "source": self.name,
                 "source_level": self.level.value,
@@ -2415,6 +2419,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 "latest_core_complete_period": latest_core_complete_period,
                 "financial_sector_profile_required": financial_sector_profile_required,
                 "financial_sector_profile_status": financial_sector_profile_status,
+                "financial_sector_profile_fallback": financial_sector_profile_fallback,
                 "downloaded_reports": [
                     {
                         "report_kind": report.get("report_kind"),
@@ -2488,6 +2493,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                         "latest_core_complete_period": latest_core_complete_period,
                         "financial_sector_profile_required": financial_sector_profile_required,
                         "financial_sector_profile_status": financial_sector_profile_status,
+                        "financial_sector_profile_fallback": financial_sector_profile_fallback,
                         "source_role": "L0_OFFICIAL_REPORT_LINE_ITEMS",
                         "required_ai_action": "Review CNINFO PDF line evidence, reporting period basis, unit, industry reporting fit, and missing fields before assigning S/A.",
                     },
@@ -3289,6 +3295,35 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
         if profiles:
             return "PARTIAL"
         return "FAILED"
+
+    @staticmethod
+    def _financial_sector_profile_fallback(periods: Sequence[Mapping[str, Any]], *, required: bool) -> Dict[str, Any]:
+        if not required:
+            return {"available": False, "reason": "not_applicable"}
+        sorted_periods: Any = sorted(periods, key=lambda row: str(row.get("period") or ""))
+        if not sorted_periods:
+            return {"available": False, "reason": "no_periods"}
+        latest_period: Mapping[str, Any] = sorted_periods[-1]
+        latest_profile: Any = latest_period.get("financial_sector_profile")
+        if isinstance(latest_profile, Mapping) and latest_profile.get("status") == "OK":
+            return {"available": False, "reason": "latest_profile_ok"}
+        for period in reversed(sorted_periods[:-1]):
+            profile: Any = period.get("financial_sector_profile")
+            if isinstance(profile, Mapping) and profile.get("status") == "OK":
+                return {
+                    "available": True,
+                    "stale": True,
+                    "fallback_period": str(period.get("period") or ""),
+                    "latest_period": str(latest_period.get("period") or ""),
+                    "sector": str(profile.get("sector") or ""),
+                    "missing_latest_metrics": (
+                        list(latest_profile.get("missing_metrics", []))
+                        if isinstance(latest_profile, Mapping) and isinstance(latest_profile.get("missing_metrics"), list)
+                        else []
+                    ),
+                    "reason": "latest_profile_partial_but_prior_profile_ok",
+                }
+        return {"available": False, "reason": "no_prior_ok_profile"}
 
     @classmethod
     def _cn_period_from_report(cls, report: Mapping[str, Any], section_pages: Sequence[Mapping[str, Any]]) -> str:

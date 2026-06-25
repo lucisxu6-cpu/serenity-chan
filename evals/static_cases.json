@@ -727,6 +727,32 @@
     }
   },
   {
+    "name": "valuation-consumption-blocks-present-payload-without-market-cap",
+    "kind": "valuation_consumption_audit",
+    "symbol": "TEST.SH",
+    "raw_status": "OK",
+    "valuation_payload": {
+      "regular_market_price": 10,
+      "currency": "CNY"
+    },
+    "valuation_row": {
+      "currency": "CNY",
+      "as_of_date": "2026-06-25",
+      "source_basis": "incomplete_payload"
+    },
+    "growth_row": {
+      "market_implied_growth": "UNKNOWN"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "consumption_status": "DATA_GATED",
+      "reason_code": "MARKET_CAP_MISSING",
+      "blocked_matrices.0": "valuation_input_matrix",
+      "blocked_matrices.1": "growth_hypothesis_matrix",
+      "ranking_impact": "PARTIAL_UNTIL_FETCHED"
+    }
+  },
+  {
     "name": "comparison-report-validation-rejects-cross-symbol-valuation-ref",
     "kind": "comparison_report_validation",
     "manifests": [
@@ -2008,7 +2034,10 @@
         }
       ],
       "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
-      "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+      "research_questions": [
+        "Verify customer/order contribution and capacity utilization in the next filing cycle.",
+        "Cross-check whether gross-margin durability is supported by official product mix disclosures."
+      ],
       "ai_confidence": "HIGH"
     },
     "expect_pass": true,
@@ -2038,7 +2067,10 @@
         }
       ],
       "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
-      "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+      "research_questions": [
+        "Verify customer/order contribution and capacity utilization in the next filing cycle.",
+        "Cross-check whether gross-margin durability is supported by official product mix disclosures."
+      ],
       "ai_confidence": "HIGH"
     },
     "expect_pass": false
@@ -2065,7 +2097,10 @@
         }
       ],
       "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
-      "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+      "research_questions": [
+        "Verify customer/order contribution and capacity utilization in the next filing cycle.",
+        "Cross-check whether gross-margin durability is supported by official product mix disclosures."
+      ],
       "ai_confidence": "HIGH"
     },
     "expect_pass": false
@@ -2089,7 +2124,10 @@
         }
       ],
       "contrary_evidence": [],
-      "research_questions": ["Find L0/L1 customer and revenue evidence."],
+      "research_questions": [
+        "Find L0/L1 customer and revenue evidence.",
+        "Verify whether secondary theme exposure maps to audited revenue lines."
+      ],
       "ai_confidence": "HIGH"
     },
     "expect_pass": false
@@ -2161,7 +2199,10 @@
           }
         ],
         "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
-        "research_questions": ["Verify customer/order contribution and capacity utilization in the next filing cycle."],
+        "research_questions": [
+          "Verify customer/order contribution and capacity utilization in the next filing cycle.",
+          "Cross-check whether gross-margin durability is supported by official product mix disclosures."
+        ],
         "ai_confidence": "HIGH"
       },
       "688322.SH": {
@@ -2181,7 +2222,10 @@
           }
         ],
         "contrary_evidence": ["Operating cash flow and valuation remain pressure points."],
-        "research_questions": ["Verify robotics/customer revenue split and order durability."],
+        "research_questions": [
+          "Verify robotics/customer revenue split and order durability.",
+          "Check whether operating cash flow confirms the claimed recovery."
+        ],
         "ai_confidence": "MEDIUM"
       }
     },
@@ -2208,7 +2252,7 @@
         "bottleneck_reason": "The company may control a scarce compute platform, but this fixture intentionally lacks valuation inputs.",
         "revenue_transmission": "Revenue transmission requires valuation inputs before market-implied growth can be inferred.",
         "serenity_fit": 0.6,
-        "evidence_supported_growth": "H5",
+        "evidence_supported_growth": "H3",
         "key_evidence_refs": [
           {
             "claim": "The company is exposed to AI infrastructure demand.",
@@ -2218,7 +2262,10 @@
           }
         ],
         "contrary_evidence": ["Valuation inputs are not present in the manifest."],
-        "research_questions": ["Fetch current quote, total shares, total market cap, currency, and as-of date."],
+        "research_questions": [
+          "Fetch current quote, total shares, total market cap, currency, and as-of date.",
+          "Verify whether AI infrastructure exposure is visible in primary revenue disclosures."
+        ],
         "ai_confidence": "LOW"
       }
     },
@@ -2226,8 +2273,300 @@
     "expected_result": {
       "valuation_input_matrix.0.status": "NOT_REQUESTED",
       "growth_hypothesis_matrix.0.market_implied_growth": "UNKNOWN",
-      "growth_hypothesis_matrix.0.evidence_supported_growth": "H5",
+      "growth_hypothesis_matrix.0.evidence_supported_growth": "H3",
       "growth_hypothesis_matrix.0.gap": "valuation_input_required"
+    }
+  },
+  {
+    "name": "financial-amount-normalization-supports-million-reporting-unit",
+    "kind": "financial_amount_normalization",
+    "value": 224842,
+    "unit": "million",
+    "expect_pass": true,
+    "expected_result": {
+      "amount": 224842000000.0,
+      "multiplier": 1000000.0
+    }
+  },
+  {
+    "name": "financial-amount-normalization-supports-yi-yuan-reporting-unit",
+    "kind": "financial_amount_normalization",
+    "value": 12.34,
+    "unit": "亿元",
+    "expect_pass": true,
+    "expected_result": {
+      "amount": 1234000000.0,
+      "multiplier": 100000000.0
+    }
+  },
+  {
+    "name": "financial-currency-resolution-rejects-amount-unit-as-currency",
+    "kind": "financial_currency_resolution",
+    "financial": {
+      "unit": "million"
+    },
+    "latest_annual": {
+      "unit": "million"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": ""
+    }
+  },
+  {
+    "name": "financial-currency-resolution-rejects-polluted-currency-field",
+    "kind": "financial_currency_resolution",
+    "financial": {
+      "currency": "million"
+    },
+    "latest_annual": {},
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": ""
+    }
+  },
+  {
+    "name": "financial-currency-resolution-extracts-currency-field-with-amount-unit",
+    "kind": "financial_currency_resolution",
+    "financial": {
+      "currency": "RMB million"
+    },
+    "latest_annual": {},
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": "CNY"
+    }
+  },
+  {
+    "name": "financial-currency-resolution-extracts-rmb-million-unit",
+    "kind": "financial_currency_resolution",
+    "financial": {},
+    "latest_annual": {
+      "unit": "RMB million"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": "CNY"
+    }
+  },
+  {
+    "name": "financial-currency-resolution-extracts-hkd-million-unit",
+    "kind": "financial_currency_resolution",
+    "financial": {},
+    "latest_annual": {
+      "unit": "HKD millions"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": "HKD"
+    }
+  },
+  {
+    "name": "financial-currency-resolution-prefers-specific-chinese-currency-alias",
+    "kind": "financial_currency_resolution",
+    "financial": {},
+    "latest_annual": {
+      "unit": "美元百万元"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": "USD"
+    }
+  },
+  {
+    "name": "financial-currency-resolution-normalizes-rmb-currency",
+    "kind": "financial_currency_resolution",
+    "financial": {
+      "currency": "RMB",
+      "unit": "million"
+    },
+    "latest_annual": {
+      "unit": "million"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": "CNY"
+    }
+  },
+  {
+    "name": "financial-currency-resolution-accepts-sec-revenue-unit",
+    "kind": "financial_currency_resolution",
+    "financial": {},
+    "latest_annual": {
+      "revenue_unit": "USD",
+      "net_income_unit": "USD"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "financial_currency": "USD"
+    }
+  },
+  {
+    "name": "currency-normalization-does-not-treat-reporting-unit-as-currency",
+    "kind": "currency_normalization",
+    "symbol": "0700.HK",
+    "valuation": {
+      "symbol": "0700.HK",
+      "currency": "HKD",
+      "total_market_cap": 3856408879364.2,
+      "as_of_date": "2026-06-25"
+    },
+    "financial": {
+      "unit": "million"
+    },
+    "allow_network": false,
+    "expect_pass": true,
+    "expected_result": {
+      "normalization_status": "DATA_GATED",
+      "reason_code": "CURRENCY_MISSING",
+      "target_currency": ""
+    }
+  },
+  {
+    "name": "currency-normalization-rejects-polluted-currency-field",
+    "kind": "currency_normalization",
+    "symbol": "0700.HK",
+    "valuation": {
+      "symbol": "0700.HK",
+      "currency": "HKD",
+      "total_market_cap": 3856408879364.2,
+      "as_of_date": "2026-06-25"
+    },
+    "financial": {
+      "currency": "million"
+    },
+    "allow_network": false,
+    "expect_pass": true,
+    "expected_result": {
+      "normalization_status": "DATA_GATED",
+      "reason_code": "CURRENCY_MISSING",
+      "target_currency": ""
+    }
+  },
+  {
+    "name": "currency-normalization-extracts-currency-from-reporting-unit",
+    "kind": "currency_normalization",
+    "symbol": "0700.HK",
+    "valuation": {
+      "symbol": "0700.HK",
+      "currency": "HKD",
+      "total_market_cap": 3856408879364.2,
+      "as_of_date": "2026-06-25"
+    },
+    "financial": {
+      "unit": "RMB million"
+    },
+    "allow_network": false,
+    "expect_pass": true,
+    "expected_result": {
+      "normalization_status": "FAILED",
+      "reason_code": "FX_RATE_UNAVAILABLE",
+      "target_currency": "CNY"
+    }
+  },
+  {
+    "name": "currency-normalization-blocks-same-currency-without-market-cap",
+    "kind": "currency_normalization",
+    "symbol": "NVDA",
+    "valuation": {
+      "symbol": "NVDA",
+      "currency": "USD",
+      "as_of_date": "2026-06-25"
+    },
+    "financial": {
+      "currency": "USD"
+    },
+    "allow_network": false,
+    "expect_pass": true,
+    "expected_result": {
+      "normalization_status": "DATA_GATED",
+      "reason_code": "MARKET_CAP_MISSING",
+      "source_currency": "USD",
+      "target_currency": "USD",
+      "normalized_total_market_cap": null
+    }
+  },
+  {
+    "name": "growth-hypothesis-uses-absolute-financial-amounts-for-hk-reporting-unit",
+    "kind": "growth_hypothesis_amount_basis",
+    "symbol": "0700.HK",
+    "market": "HK",
+    "financial": {
+      "symbol": "0700.HK",
+      "status": "OK",
+      "score": 74.0,
+      "revenue": 751766.0,
+      "revenue_absolute": 751766000000.0,
+      "net_income": 224842.0,
+      "net_income_absolute": 224842000000.0,
+      "financial_currency": "CNY",
+      "valuation_currency": "CNY",
+      "financial_statement_unit": "million",
+      "financial_unit_multiplier": 1000000.0
+    },
+    "valuation": {
+      "symbol": "0700.HK",
+      "regular_market_price": 423.4,
+      "total_shares": 9108192913.0,
+      "total_market_cap": 3341578293969.08,
+      "currency": "CNY",
+      "as_of_date": "2026-06-25",
+      "source_basis": "static_hk_fx_normalized_preflight",
+      "market_cap_basis": "Static HKD market cap normalized to CNY for unit test."
+    },
+    "profile": {
+      "evidence_supported_growth": "H2"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "market_implied_growth": "H1",
+      "pe_preflight": 14.86,
+      "ps_preflight": 4.44,
+      "revenue_amount": 751766000000.0,
+      "net_income_amount": 224842000000.0,
+      "financial_statement_unit": "million",
+      "financial_unit_multiplier": 1000000.0
+    }
+  },
+  {
+    "name": "growth-hypothesis-blocks-when-financial-currency-is-missing",
+    "kind": "growth_hypothesis_amount_basis",
+    "symbol": "0700.HK",
+    "market": "HK",
+    "financial": {
+      "symbol": "0700.HK",
+      "status": "OK",
+      "score": 74.0,
+      "revenue": 751766.0,
+      "revenue_absolute": 751766000000.0,
+      "net_income": 224842.0,
+      "net_income_absolute": 224842000000.0,
+      "valuation_currency": "HKD",
+      "financial_statement_unit": "million",
+      "financial_unit_multiplier": 1000000.0
+    },
+    "valuation": {
+      "symbol": "0700.HK",
+      "regular_market_price": 423.4,
+      "total_shares": 9108192913.0,
+      "total_market_cap": 3856408879364.2,
+      "currency": "HKD",
+      "as_of_date": "2026-06-25",
+      "source_basis": "static_hk_preflight",
+      "market_cap_basis": "Static HKD market cap for missing financial currency test."
+    },
+    "profile": {
+      "evidence_supported_growth": "H2"
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "market_implied_growth": "UNKNOWN",
+      "gap": "valuation_currency_reconciliation_required",
+      "valuation_currency_match": null,
+      "financial_currency": "",
+      "valuation_currency": "HKD",
+      "pe_preflight": null,
+      "ps_preflight": null
     }
   }
 ]

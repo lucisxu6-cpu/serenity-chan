@@ -11,8 +11,10 @@ from typing import Any, Mapping, Optional, Sequence
 
 try:
     from build_comparison_report import build_comparison_report, to_markdown, validate_comparison_report
+    from report_labels import display_bool, display_label, display_list, display_mapping_pairs
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_comparison_report import build_comparison_report, to_markdown, validate_comparison_report
+    from scripts.report_labels import display_bool, display_label, display_list, display_mapping_pairs
 
 
 REPORT_MODES: set[str] = {"candidate_comparison", "full_research", "quick_audit"}
@@ -55,16 +57,13 @@ def _text(value: Any, default: str = "") -> str:
 
 def _joined(value: Any, *, empty: str = "") -> str:
     if isinstance(value, list):
-        items: list[str] = [str(item).strip() for item in value if str(item).strip()]
+        items: list[str] = [display_label(item) for item in value if str(item).strip()]
         return ", ".join(items) if items else empty
-    return _text(value, empty)
+    return display_label(value, empty)
 
 
 def _gate_class_summary(value: Any, *, empty: str = "none") -> str:
-    if not isinstance(value, Mapping):
-        return empty
-    items: list[str] = [f"{gate}={gate_class}" for gate, gate_class in value.items()]
-    return ", ".join(items) if items else empty
+    return display_mapping_pairs(value, empty=empty)
 
 
 def _research_debt_lines(rows: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -72,9 +71,9 @@ def _research_debt_lines(rows: Sequence[Mapping[str, Any]]) -> list[str]:
         return ["- 当前未记录高优先级研究债务。"]
     lines: list[str] = []
     for row in rows:
-        dataset: str = _text(row.get("dataset") or row.get("task_type"), "unknown")
-        priority: str = _text(row.get("priority"), "unknown")
-        impact: str = _text(row.get("decision_impact"), "unknown")
+        dataset: str = display_label(row.get("dataset") or row.get("task_type"), "未知数据集")
+        priority: str = display_label(row.get("priority"), "未知优先级")
+        impact: str = display_label(row.get("decision_impact"), "未标注影响")
         action: str = _text(row.get("next_action") or row.get("objective"), "待补充验证动作")
         lines.append(f"- `{dataset}` [{priority}/{impact}]：{action}")
     return lines
@@ -86,10 +85,12 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
     layer_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("serenity_layer_matrix")))
     financial_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("financial_quality_matrix")))
     valuation_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("valuation_input_matrix")))
+    currency_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("currency_normalization_matrix")))
     growth_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("growth_hypothesis_matrix")))
     technical_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("technical_timing_matrix")))
     capital_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("capital_actions")))
     ranking_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("candidate_priority_ranking")))
+    readiness_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("readiness_matrix")))
     debt_rows: dict[str, list[Mapping[str, Any]]] = _many_by_symbol(_mapping_rows(report.get("research_debt")))
 
     lines: list[str] = [
@@ -107,44 +108,51 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
         layer: Mapping[str, Any] = layer_rows.get(symbol, {})
         financial: Mapping[str, Any] = financial_rows.get(symbol, {})
         valuation: Mapping[str, Any] = valuation_rows.get(symbol, {})
+        currency: Mapping[str, Any] = currency_rows.get(symbol, {})
         growth: Mapping[str, Any] = growth_rows.get(symbol, {})
         technical: Mapping[str, Any] = technical_rows.get(symbol, {})
         capital: Mapping[str, Any] = capital_rows.get(symbol, {})
         ranking: Mapping[str, Any] = ranking_rows.get(symbol, {})
+        readiness: Mapping[str, Any] = readiness_rows.get(symbol, {})
         action_gate: Mapping[str, Any] = ranking.get("action_gate") if isinstance(ranking.get("action_gate"), Mapping) else {}
         status_by_dataset: Mapping[str, Any] = data.get("status_by_dataset") if isinstance(data.get("status_by_dataset"), Mapping) else {}
         company_debt: list[Mapping[str, Any]] = debt_rows.get(symbol, [])
+        sector_fallback: Mapping[str, Any] = financial.get("financial_sector_profile_fallback") if isinstance(financial.get("financial_sector_profile_fallback"), Mapping) else {}
 
         lines.extend([
             "",
             f"## {symbol} {name}".rstrip(),
             "",
             "### 研究状态",
-            f"- Rating Cap：`{_text(candidate.get('rating_cap'), 'OBSERVE_ONLY')}`",
-            f"- Research Priority：`{_text(ranking.get('research_priority_score'), 'NA')}`；Action Priority：`{_text(ranking.get('action_priority_score'), 'NA')}`；Action Readiness：`{_text(ranking.get('action_readiness'), 'NA')}`",
-            f"- Primary Gate：`{_text(action_gate.get('primary_gate'), 'NA')}`；Gate Class：`{_text(action_gate.get('primary_gate_class'), 'NA')}`",
-            f"- Gate Classes：{_gate_class_summary(action_gate.get('gate_classes'))}",
+            f"- 数据证据上限：`{_text(candidate.get('rating_cap'), 'OBSERVE_ONLY')}`，这是数据/证据允许的最高研究上限，不等于投资评级。",
+            f"- 三层状态：数据获取 `{display_label(readiness.get('fetch_status'), 'NA')}`；研究状态 `{display_label(readiness.get('research_readiness'), 'NA')}`；行动状态 `{display_label(readiness.get('action_readiness'), 'NA')}`；可形成结论 `{display_bool(readiness.get('decision_grade'))}`",
+            f"- 研究优先级：`{_text(ranking.get('research_priority_score'), 'NA')}`；行动优先级：`{_text(ranking.get('action_priority_score'), 'NA')}`；行动状态：`{display_label(ranking.get('action_readiness'), 'NA')}`",
+            f"- 主门控：`{display_label(action_gate.get('primary_gate'), 'NA')}`；门控类别：`{display_label(action_gate.get('primary_gate_class'), 'NA')}`",
+            f"- 门控类别明细：{_gate_class_summary(action_gate.get('gate_classes'), empty='无')}",
             f"- 数据包：`{_text(candidate.get('data_package_path'), 'NA')}`",
             "",
-            "### Serenity Thesis",
-            f"- Layer：{_text(layer.get('layer'), '待 AI/domain review')}",
-            f"- Bottleneck：{_text(layer.get('bottleneck_reason'), '待验证')}",
-            f"- Revenue Transmission：{_text(layer.get('revenue_transmission'), '待验证')}",
-            f"- Evidence Gap：{_text(layer.get('evidence_gap'), '待补证')}",
+            "### Serenity 研究假设",
+            f"- 产业链层级：{display_label(layer.get('layer'), '待 AI/行业研究复核')}",
+            f"- 瓶颈判断：{_text(layer.get('bottleneck_reason'), '待验证')}",
+            f"- 收入传导：{_text(layer.get('revenue_transmission'), '待验证')}",
+            f"- 证据缺口：{_text(layer.get('evidence_gap'), '待补证')}",
             "",
             "### 财务与估值",
-            f"- Data Acquisition：财报 `{_text(status_by_dataset.get('financials'), 'NA')}`；估值输入 `{_text(status_by_dataset.get('valuation_inputs') or valuation.get('status'), 'NA')}`；公告 `{_text(status_by_dataset.get('filings_announcements'), 'NA')}`",
-            f"- Financial Quality：score `{_text(financial.get('score'), 'NA')}`；latest annual `{_text(financial.get('latest_annual_period'), 'NA')}`；label `{_text(financial.get('label'), 'NA')}`",
-            f"- Valuation Inputs：stage `{_text(valuation.get('valuation_stage'), 'NA')}`；confidence `{_text(valuation.get('valuation_confidence'), 'NA')}`；market cap `{_text(valuation.get('total_market_cap'), 'NA')}` `{_text(valuation.get('currency'), '')}`",
-            f"- Market Growth：implied `{_text(growth.get('market_implied_growth'), 'UNKNOWN')}`；evidence `{_text(growth.get('evidence_supported_growth'), 'UNKNOWN')}`；gap `{_text(growth.get('gap'), 'NA')}`",
+            f"- 数据获取：财报 `{display_label(status_by_dataset.get('financials'), 'NA')}`；估值输入 `{display_label(status_by_dataset.get('valuation_inputs') or valuation.get('status'), 'NA')}`；公告 `{display_label(status_by_dataset.get('filings_announcements'), 'NA')}`",
+            f"- 财务质量：分数 `{_text(financial.get('score'), 'NA')}`；最新年报 `{_text(financial.get('latest_annual_period'), 'NA')}`；预检标签 `{display_label(financial.get('label'), 'NA')}`",
+            f"- 财务金额口径：披露单位 `{_text(financial.get('financial_statement_unit'), 'NA')}`；倍率 `{_text(financial.get('financial_unit_multiplier'), 'NA')}`；收入绝对额 `{_text(financial.get('revenue_absolute'), 'NA')}`；净利润绝对额 `{_text(financial.get('net_income_absolute'), 'NA')}`",
+            f"- 金融行业专项 profile：需要 `{display_bool(financial.get('financial_sector_profile_required'))}`；状态 `{display_label(financial.get('financial_sector_profile_status'), '不适用')}`；历史 profile 可用 `{display_bool(sector_fallback.get('available'))}` `{_text(sector_fallback.get('fallback_period'), '')}`",
+            f"- 估值输入：阶段 `{display_label(valuation.get('valuation_stage'), 'NA')}`；置信度 `{display_label(valuation.get('valuation_confidence'), 'NA')}`；总市值 `{_text(valuation.get('total_market_cap'), 'NA')}` `{_text(valuation.get('currency'), '')}`",
+            f"- 币种归一：`{display_label(currency.get('normalization_status'), 'NA')}`；`{_text(currency.get('source_currency'), '')}` → `{_text(currency.get('target_currency'), '')}`；归一后总市值 `{_text(currency.get('normalized_total_market_cap'), 'NA')}`",
+            f"- 市场隐含增长：市场 `{display_label(growth.get('market_implied_growth'), '未知')}`；证据 `{display_label(growth.get('evidence_supported_growth'), '未知')}`；缺口 `{display_label(growth.get('gap'), 'NA')}`；预检 PE `{_text(growth.get('pe_preflight'), 'NA')}`；预检 PS `{_text(growth.get('ps_preflight'), 'NA')}`",
             "",
             "### 技术与资本动作",
-            f"- Technical：trend `{_text(technical.get('trend_state'), 'NA')}`；Chan action `{_text(technical.get('chan_action'), 'NA')}`；buy-point claim allowed `{_text(technical.get('buy_point_claim_allowed'), 'NA')}`",
-            f"- Capital Actions：risk `{_text((capital.get('summary') or {}).get('material_risk_level') if isinstance(capital.get('summary'), Mapping) else None, 'NA')}`；actions `{_joined((capital.get('summary') or {}).get('action_types') if isinstance(capital.get('summary'), Mapping) else [], empty='none')}`",
+            f"- 技术状态：历史深度 `{display_label(technical.get('history_depth_status'), 'NA')}`；趋势 `{display_label(technical.get('trend_state'), 'NA')}`；缠论动作 `{display_label(technical.get('chan_action'), 'NA')}`；允许买点判断 `{display_bool(technical.get('buy_point_claim_allowed'))}`",
+            f"- 资本动作：风险 `{display_label((capital.get('summary') or {}).get('material_risk_level') if isinstance(capital.get('summary'), Mapping) else None, 'NA')}`；动作 `{display_list((capital.get('summary') or {}).get('action_types') if isinstance(capital.get('summary'), Mapping) else [], empty='无')}`",
             "",
             "### 待补证与 AI 研究任务",
-            f"- Required Next Evidence：{_text(growth.get('required_next_evidence'), '待拆解')}",
-            f"- Gate Reasons：{_joined(action_gate.get('blocking_reasons'), empty='none')}",
+            f"- 下一步关键证据：{_text(growth.get('required_next_evidence'), '待拆解')}",
+            f"- 门控原因：{_joined(action_gate.get('blocking_reasons'), empty='无')}",
             *_research_debt_lines(company_debt),
         ])
 
@@ -158,7 +166,7 @@ def _render_from_report(report: Mapping[str, Any], *, mode: str) -> str:
     markdown: str = to_markdown(report)
     if mode == "quick_audit":
         return "\n".join([
-            "> Quick audit mode: this is not a complete research report.",
+            "> 快速审计模式：这不是完整研究报告。",
             "",
             markdown,
         ])

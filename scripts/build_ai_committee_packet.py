@@ -80,6 +80,7 @@ OVERLAY_OPTIONAL_OUTPUTS: list[str] = [
     "layer_score",
     "company_fit",
     "evidence_supported_growth",
+    "h4_h5_evidence_bar_met",
     "required_next_evidence",
     "posterior_basis",
 ]
@@ -109,6 +110,7 @@ def build_ai_committee_packet(manifest_path: Path) -> dict[str, Any]:
             "Do not override deterministic market_implied_growth, PE/PS, h4_h5_evidence_bar_met, or data-quality gates.",
             "Every upgrade claim must cite L0/L1 evidence or remain a research question.",
             "L3/L4 evidence can generate leads but cannot support H4/H5 or S/A conclusions by itself.",
+            "Final overlays must include at least one contrary_evidence item and at least two concrete research_questions.",
             "Open research_debt remains blocking until cleared, scoped out, or explicitly tied to a lower rating/action state.",
         ],
         "base_ai_review_packet": dict(base_packet),
@@ -125,6 +127,7 @@ def build_ai_committee_packet(manifest_path: Path) -> dict[str, Any]:
         "overlay_instructions": [
             "Write committee review notes separately from the final overlay JSON.",
             "The final overlay JSON may contain only required_overlay_outputs and optional_overlay_outputs.",
+            "If evidence_supported_growth is H4 or H5, set h4_h5_evidence_bar_met=true and cite L0/L1 evidence; otherwise keep the claim below H4/H5.",
             "Compress consensus, dissent, upgrade conditions, and downgrade conditions into posterior_basis, contrary_evidence, required_next_evidence, and research_questions before validation.",
         ],
     }

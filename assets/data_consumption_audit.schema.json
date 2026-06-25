@@ -13,7 +13,11 @@
       "consumption_status",
       "selected_period",
       "selection_rule",
-      "warnings"
+      "warnings",
+      "reason_code",
+      "required_transform",
+      "blocked_matrices",
+      "ranking_impact"
     ],
     "properties": {
       "symbol": { "type": "string" },
@@ -36,7 +40,14 @@
       "warnings": {
         "type": "array",
         "items": { "type": "string" }
-      }
+      },
+      "reason_code": { "type": "string" },
+      "required_transform": { "type": "string" },
+      "blocked_matrices": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "ranking_impact": { "type": "string" }
     },
     "additionalProperties": true
   }

@@ -9,10 +9,12 @@
     "serenity_layer_matrix",
     "financial_quality_matrix",
     "valuation_input_matrix",
+    "currency_normalization_matrix",
     "growth_hypothesis_matrix",
     "technical_timing_matrix",
     "capital_actions",
     "data_consumption_audit",
+    "readiness_matrix",
     "research_debt",
     "candidate_priority_ranking",
     "final_decision"
@@ -146,6 +148,54 @@
         "additionalProperties": true
       }
     },
+    "currency_normalization_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "source_currency",
+          "target_currency",
+          "original_total_market_cap",
+          "normalized_total_market_cap",
+          "fx_rate",
+          "fx_rate_direction",
+          "fx_as_of_date",
+          "fx_source",
+          "fx_source_level",
+          "normalization_stage",
+          "normalization_status",
+          "reason_code",
+          "warnings",
+          "errors"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "source_currency": { "type": "string" },
+          "target_currency": { "type": "string" },
+          "original_total_market_cap": { "type": ["number", "null"] },
+          "normalized_total_market_cap": { "type": ["number", "null"] },
+          "fx_rate": { "type": ["number", "null"] },
+          "fx_rate_direction": { "type": "string" },
+          "fx_as_of_date": { "type": "string" },
+          "fx_source": { "type": "string" },
+          "fx_source_level": { "type": "string" },
+          "normalization_stage": { "type": "string", "enum": ["same_currency", "preflight_fx"] },
+          "normalization_status": { "type": "string", "enum": ["OK", "NOT_REQUIRED", "DATA_GATED", "FAILED"] },
+          "reason_code": { "type": "string" },
+          "warnings": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "errors": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
     "growth_hypothesis_matrix": {
       "type": "array",
       "minItems": 2,
@@ -177,7 +227,15 @@
           "h4_h5_evidence_bar_met": { "type": "boolean" },
           "required_next_evidence": { "type": "string" },
           "total_market_cap": { "type": ["number", "null"] },
+          "original_total_market_cap": { "type": ["number", "null"] },
+          "normalized_total_market_cap": { "type": ["number", "null"] },
           "total_shares": { "type": ["number", "null"] },
+          "revenue_amount": { "type": ["number", "null"] },
+          "net_income_amount": { "type": ["number", "null"] },
+          "financial_statement_unit": { "type": "string" },
+          "financial_unit_multiplier": { "type": ["number", "null"] },
+          "currency_normalization_status": { "type": "string" },
+          "fx_rate": { "type": ["number", "null"] },
           "pe_preflight": { "type": ["number", "null"] },
           "ps_preflight": { "type": ["number", "null"] },
           "valuation_stage": {
@@ -208,7 +266,7 @@
       "minItems": 2,
       "items": {
         "type": "object",
-        "required": ["symbol", "dataset", "raw_status", "row_count", "consumed_by", "consumption_status", "selected_period", "selection_rule", "warnings"],
+        "required": ["symbol", "dataset", "raw_status", "row_count", "consumed_by", "consumption_status", "selected_period", "selection_rule", "warnings", "reason_code", "required_transform", "blocked_matrices", "ranking_impact"],
         "properties": {
           "symbol": { "type": "string" },
           "dataset": { "type": "string" },
@@ -228,6 +286,47 @@
           "selected_period": { "type": "string" },
           "selection_rule": { "type": "string" },
           "warnings": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "reason_code": { "type": "string" },
+          "required_transform": { "type": "string" },
+          "blocked_matrices": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "ranking_impact": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "readiness_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "fetch_status",
+          "research_readiness",
+          "action_readiness",
+          "primary_gate",
+          "data_evidence_cap",
+          "decision_grade",
+          "reason_codes"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "fetch_status": { "type": "string", "enum": ["PASS", "PARTIAL", "FAILED"] },
+          "research_readiness": { "type": "string", "enum": ["HIGH", "PARTIAL", "NOT_READY"] },
+          "action_readiness": { "$ref": "#/$defs/action_readiness" },
+          "primary_gate": {
+            "type": "string",
+            "enum": ["NONE", "DATA_GATED", "EVIDENCE_GATED", "VALUATION_GATED", "AI_REVIEW_GATED", "BUY_POINT_GATED", "CAPITAL_ACTION_GATED"]
+          },
+          "data_evidence_cap": { "$ref": "#/$defs/rating" },
+          "decision_grade": { "type": "boolean" },
+          "reason_codes": {
             "type": "array",
             "items": { "type": "string" }
           }
@@ -251,6 +350,7 @@
           "research_priority_score",
           "action_priority_score",
           "rating_cap",
+          "decision_grade",
           "action_readiness",
           "action_gate",
           "key_reason"
@@ -262,6 +362,7 @@
           "research_priority_score": { "type": "number", "minimum": 0, "maximum": 100 },
           "action_priority_score": { "type": "number", "minimum": 0, "maximum": 100 },
           "rating_cap": { "$ref": "#/$defs/rating" },
+          "decision_grade": { "type": "boolean" },
           "action_readiness": { "$ref": "#/$defs/action_readiness" },
           "action_gate": { "$ref": "#/$defs/action_gate" },
           "key_reason": { "type": "string" }

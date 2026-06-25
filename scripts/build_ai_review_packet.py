@@ -12,6 +12,7 @@ from typing import Any, Mapping, Optional, Sequence
 try:
     from build_comparison_report import (
         _capital_summary,
+        _currency_normalization_row,
         _data_summary,
         _financial_quality,
         _growth_hypothesis,
@@ -26,6 +27,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_comparison_report import (
         _capital_summary,
+        _currency_normalization_row,
         _data_summary,
         _financial_quality,
         _growth_hypothesis,
@@ -69,10 +71,11 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     technical = _technical_summary(manifest)
     capital = _capital_summary(manifest)
     layer_seed = _serenity_layer(manifest, {})
-    growth = _growth_hypothesis(manifest, financial, {})
-    research_debt = _research_debt_rows(manifest, capital, financial, technical, layer_seed, growth)
     valuation_inputs = dict(_valuation_payload(manifest))
     valuation_input_matrix_row = _valuation_input_row(manifest)
+    currency_normalization = _currency_normalization_row(manifest, financial, valuation_input_matrix_row)
+    growth = _growth_hypothesis(manifest, financial, {}, currency_normalization)
+    research_debt = _research_debt_rows(manifest, capital, financial, technical, layer_seed, growth)
     acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
     ai_questions = [
         "Identify the value-chain layer and the concrete bottleneck this company may control.",
@@ -101,6 +104,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
             "data_summary": data_summary,
             "financial_quality": financial,
             "valuation_input": valuation_input_matrix_row,
+            "currency_normalization": currency_normalization,
             "technical_timing": technical,
             "capital_actions": capital,
             "growth_hypothesis": growth,
@@ -122,7 +126,8 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
                 "ai_confidence",
             ],
             "score_scale": "serenity_fit is 0-1; layer_score/company_fit are 0-100 when supplied.",
-            "growth_contract": "market_implied_growth is produced by deterministic valuation matrices; overlay supplies evidence_supported_growth when research evidence supports a growth tier.",
+            "growth_contract": "market_implied_growth is produced by deterministic valuation matrices; overlay may supply evidence_supported_growth, but H4/H5 requires h4_h5_evidence_bar_met=true and L0/L1 evidence.",
+            "research_discipline": "key_evidence_refs and contrary_evidence must be non-empty; research_questions must contain at least two concrete next questions.",
         },
     }
 

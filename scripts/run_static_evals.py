@@ -19,11 +19,13 @@ try:
     from data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _fetch_with_attempt_ledger
     from build_falsification_dashboard import build_from_output_contract
     from a_share_capital_actions import analyze_announcements
-    from build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile
+    from build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile, _financial_currency, _growth_hypothesis
     from build_ai_committee_packet import build_ai_committee_packet
     from build_ai_review_packet import build_ai_review_packet
     from candidate_ranker import rank_candidates
+    from currency_normalizer import normalize_valuation_payload
     from data_consumption import financial_consumption_audit, ranking_validity_from_consumption, valuation_consumption_audit
+    from financial_amounts import financial_unit_multiplier, normalize_financial_amount
     from financial_periods import latest_annual, latest_quarter, normalize_financial_period
     from serenity_chan_scorecard import score
     from technical_health import analyze_price_rows
@@ -38,11 +40,13 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _fetch_with_attempt_ledger
     from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.a_share_capital_actions import analyze_announcements
-    from scripts.build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile
+    from scripts.build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile, _financial_currency, _growth_hypothesis
     from scripts.build_ai_committee_packet import build_ai_committee_packet
     from scripts.build_ai_review_packet import build_ai_review_packet
     from scripts.candidate_ranker import rank_candidates
+    from scripts.currency_normalizer import normalize_valuation_payload
     from scripts.data_consumption import financial_consumption_audit, ranking_validity_from_consumption, valuation_consumption_audit
+    from scripts.financial_amounts import financial_unit_multiplier, normalize_financial_amount
     from scripts.financial_periods import latest_annual, latest_quarter, normalize_financial_period
     from scripts.serenity_chan_scorecard import score
     from scripts.technical_health import analyze_price_rows
@@ -469,9 +473,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "differs_from_candidate_comparison": markdown != comparison_markdown,
                     "has_full_research_workbench": "# 完整研究工作台" in markdown,
                     "has_candidate_sections": "## 688019.SH" in markdown and "## 688322.SH" in markdown,
-                    "has_dataset_statuses": "财报 `OK`" in markdown and "公告 `OK`" in markdown,
-                    "has_gate_reasons": "Gate Reasons：" in markdown and "Gate Reasons：none" not in markdown,
-                    "has_gate_classes": "EVIDENCE_GATED=EVIDENCE_VALIDATION" in markdown,
+                    "has_dataset_statuses": "财报 `正常（OK）`" in markdown and "公告 `正常（OK）`" in markdown,
+                    "has_gate_reasons": "门控原因：" in markdown and "门控原因：无" not in markdown,
+                    "has_gate_classes": "证据门控（EVIDENCE_GATED）=证据验证（EVIDENCE_VALIDATION）" in markdown,
                 }
                 actual_pass = True
             except Exception as exc:
@@ -581,6 +585,70 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "financial_amount_normalization":
+            amount: Any = normalize_financial_amount(case.get("value"), case.get("unit"))
+            multiplier: float = financial_unit_multiplier(case.get("unit"))
+            result_payload = {
+                "amount": amount,
+                "multiplier": multiplier,
+            }
+            actual_pass = amount is not None
+        elif kind == "financial_currency_resolution":
+            financial_payload: Any = case.get("financial", {})
+            latest_annual_payload: Any = case.get("latest_annual", {})
+            if not isinstance(financial_payload, dict) or not isinstance(latest_annual_payload, dict):
+                raise ValueError("financial_currency_resolution static eval requires financial and latest_annual objects")
+            result_payload = {
+                "financial_currency": _financial_currency(financial_payload, latest_annual_payload),
+            }
+            actual_pass = True
+        elif kind == "currency_normalization":
+            valuation_payload: Any = case.get("valuation", {})
+            financial_payload: Any = case.get("financial", {})
+            if not isinstance(valuation_payload, dict) or not isinstance(financial_payload, dict):
+                raise ValueError("currency_normalization static eval requires valuation and financial objects")
+            result_payload = normalize_valuation_payload(
+                symbol=str(case.get("symbol") or valuation_payload.get("symbol") or ""),
+                valuation_payload=valuation_payload,
+                financial_payload=financial_payload,
+                allow_network=bool(case.get("allow_network", False)),
+            )
+            actual_pass = True
+        elif kind == "growth_hypothesis_amount_basis":
+            financial: Any = case.get("financial", {})
+            valuation: Any = case.get("valuation", {})
+            profile: Any = case.get("profile", {})
+            if not isinstance(financial, dict) or not isinstance(valuation, dict) or not isinstance(profile, dict):
+                raise ValueError("growth_hypothesis_amount_basis requires financial, valuation, and profile objects")
+            with tempfile.TemporaryDirectory(prefix="serenity-static-growth-unit-") as temp_dir:
+                temp_root: Path = Path(temp_dir)
+                valuation_path: Path = temp_root / "valuation_inputs.json"
+                valuation_path.write_text(json.dumps(valuation, ensure_ascii=False), encoding="utf-8")
+                manifest: dict[str, Any] = {
+                    "_manifest_path": str((temp_root / "manifest.json").resolve()),
+                    "symbol": {
+                        "symbol": str(case.get("symbol") or valuation.get("symbol") or "0700.HK"),
+                        "market": str(case.get("market") or "HK"),
+                        "currency": str(valuation.get("currency") or "HKD"),
+                    },
+                    "data_acquisition": {
+                        "status_by_dataset": {
+                            "valuation_inputs": "OK",
+                        },
+                    },
+                    "results": [
+                        {
+                            "dataset": "valuation_inputs",
+                            "status": "OK",
+                            "source": str(valuation.get("source") or "Static_Valuation_L0L2"),
+                            "source_level": str(valuation.get("source_level") or "L0L2_STATIC"),
+                            "as_of_date": str(valuation.get("as_of_date") or ""),
+                            "data_path": str(valuation_path),
+                        }
+                    ],
+                }
+                result_payload = _growth_hypothesis(manifest, financial, profile)
+            actual_pass = True
         elif kind == "provider_chain":
             symbol: Any = SymbolInfo(
                 input_value=str(case.get("symbol", "NVDA")),

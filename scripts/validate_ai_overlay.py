@@ -26,6 +26,7 @@ ALLOWED_FIELDS = REQUIRED_FIELDS | {
     "layer_score",
     "company_fit",
     "evidence_supported_growth",
+    "h4_h5_evidence_bar_met",
     "required_next_evidence",
     "posterior_basis",
 }
@@ -123,10 +124,12 @@ def validate_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
         if level in {"L0", "L1"} and confidence >= 0.65:
             strong_primary_refs += 1
 
-    _string_list(payload.get("contrary_evidence", []), "contrary_evidence", errors)
+    contrary_evidence = _string_list(payload.get("contrary_evidence", []), "contrary_evidence", errors)
+    if not contrary_evidence:
+        errors.append("contrary_evidence must include at least one falsifiable contrary point")
     research_questions = _string_list(payload.get("research_questions", []), "research_questions", errors)
-    if ai_confidence in {"MEDIUM", "HIGH"} and not research_questions:
-        warnings.append("Medium/high confidence overlay should still name the next research questions.")
+    if len(research_questions) < 2:
+        errors.append("research_questions must include at least two concrete next questions")
 
     if (serenity_fit >= 0.72 or ai_confidence == "HIGH") and strong_primary_refs == 0:
         errors.append("high-fit or high-confidence overlay requires at least one L0/L1 evidence reference with confidence >= 0.65")
@@ -134,6 +137,13 @@ def validate_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
     supported = payload.get("evidence_supported_growth")
     if supported is not None and str(supported) not in GROWTH:
         errors.append(f"evidence_supported_growth must be one of {sorted(GROWTH)}")
+    if str(supported) in {"H4", "H5"}:
+        if payload.get("h4_h5_evidence_bar_met") is not True:
+            errors.append("H4/H5 evidence_supported_growth requires h4_h5_evidence_bar_met=true")
+        if strong_primary_refs == 0:
+            errors.append("H4/H5 evidence_supported_growth requires at least one L0/L1 evidence reference with confidence >= 0.65")
+    if "h4_h5_evidence_bar_met" in payload and not isinstance(payload.get("h4_h5_evidence_bar_met"), bool):
+        errors.append("h4_h5_evidence_bar_met must be boolean when supplied")
     layer_score = _optional_score(payload, "layer_score", errors)
     company_fit = _optional_score(payload, "company_fit", errors)
 

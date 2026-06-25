@@ -127,16 +127,26 @@ def analyze_price_rows(rows: Iterable[Mapping[str, Any]], quote: Optional[Mappin
         "distance_to_52w_low_pct": _round(_pct(latest_close, low_52w)),
     }
 
+    if len(cleaned) >= 250:
+        history_depth_status = "FULL_250_PLUS"
+    elif len(cleaned) >= 120:
+        history_depth_status = "PARTIAL_120_249"
+    elif len(cleaned) >= 60:
+        history_depth_status = "SHORT_60_119"
+    else:
+        history_depth_status = "IPO_TOO_NEW_OR_DATA_GATED"
+
     status = "OK" if len(cleaned) >= 200 else "PARTIAL" if len(cleaned) >= 60 else "DATA_GATED"
     if latest_close is None or status == "DATA_GATED":
         return {
             "status": "DATA_GATED",
+            "history_depth_status": history_depth_status,
             "trend_state": "DATA_GATED",
             "chan_action": "DATA_REQUIRED",
             "buy_point_claim_allowed": False,
             "latest_close": _round(latest_close),
             "metrics": metrics,
-            "decision_note": "Adjusted daily history is insufficient for a technical timing claim.",
+            "decision_note": "复权日线历史不足，不能输出技术时机判断。",
             "readiness_score": 25.0,
         }
 
@@ -146,31 +156,32 @@ def analyze_price_rows(rows: Iterable[Mapping[str, Any]], quote: Optional[Mappin
         if (distance20 is not None and distance20 >= 8.0) or (distance_high is not None and distance_high >= -5.0):
             trend_state = "STRONG_EXTENDED_WATCH"
             chan_action = "WAIT_FOR_SECOND_BUY"
-            note = "Strong trend is extended; wait for a second-buy pullback or a third-buy retest."
+            note = "强趋势已延伸，等待二买回调或三买回踩确认。"
             readiness = 62.0
         else:
             trend_state = "TREND_PULLBACK_WATCH"
             chan_action = "WAIT_FOR_STRUCTURE_CONFIRMATION"
-            note = "Trend remains constructive, yet DMA proximity alone does not confirm a Chan buy point."
+            note = "趋势仍具建设性，但仅靠 DMA 接近不能确认缠论买点。"
             readiness = 66.0
     elif sma20 and sma50 and latest_close >= sma50 and (distance20 is not None and abs(distance20) <= 4.0):
         trend_state = "CONSTRUCTIVE_PULLBACK_WATCH"
         chan_action = "WAIT_FOR_STRUCTURE_CONFIRMATION"
-        note = "Price is near the short moving average; require structure confirmation before calling a buy point."
+        note = "价格接近短期均线，需要结构确认后才能称为买点。"
         readiness = 58.0
     elif sma200 and latest_close < sma200:
         trend_state = "WEAK_OR_DOWNTREND"
         chan_action = "NO_BUY_POINT"
-        note = "Price is below the long moving average; do not use a rebound as a long-term buy point."
+        note = "价格低于长期均线，不能把反弹当成长线买点。"
         readiness = 38.0
     else:
         trend_state = "BASE_BUILDING_WATCH"
         chan_action = "WAIT_FOR_STRUCTURE_CONFIRMATION"
-        note = "Structure is watchable but needs multi-level confirmation."
+        note = "结构可观察，但需要多级别确认。"
         readiness = 50.0
 
     return {
         "status": status,
+        "history_depth_status": history_depth_status,
         "trend_state": trend_state,
         "chan_action": chan_action,
         "buy_point_claim_allowed": False,
