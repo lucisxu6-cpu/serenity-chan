@@ -574,7 +574,7 @@
       "growth_hypothesis_matrix.1.market_implied_growth": "H5",
       "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
       "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false,
-      "final_decision.decision_mode": "tentative_top_candidate",
+      "final_decision.decision_mode": "research_lead",
       "final_decision.score_gap_to_runner_up": 11.64,
       "final_decision.ranking_validity.status": "PARTIAL",
       "final_decision.candidate_count_warning": "insufficient_universe_warning"
@@ -641,7 +641,7 @@
       "growth_hypothesis_matrix.0.market_implied_growth": "UNKNOWN",
       "growth_hypothesis_matrix.0.gap": "valuation_input_required",
       "final_decision.ranking_validity.status": "PARTIAL",
-      "final_decision.decision_mode": "tentative_top_candidate"
+      "final_decision.decision_mode": "research_lead"
     }
   },
   {
@@ -651,6 +651,10 @@
     "manifests": [
       "evals/fixtures/comparison_688019_manifest.json",
       "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlay_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json"
     ],
     "expect_pass": true,
     "expected_result": {
@@ -851,7 +855,7 @@
         "value": "comparison_not_decision_grade"
       },
       {
-        "path": "final_decision.top_candidate",
+        "path": "final_decision.decision_candidate",
         "value": ""
       },
       {
@@ -900,7 +904,7 @@
       },
       {
         "path": "final_decision.decision_mode",
-        "value": "clear_top_candidate"
+        "value": "clear_decision_candidate"
       }
     ],
     "expect_pass": false
@@ -1640,6 +1644,44 @@
       "primary_gate_class": "EVIDENCE_VALIDATION",
       "gate_classes.VALUATION_GATED": "EVIDENCE_VALIDATION",
       "blocking_datasets.0": "valuation_inputs"
+    }
+  },
+  {
+    "name": "valuation-growth-completed-ai-points-to-evidence-not-agent-work",
+    "kind": "action_gate_profile",
+    "technical": {
+      "buy_point_claim_allowed": true
+    },
+    "capital": {
+      "summary": {
+        "material_risk_level": "none",
+        "has_dilution_event": false
+      }
+    },
+    "layer": {
+      "layer": "verified_bottleneck",
+      "evidence_gap": "",
+      "ai_review_status": "COMPLETED"
+    },
+    "growth": {
+      "market_implied_growth": "H4",
+      "gap": "market_ahead_of_evidence",
+      "required_next_evidence": "补充分部收入、客户贡献和产能利用率证据。"
+    },
+    "research_debt": [
+      {
+        "dataset": "valuation_growth",
+        "priority": "high",
+        "gap": "market_ahead_of_evidence",
+        "next_action": "补充分部收入、客户贡献和产能利用率证据。"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "primary_gate": "VALUATION_GATED",
+      "primary_gate_class": "RESEARCH_VALIDATION",
+      "blocking_datasets.0": "valuation_growth",
+      "blocking_reasons.0": "市场隐含增长高于已验证证据支持增长，需要下一轮 L0/L1 客户、订单、产能或财务传导证据。"
     }
   },
   {
@@ -2866,7 +2908,7 @@
       "ai_review_status_matrix.1.ai_review_status": "COMPLETED",
       "candidate_pool_semantic_coherence.status": "SAME_THEME_DIFFERENT_LAYERS",
       "serenity_layer_matrix.0.layer": "CMP slurry and wet-process materials bottleneck",
-      "final_decision.decision_mode": "tentative_top_candidate",
+      "final_decision.decision_mode": "research_lead",
       "final_decision.ranking_validity.status": "PARTIAL"
     }
   },
@@ -2886,7 +2928,7 @@
     "expected_result": {
       "ai_review_status_matrix.0.ai_review_status": "COMPLETED",
       "ai_review_status_matrix.1.ai_review_status": "COMPLETED",
-      "final_decision.decision_mode": "tentative_top_candidate"
+      "final_decision.decision_mode": "research_lead"
     }
   },
   {
@@ -2901,6 +2943,101 @@
     ],
     "outcome_values": [],
     "expect_pass": false
+  },
+  {
+    "name": "agent-research-queue-validates-internal-work-items",
+    "kind": "agent_research_queue_validation",
+    "payload": {
+      "contract_type": "serenity_agent_research_queue",
+      "schema_version": "1.0",
+      "workflow_status": "AGENT_RESEARCH_QUEUE_READY",
+      "research_mode": "formal",
+      "artifact_role": "internal_agent_work_queue",
+      "terminal": false,
+      "delivery_allowed": false,
+      "next_phase": "execute_agent_research",
+      "out_dir": "/tmp/serenity-test",
+      "fetch_summaries": [],
+      "ai_artifacts": [],
+      "internal_baseline_report": "/tmp/serenity-test/comparison_internal_baseline.json",
+      "missing_ai_result_symbols": ["688019.SH"],
+      "work_items": [
+        {
+          "symbol": "688019.SH",
+          "required_action": "produce_validated_ai_overlay_or_outcome",
+          "manifest_path": "evals/fixtures/comparison_688019_manifest.json",
+          "review_packet": "/tmp/serenity-test/688019/ai_review_packet.json",
+          "committee_packet": "/tmp/serenity-test/688019/ai_committee_packet.json",
+          "overlay_prompt": "/tmp/serenity-test/688019/ai_overlay_prompt.json",
+          "theme_universe": "",
+          "theme_research_packet": "",
+          "overlay_schema": "assets/ai_research_overlay.schema.json",
+          "outcome_schema": "assets/ai_review_outcome.schema.json",
+          "overlay_output_path": "/tmp/serenity-test/688019/ai_research_overlay.json",
+          "outcome_output_path": "/tmp/serenity-test/688019/ai_review_outcome.json",
+          "allowed_results": [
+            "COMPLETED via ai_research_overlay",
+            "FAILED_INSUFFICIENT_EVIDENCE via ai_review_outcome",
+            "CONFLICT_WITH_DATA via ai_review_outcome"
+          ],
+          "validation_commands": [
+            "python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>",
+            "python scripts/validate_ai_review_outcome.py <ai_review_outcome.json>"
+          ],
+          "guardrails": [
+            "Do not invent customers, orders, revenue split, or current data.",
+            "Do not override deterministic fields.",
+            "Do not use SKIPPED_QUICK_AUDIT in formal mode."
+          ]
+        }
+      ],
+      "execution_policy": {
+        "current_agent_executes_work_items": true,
+        "internal_baseline_role": "data_diagnostics_only",
+        "quick_audit_allowed": false,
+        "forbidden": [
+          "Do not present internal baseline artifacts as final research.",
+          "Do not convert missing AI work into SKIPPED_QUICK_AUDIT in formal mode.",
+          "Do not use unverified claims to upgrade evidence-supported growth."
+        ]
+      }
+    },
+    "expect_pass": true
+  },
+  {
+    "name": "research-delivery-rejects-agent-queue",
+    "kind": "research_delivery_validation",
+    "source_path": "/tmp/serenity-test/agent_research_queue.json",
+    "payload": {
+      "contract_type": "serenity_agent_research_queue"
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "research-delivery-rejects-workflow-summary",
+    "kind": "research_delivery_validation",
+    "source_path": "/tmp/serenity-test/workflow_summary.json",
+    "payload": {
+      "contract_type": "serenity_research_workflow_summary",
+      "workflow_status": "FINAL_REPORT_READY",
+      "delivery_allowed": true,
+      "final_report": "/tmp/serenity-test/comparison_final.json"
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "research-delivery-accepts-final-ai-report",
+    "kind": "research_delivery_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlay_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json"
+    ],
+    "outcome_values": [],
+    "expect_pass": true
   },
   {
     "name": "ai-review-outcome-merge-records-attempted-failure-status",

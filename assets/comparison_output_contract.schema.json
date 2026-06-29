@@ -21,6 +21,7 @@
     "research_debt",
     "research_debt_runbook",
     "candidate_priority_ranking",
+    "report_readiness",
     "final_decision"
   ],
   "properties": {
@@ -433,7 +434,9 @@
     "final_decision": {
       "type": "object",
       "required": [
-        "top_candidate",
+        "leading_research_candidate",
+        "leading_action_candidate",
+        "decision_candidate",
         "decision_mode",
         "score_gap_to_runner_up",
         "candidate_count_warning",
@@ -443,10 +446,12 @@
         "next_research_actions"
       ],
       "properties": {
-        "top_candidate": { "type": "string" },
+        "leading_research_candidate": { "type": "string" },
+        "leading_action_candidate": { "type": "string" },
+        "decision_candidate": { "type": "string" },
         "decision_mode": {
           "type": "string",
-          "enum": ["single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster", "comparison_not_decision_grade"]
+          "enum": ["single_research_object", "clear_decision_candidate", "research_lead", "candidate_cluster", "comparison_not_decision_grade"]
         },
         "score_gap_to_runner_up": { "type": ["number", "null"] },
         "candidate_count_warning": { "type": "string" },
@@ -476,6 +481,36 @@
           "type": "array",
           "items": { "type": "string" }
         }
+      },
+      "additionalProperties": true
+    },
+    "report_readiness": {
+      "type": "object",
+      "required": [
+        "stage",
+        "delivery_allowed",
+        "blocking_statuses",
+        "next_phase",
+        "reason"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["INTERNAL_BASELINE", "FINAL_REPORT_READY", "DIAGNOSTIC_ONLY"]
+        },
+        "delivery_allowed": { "type": "boolean" },
+        "blocking_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["NOT_RUN", "SKIPPED_QUICK_AUDIT"]
+          }
+        },
+        "next_phase": {
+          "type": "string",
+          "enum": ["execute_agent_research", "build_strategy_input", "deliver"]
+        },
+        "reason": { "type": "string" }
       },
       "additionalProperties": true
     }

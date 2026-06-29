@@ -36,6 +36,7 @@ DEFAULT_DATASETS: list[str] = [
     "filings_announcements",
     "valuation_inputs",
 ]
+RESEARCH_MODES: set[str] = {"formal", "diagnostic"}
 
 
 def _safe_name(value: str) -> str:
@@ -73,6 +74,127 @@ def _assigned_symbols(values: Sequence[str]) -> set[str]:
     return symbols
 
 
+def _agent_research_work_items(
+    ai_artifacts: Sequence[Mapping[str, str]],
+    fetch_summaries: Sequence[Mapping[str, Any]],
+    missing_symbols: Sequence[str],
+) -> list[dict[str, Any]]:
+    missing: set[str] = set(missing_symbols)
+    manifest_by_symbol: dict[str, str] = {
+        str(summary.get("symbol") or ""): str(summary.get("manifest") or "")
+        for summary in fetch_summaries
+        if str(summary.get("symbol") or "")
+    }
+    work_items: list[dict[str, Any]] = []
+    for artifact in ai_artifacts:
+        symbol: str = str(artifact.get("symbol") or "")
+        if symbol not in missing:
+            continue
+        result_dir: Path = Path(str(artifact.get("ai_overlay_prompt") or ".")).parent
+        work_items.append({
+            "symbol": symbol,
+            "required_action": "produce_validated_ai_overlay_or_outcome",
+            "manifest_path": manifest_by_symbol.get(symbol, ""),
+            "review_packet": artifact.get("ai_review_packet", ""),
+            "committee_packet": artifact.get("ai_committee_packet", ""),
+            "overlay_prompt": artifact.get("ai_overlay_prompt", ""),
+            "theme_universe": artifact.get("theme_universe", ""),
+            "theme_research_packet": artifact.get("theme_research_packet", ""),
+            "overlay_schema": "assets/ai_research_overlay.schema.json",
+            "outcome_schema": "assets/ai_review_outcome.schema.json",
+            "overlay_output_path": str(result_dir / "ai_research_overlay.json"),
+            "outcome_output_path": str(result_dir / "ai_review_outcome.json"),
+            "allowed_results": [
+                "COMPLETED via ai_research_overlay",
+                "FAILED_INSUFFICIENT_EVIDENCE via ai_review_outcome",
+                "CONFLICT_WITH_DATA via ai_review_outcome",
+            ],
+            "validation_commands": [
+                "python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>",
+                "python scripts/validate_ai_review_outcome.py <ai_review_outcome.json>",
+            ],
+            "guardrails": [
+                "Do not invent customers, orders, revenue split, or current data.",
+                "Do not override deterministic PE/PS, market_implied_growth, valuation_stage, data status, or capital-action facts.",
+                "Use SKIPPED_QUICK_AUDIT only when the user explicitly requested diagnostic or quick-audit mode.",
+            ],
+        })
+    return work_items
+
+
+def _agent_research_queue_summary(
+    *,
+    out_dir: Path,
+    fetch_summaries: Sequence[Mapping[str, Any]],
+    ai_artifacts: Sequence[Mapping[str, str]],
+    internal_baseline_report_path: Path,
+    missing_ai_symbols: Sequence[str],
+    research_mode: str,
+) -> dict[str, Any]:
+    return {
+        "contract_type": "serenity_agent_research_queue",
+        "schema_version": "1.0",
+        "workflow_status": "AGENT_RESEARCH_QUEUE_READY",
+        "research_mode": research_mode,
+        "artifact_role": "internal_agent_work_queue",
+        "terminal": False,
+        "delivery_allowed": False,
+        "next_phase": "execute_agent_research",
+        "out_dir": str(out_dir),
+        "fetch_summaries": list(fetch_summaries),
+        "ai_artifacts": list(ai_artifacts),
+        "internal_baseline_report": str(internal_baseline_report_path),
+        "missing_ai_result_symbols": list(missing_ai_symbols),
+        "work_items": _agent_research_work_items(ai_artifacts, fetch_summaries, missing_ai_symbols),
+        "execution_policy": {
+            "current_agent_executes_work_items": True,
+            "internal_baseline_role": "data_diagnostics_only",
+            "quick_audit_allowed": False,
+            "forbidden": [
+                "Do not present internal baseline artifacts as final research.",
+                "Do not convert missing AI work into SKIPPED_QUICK_AUDIT in formal mode.",
+                "Do not use market heat, theme labels, or unverified claims to upgrade evidence-supported growth.",
+            ],
+        },
+    }
+
+
+def _diagnostic_summary(
+    *,
+    out_dir: Path,
+    fetch_summaries: Sequence[Mapping[str, Any]],
+    ai_artifacts: Sequence[Mapping[str, str]],
+    baseline_report_path: Optional[Path],
+    baseline_markdown_path: Optional[Path],
+    missing_ai_symbols: Sequence[str],
+) -> dict[str, Any]:
+    return {
+        "contract_type": "serenity_diagnostic_baseline",
+        "schema_version": "1.0",
+        "workflow_status": "DATA_BASELINE_READY",
+        "research_mode": "diagnostic",
+        "artifact_role": "internal_data_baseline",
+        "terminal": True,
+        "delivery_allowed": True,
+        "next_phase": "deliver",
+        "out_dir": str(out_dir),
+        "fetch_summaries": list(fetch_summaries),
+        "ai_artifacts": list(ai_artifacts),
+        "diagnostic_baseline_report": str(baseline_report_path) if baseline_report_path else "",
+        "diagnostic_baseline_markdown": str(baseline_markdown_path) if baseline_markdown_path else "",
+        "missing_ai_result_symbols": list(missing_ai_symbols),
+        "execution_policy": {
+            "current_agent_executes_work_items": False,
+            "internal_baseline_role": "diagnostic_only",
+            "quick_audit_allowed": True,
+            "forbidden": [
+                "Do not call this diagnostic baseline a formal candidate ranking.",
+                "Do not produce a formal decision object from NOT_RUN AI research rows.",
+            ],
+        },
+    }
+
+
 def run_analysis(
     symbols: Sequence[str],
     *,
@@ -89,7 +211,12 @@ def run_analysis(
     strategy_geography: str,
     strategy_decision_use: str,
     strategy_profile: str,
+    research_mode: str,
+    theme_universe: str,
+    theme_research_packet: str,
 ) -> dict[str, Any]:
+    if research_mode not in RESEARCH_MODES:
+        raise ValueError(f"research_mode must be one of: {', '.join(sorted(RESEARCH_MODES))}")
     out_dir.mkdir(parents=True, exist_ok=True)
     if sec_user_agent:
         os.environ["SEC_USER_AGENT"] = sec_user_agent
@@ -123,7 +250,11 @@ def run_analysis(
         artifact_dir: Path = out_dir / "ai_research" / _safe_name(symbol)
         review_packet: dict[str, Any] = build_ai_review_packet(manifest_path)
         committee_packet: dict[str, Any] = build_ai_committee_packet(manifest_path)
-        overlay_prompt: dict[str, Any] = build_ai_overlay_prompt(manifest_path)
+        overlay_prompt: dict[str, Any] = build_ai_overlay_prompt(
+            manifest_path,
+            theme_universe_path=Path(theme_universe) if theme_universe else None,
+            theme_research_packet_path=Path(theme_research_packet) if theme_research_packet else None,
+        )
         review_path: Path = artifact_dir / "ai_review_packet.json"
         committee_path: Path = artifact_dir / "ai_committee_packet.json"
         prompt_path: Path = artifact_dir / "ai_overlay_prompt.json"
@@ -135,32 +266,49 @@ def run_analysis(
             "ai_review_packet": str(review_path),
             "ai_committee_packet": str(committee_path),
             "ai_overlay_prompt": str(prompt_path),
+            "theme_universe": theme_universe,
+            "theme_research_packet": theme_research_packet,
         })
 
     baseline_report_path: Optional[Path] = None
     baseline_markdown_path: Optional[Path] = None
     if len(manifest_paths) >= 2:
         baseline_report: dict[str, Any] = build_comparison_report(manifest_paths, {}, {})
-        baseline_report_path = out_dir / "comparison_baseline.json"
-        baseline_markdown_path = out_dir / "comparison_baseline.md"
+        if research_mode == "diagnostic":
+            baseline_report_path = out_dir / "comparison_diagnostic_baseline.json"
+            baseline_markdown_path = out_dir / "comparison_diagnostic_baseline.md"
+        else:
+            baseline_report_path = out_dir / "comparison_internal_baseline.json"
         _write_json(baseline_report_path, baseline_report)
-        _write_text(baseline_markdown_path, to_markdown(baseline_report))
+        if baseline_markdown_path:
+            _write_text(baseline_markdown_path, to_markdown(baseline_report))
 
     candidate_symbols: set[str] = {_manifest_symbol(path) for path in manifest_paths}
     supplied_symbols: set[str] = _assigned_symbols(overlay_values) | _assigned_symbols(outcome_values)
     missing_ai_symbols: list[str] = sorted(candidate_symbols - supplied_symbols)
-    summary: dict[str, Any] = {
-        "workflow_status": "AI_RESULT_REQUIRED" if missing_ai_symbols else "COMPLETED",
-        "out_dir": str(out_dir),
-        "fetch_summaries": fetch_summaries,
-        "ai_artifacts": ai_artifacts,
-        "baseline_report": str(baseline_report_path) if baseline_report_path else "",
-        "baseline_markdown": str(baseline_markdown_path) if baseline_markdown_path else "",
-        "missing_ai_result_symbols": missing_ai_symbols,
-    }
     if missing_ai_symbols:
-        summary["next_action"] = "读取每个候选的 ai_overlay_prompt.json，由 AI 研究后输出 overlay 或 ai_review_outcome，再用同一命令传入 --overlay/--ai-outcome 生成最终报告。"
-        _write_json(out_dir / "ai_result_required.json", summary)
+        if research_mode == "diagnostic":
+            summary: dict[str, Any] = _diagnostic_summary(
+                out_dir=out_dir,
+                fetch_summaries=fetch_summaries,
+                ai_artifacts=ai_artifacts,
+                baseline_report_path=baseline_report_path,
+                baseline_markdown_path=baseline_markdown_path,
+                missing_ai_symbols=missing_ai_symbols,
+            )
+            _write_json(out_dir / "diagnostic_baseline.json", summary)
+            return summary
+        if baseline_report_path is None:
+            raise ValueError("formal research queue requires an internal baseline report")
+        summary = _agent_research_queue_summary(
+            out_dir=out_dir,
+            fetch_summaries=fetch_summaries,
+            ai_artifacts=ai_artifacts,
+            internal_baseline_report_path=baseline_report_path,
+            missing_ai_symbols=missing_ai_symbols,
+            research_mode=research_mode,
+        )
+        _write_json(out_dir / "agent_research_queue.json", summary)
         return summary
 
     final_report: dict[str, Any] = build_validated_merged_report(manifest_paths, overlay_values, outcome_values)
@@ -179,9 +327,24 @@ def run_analysis(
     )
     strategy_input_path: Path = out_dir / "laplace_strategy_input.json"
     _write_json(strategy_input_path, strategy_input)
-    summary["final_report"] = str(final_report_path)
-    summary["final_markdown"] = str(final_markdown_path)
-    summary["laplace_strategy_input"] = str(strategy_input_path)
+    summary = {
+        "contract_type": "serenity_research_workflow_summary",
+        "schema_version": "1.0",
+        "workflow_status": "FINAL_REPORT_READY",
+        "research_mode": research_mode,
+        "artifact_role": "formal_research_report",
+        "terminal": True,
+        "delivery_allowed": True,
+        "next_phase": "build_strategy_input",
+        "out_dir": str(out_dir),
+        "fetch_summaries": fetch_summaries,
+        "ai_artifacts": ai_artifacts,
+        "internal_baseline_report": str(baseline_report_path) if baseline_report_path else "",
+        "missing_ai_result_symbols": [],
+        "final_report": str(final_report_path),
+        "final_markdown": str(final_markdown_path),
+        "laplace_strategy_input": str(strategy_input_path),
+    }
     _write_json(out_dir / "workflow_summary.json", summary)
     return summary
 
@@ -202,6 +365,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--strategy-geography", default="", help="strategy geography; defaults to inferred candidate markets")
     parser.add_argument("--strategy-decision-use", default="watchlist allocation, action triggers, and invalidation")
     parser.add_argument("--strategy-profile", default="balanced")
+    parser.add_argument("--research-mode", choices=sorted(RESEARCH_MODES), default="formal", help="formal blocks delivery until AI research is merged; diagnostic emits data-only baseline")
+    parser.add_argument("--theme-universe", default="", help="optional theme_candidate_universe.json passed into AI overlay prompts")
+    parser.add_argument("--theme-research-packet", default="", help="optional theme_research_packet.json passed into AI overlay prompts")
     args: argparse.Namespace = parser.parse_args(argv)
     try:
         summary: dict[str, Any] = run_analysis(
@@ -219,6 +385,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             strategy_geography=args.strategy_geography,
             strategy_decision_use=args.strategy_decision_use,
             strategy_profile=args.strategy_profile,
+            research_mode=args.research_mode,
+            theme_universe=args.theme_universe,
+            theme_research_packet=args.theme_research_packet,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     except Exception as exc:

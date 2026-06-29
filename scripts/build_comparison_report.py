@@ -61,9 +61,17 @@ ACTION_GATE_TYPES: set[str] = {
     "CAPITAL_ACTION_GATED",
 }
 ACTION_GATE_CLASSES: set[str] = {"NONE", "DATA_ACQUISITION", "EVIDENCE_VALIDATION", "RESEARCH_VALIDATION", "ACTION_TIMING"}
-DECISION_MODES: set[str] = {"single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster", "comparison_not_decision_grade"}
+DECISION_MODES: set[str] = {
+    "single_research_object",
+    "clear_decision_candidate",
+    "research_lead",
+    "candidate_cluster",
+    "comparison_not_decision_grade",
+}
 RANKING_VALIDITY_STATUSES: set[str] = {"VALID", "PARTIAL", "INVALID"}
 AI_REVIEW_STATUSES: set[str] = {"NOT_RUN", "COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA", "SKIPPED_QUICK_AUDIT"}
+FORMAL_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
+REPORT_READINESS_STAGES: set[str] = {"INTERNAL_BASELINE", "FINAL_REPORT_READY", "DIAGNOSTIC_ONLY"}
 CANDIDATE_POOL_COHERENCE: set[str] = {"UNREVIEWED", "SAME_LAYER", "SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"}
 CONSUMPTION_AUDIT_DATASETS: set[str] = {"financials", "valuation_inputs"}
 ACTION_BLOCKING_DEBT_DATASETS: set[str] = {
@@ -869,6 +877,34 @@ def _ai_review_status_row(layer: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _report_readiness(ai_review_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    statuses: list[str] = [str(row.get("ai_review_status") or "") for row in ai_review_rows]
+    blocking_statuses: list[str] = sorted({status for status in statuses if status not in FORMAL_AI_STATUSES})
+    if not statuses or "NOT_RUN" in blocking_statuses:
+        return {
+            "stage": "INTERNAL_BASELINE",
+            "delivery_allowed": False,
+            "blocking_statuses": blocking_statuses,
+            "next_phase": "execute_agent_research",
+            "reason": "AI research results are required before formal report delivery.",
+        }
+    if "SKIPPED_QUICK_AUDIT" in blocking_statuses:
+        return {
+            "stage": "DIAGNOSTIC_ONLY",
+            "delivery_allowed": False,
+            "blocking_statuses": blocking_statuses,
+            "next_phase": "deliver",
+            "reason": "Quick-audit AI outcome is not a formal research result.",
+        }
+    return {
+        "stage": "FINAL_REPORT_READY",
+        "delivery_allowed": True,
+        "blocking_statuses": [],
+        "next_phase": "build_strategy_input",
+        "reason": "Every candidate has a validated AI overlay or validated AI outcome.",
+    }
+
+
 def _layer_family(layer: str) -> str:
     text: str = layer.lower()
     if not text or text == "value_chain_unmapped":
@@ -907,7 +943,7 @@ def _candidate_pool_semantic_coherence(candidates: Sequence[Mapping[str, Any]], 
         reason: str = "候选公司处于同一主要产业层级，可作为同池候选比较。"
     elif len(markets) > 1 and len(families) > 1:
         status = "CROSS_THEME_DIAGNOSTIC"
-        constraint = "NO_CLEAR_TOP_CANDIDATE"
+        constraint = "NO_FORMAL_DECISION_OBJECT"
         reason = "候选池横跨市场和产业层级，只能作为诊断/研究优先级集合，不能视为同池投资排序。"
     else:
         status = "SAME_THEME_DIFFERENT_LAYERS"
@@ -1354,6 +1390,24 @@ def _action_gate_profile(
         if dataset:
             blocking_datasets.add(dataset)
 
+    def valuation_growth_reason() -> str:
+        status: str = str(layer.get("ai_review_status") or "NOT_RUN")
+        if status == "COMPLETED":
+            return "市场隐含增长高于已验证证据支持增长，需要下一轮 L0/L1 客户、订单、产能或财务传导证据。"
+        if status == "FAILED_INSUFFICIENT_EVIDENCE":
+            return "agent research 已执行但增长证据不足，需要补充客户、订单、产能或财务传导证据。"
+        if status == "CONFLICT_WITH_DATA":
+            return "agent research 发现增长证据与数据冲突，需要先解决冲突字段。"
+        return "市场隐含增长高于证据支持增长，需要完成 agent research 结果并合并后再判断。"
+
+    def serenity_layer_reason() -> str:
+        status: str = str(layer.get("ai_review_status") or "NOT_RUN")
+        if status == "FAILED_INSUFFICIENT_EVIDENCE":
+            return "agent research 已执行但产业链映射证据不足，需要补充 L0/L1 价值链和收入传导证据。"
+        if status == "CONFLICT_WITH_DATA":
+            return "agent research 发现产业链映射与源数据冲突，需要先解决冲突字段。"
+        return "产业链层级、瓶颈位置和收入传导需要完成 agent research 结果并合并。"
+
     high_or_blocking: Any = set(debt_profile.get("blocking_datasets") or []) | set(debt_profile.get("high_datasets") or [])
     for dataset in sorted(high_or_blocking):
         if dataset in {"current_quote", "price_history_adjusted"}:
@@ -1363,13 +1417,13 @@ def _action_gate_profile(
         elif dataset in VALUATION_DATA_DEBT_DATASETS | VALUATION_RESEARCH_DEBT_DATASETS:
             dataset_gate_class: str = str(dataset_gate_classes.get(dataset) or "")
             if dataset in VALUATION_RESEARCH_DEBT_DATASETS:
-                add("VALUATION_GATED", "市场隐含增长高于证据支持增长，需要 AI/行业研究复核。", dataset, "RESEARCH_VALIDATION")
+                add("VALUATION_GATED", valuation_growth_reason(), dataset, "RESEARCH_VALIDATION")
             elif dataset_gate_class == "EVIDENCE_VALIDATION":
                 add("VALUATION_GATED", "估值输入已取得，但股本、市值、币种或来源口径仍需 L0/L1 证据复核。", dataset, "EVIDENCE_VALIDATION")
             else:
                 add("VALUATION_GATED", "估值输入不完整，市场隐含增长和赔率判断保持阻断。", dataset, "DATA_ACQUISITION")
         elif dataset == "serenity_layer":
-            add("AI_REVIEW_GATED", "产业链层级、瓶颈位置和收入传导仍需 AI/行业研究复核。", dataset, "RESEARCH_VALIDATION")
+            add("AI_REVIEW_GATED", serenity_layer_reason(), dataset, "RESEARCH_VALIDATION")
         elif dataset in {"capital_actions", "capital_action_quantification"}:
             add("CAPITAL_ACTION_GATED", "资本动作需要量化稀释、回购、上市或减持影响。", dataset, "RESEARCH_VALIDATION")
 
@@ -1477,39 +1531,58 @@ def _final_decision(
     candidate_pool_semantic_coherence: Mapping[str, Any],
 ) -> dict[str, Any]:
     top: Any = ranked[0] if ranked else {}
-    top_symbol: Any = str(top.get("symbol") or "")
+    leading_research: Mapping[str, Any] = max(
+        ranked,
+        key=lambda item: _as_float(item.get("research_priority_score")) or 0.0,
+        default={},
+    )
+    leading_action: Mapping[str, Any] = max(
+        [
+            item for item in ranked
+            if bool(item.get("decision_grade"))
+            and isinstance(item.get("action_gate"), Mapping)
+            and str(item.get("action_gate", {}).get("primary_gate") or "") == "NONE"
+        ],
+        key=lambda item: _as_float(item.get("action_priority_score")) or 0.0,
+        default={},
+    )
+    leading_research_symbol: str = str(leading_research.get("symbol") or "")
+    leading_action_symbol: str = str(leading_action.get("symbol") or "")
     top_score: Any = _as_float(top.get("priority_score"))
     runner_up_score: Any = _as_float(ranked[1].get("priority_score")) if len(ranked) > 1 else None
     score_gap: Any = _round(top_score - runner_up_score) if top_score is not None and runner_up_score is not None else None
     validity_status: Any = str(ranking_validity.get("status") or "VALID")
+    coherence_status: str = str(candidate_pool_semantic_coherence.get("status") or "")
+    same_layer: bool = coherence_status in {"", "SAME_LAYER"}
+    decision_candidate: str = leading_action_symbol if validity_status == "VALID" and same_layer else ""
     if validity_status == "INVALID":
         decision_mode: Any = "comparison_not_decision_grade"
-        decision: Any = "在数据消费错配修复前不命名正式优先候选；当前排序只用于工程诊断和补数任务。"
-        top_symbol = ""
+        decision: Any = "在数据消费错配修复前不产生正式决策对象；当前排序只用于工程诊断和补数任务。"
         score_gap = None
     elif score_gap is None:
-        decision_mode = "single_candidate"
-        decision = f"将 {top_symbol} 作为研究对象推进，但行动结论必须受当前门控约束。"
+        decision_mode = "single_research_object"
+        decision = f"将 {leading_research_symbol} 作为单一研究对象推进；行动结论必须受当前门控约束。"
+    elif score_gap >= 10.0 and decision_candidate:
+        decision_mode = "clear_decision_candidate"
+        decision = f"{decision_candidate} 可作为当前正式决策对象；仍需遵守行动门控、仓位纪律和失效条件。"
     elif score_gap >= 10.0:
-        if validity_status == "PARTIAL":
-            decision_mode = "tentative_top_candidate"
-            decision = f"优先跟进 {top_symbol}，但在部分可比维度补齐前，不把该排序视为正式结论。"
-        else:
-            decision_mode = "clear_top_candidate"
-            decision = f"优先研究 {top_symbol}；当前优先级差距明确，但评级和行动仍受开放门控约束。"
+        decision_mode = "research_lead"
+        decision = f"{leading_research_symbol} 是当前研究队列首位；开放门控解除前不产生正式决策对象。"
     elif score_gap >= 5.0:
-        decision_mode = "tentative_top_candidate"
-        decision = f"先研究 {top_symbol}，同时补齐第二候选的关键证据差异后再确认排序稳定性。"
+        decision_mode = "research_lead"
+        decision = f"先研究 {leading_research_symbol}，同时补齐第二候选的关键证据差异后再确认排序稳定性。"
     else:
         decision_mode = "candidate_cluster"
-        decision = "将领先候选视为同一候选簇，先处理区分度研究债务，再命名稳定优先候选。"
-    coherence_status: str = str(candidate_pool_semantic_coherence.get("status") or "")
-    if coherence_status in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"} and decision_mode == "clear_top_candidate":
-        decision_mode = "tentative_top_candidate"
-        decision = f"优先跟进 {top_symbol}，但候选池未达到同层可比条件，不能视为正式同池投资排序。"
+        decision = "将领先候选视为同一研究簇，先处理区分度研究债务，再判断是否存在稳定决策对象。"
+    if not same_layer and decision_mode == "clear_decision_candidate":
+        decision_mode = "research_lead"
+        decision_candidate = ""
+        decision = f"{leading_research_symbol} 是当前研究队列首位；候选池未达到同层可比条件，不能视为正式同池投资排序。"
     candidate_count_warning: Any = "insufficient_universe_warning" if len(ranked) < 3 else ""
     return {
-        "top_candidate": top_symbol,
+        "leading_research_candidate": leading_research_symbol,
+        "leading_action_candidate": leading_action_symbol,
+        "decision_candidate": decision_candidate,
         "decision_mode": decision_mode,
         "score_gap_to_runner_up": score_gap,
         "candidate_count_warning": candidate_count_warning,
@@ -1612,6 +1685,7 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
         "research_debt",
         "research_debt_runbook",
         "candidate_priority_ranking",
+        "report_readiness",
         "final_decision",
     }
     missing: Any = sorted(required - set(report))
@@ -1621,7 +1695,18 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     if not isinstance(final_decision, Mapping):
         errors.append("final_decision must be an object")
     else:
-        for field in ["top_candidate", "decision_mode", "score_gap_to_runner_up", "candidate_count_warning", "candidate_pool_semantic_coherence", "ranking_validity", "decision", "next_research_actions"]:
+        for field in [
+            "leading_research_candidate",
+            "leading_action_candidate",
+            "decision_candidate",
+            "decision_mode",
+            "score_gap_to_runner_up",
+            "candidate_count_warning",
+            "candidate_pool_semantic_coherence",
+            "ranking_validity",
+            "decision",
+            "next_research_actions",
+        ]:
             if field not in final_decision:
                 errors.append(f"final_decision missing {field}")
         if str(final_decision.get("decision_mode") or "") not in DECISION_MODES:
@@ -1648,10 +1733,14 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
                 errors.append("final_decision.ranking_validity.partial_axes must be an array")
             if validity_status == "INVALID" and final_decision.get("decision_mode") != "comparison_not_decision_grade":
                 errors.append("INVALID ranking_validity requires comparison_not_decision_grade decision_mode")
+            if validity_status == "INVALID" and str(final_decision.get("decision_candidate") or ""):
+                errors.append("INVALID ranking_validity requires empty decision_candidate")
             if validity_status == "INVALID" and not blocked_items:
                 errors.append("INVALID ranking_validity requires non-empty blocked_by")
-            if validity_status == "PARTIAL" and final_decision.get("decision_mode") == "clear_top_candidate":
-                errors.append("PARTIAL ranking_validity cannot use clear_top_candidate decision_mode")
+            if validity_status == "PARTIAL" and final_decision.get("decision_mode") == "clear_decision_candidate":
+                errors.append("PARTIAL ranking_validity cannot use clear_decision_candidate decision_mode")
+            if final_decision.get("decision_mode") == "clear_decision_candidate" and not str(final_decision.get("decision_candidate") or ""):
+                errors.append("clear_decision_candidate requires decision_candidate")
             if validity_status == "PARTIAL" and not partial_items:
                 errors.append("PARTIAL ranking_validity requires non-empty partial_axes")
             if validity_status == "VALID" and (blocked_items or partial_items):
@@ -1659,8 +1748,8 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
             final_coherence: Any = final_decision.get("candidate_pool_semantic_coherence")
             if isinstance(final_coherence, Mapping):
                 final_coherence_status: str = str(final_coherence.get("status") or "")
-                if final_coherence_status in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"} and final_decision.get("decision_mode") == "clear_top_candidate":
-                    errors.append("candidate pools without same-layer coherence cannot use clear_top_candidate")
+                if final_coherence_status in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"} and final_decision.get("decision_mode") == "clear_decision_candidate":
+                    errors.append("candidate pools without same-layer coherence cannot use clear_decision_candidate")
     candidates: Any = report.get("candidates", [])
     if not isinstance(candidates, list) or len(candidates) < 2:
         errors.append("comparison report requires at least two candidates")
@@ -1682,6 +1771,37 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
             errors.append(f"{row.get('symbol')} ai_review_status_matrix.ai_review_status is unknown")
         if status == "COMPLETED" and not row.get("overlay_merged"):
             errors.append(f"{row.get('symbol')} completed AI review must have overlay_merged=true")
+    readiness: Any = report.get("report_readiness")
+    if not isinstance(readiness, Mapping):
+        errors.append("report_readiness must be an object")
+    else:
+        stage: str = str(readiness.get("stage") or "")
+        if stage not in REPORT_READINESS_STAGES:
+            errors.append("report_readiness.stage is unknown")
+        if not isinstance(readiness.get("delivery_allowed"), bool):
+            errors.append("report_readiness.delivery_allowed must be boolean")
+        blocking: Any = readiness.get("blocking_statuses")
+        if not isinstance(blocking, list):
+            errors.append("report_readiness.blocking_statuses must be an array")
+            blocking = []
+        statuses_for_readiness: list[str] = [
+            str(row.get("ai_review_status") or "")
+            for row in report.get("ai_review_status_matrix", [])
+            if isinstance(row, Mapping)
+        ] if isinstance(report.get("ai_review_status_matrix"), list) else []
+        expected_blocking: list[str] = sorted({status for status in statuses_for_readiness if status not in FORMAL_AI_STATUSES})
+        if sorted(str(item) for item in blocking) != expected_blocking:
+            errors.append("report_readiness.blocking_statuses must match non-final AI statuses")
+        if "NOT_RUN" in expected_blocking and stage != "INTERNAL_BASELINE":
+            errors.append("NOT_RUN AI status requires INTERNAL_BASELINE readiness")
+        if "SKIPPED_QUICK_AUDIT" in expected_blocking and "NOT_RUN" not in expected_blocking and stage != "DIAGNOSTIC_ONLY":
+            errors.append("SKIPPED_QUICK_AUDIT without NOT_RUN requires DIAGNOSTIC_ONLY readiness")
+        if not expected_blocking and stage != "FINAL_REPORT_READY":
+            errors.append("final AI statuses require FINAL_REPORT_READY readiness")
+        if stage == "FINAL_REPORT_READY" and readiness.get("delivery_allowed") is not True:
+            errors.append("FINAL_REPORT_READY requires delivery_allowed=true")
+        if stage != "FINAL_REPORT_READY" and readiness.get("delivery_allowed") is not False:
+            errors.append("non-final report readiness requires delivery_allowed=false")
     for row in report.get("currency_normalization_matrix", []) if isinstance(report.get("currency_normalization_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
@@ -2133,6 +2253,7 @@ def build_comparison_report(
         "readiness_matrix": readiness_rows,
         "research_debt": debt_rows,
         "candidate_priority_ranking": ranked,
+        "report_readiness": _report_readiness(ai_review_rows),
         "final_decision": _final_decision(ranked, next_actions, ranking_validity, candidate_pool_semantic_coherence),
     }
     report["research_debt_runbook"] = build_runbook_rows(report)
@@ -2149,7 +2270,11 @@ def to_markdown(report: Mapping[str, Any]) -> str:
         "## 0. 结论先行",
     ]
     decision: Any = report.get("final_decision", {}) if isinstance(report.get("final_decision"), Mapping) else {}
-    lines.append(f"- 优先候选：{decision.get('top_candidate', '')}")
+    lines.append(f"- 研究队列首位：{decision.get('leading_research_candidate', '')}")
+    action_candidate: str = str(decision.get("leading_action_candidate") or "")
+    lines.append(f"- 行动候选首位：{action_candidate or '无，当前仍受行动门控约束'}")
+    decision_candidate: str = str(decision.get("decision_candidate") or "")
+    lines.append(f"- 正式决策对象：{decision_candidate or '无'}")
     lines.append(f"- 决策模式：{display_label(decision.get('decision_mode', ''))}")
     lines.append(f"- 与第二名分差：{decision.get('score_gap_to_runner_up', '')}")
     if decision.get("candidate_count_warning"):
@@ -2157,6 +2282,9 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     coherence: Any = decision.get("candidate_pool_semantic_coherence") if isinstance(decision.get("candidate_pool_semantic_coherence"), Mapping) else report.get("candidate_pool_semantic_coherence", {})
     if isinstance(coherence, Mapping):
         lines.append(f"- 候选池一致性：{display_label(coherence.get('status'))}｜{coherence.get('reason', '')}")
+    readiness: Any = report.get("report_readiness") if isinstance(report.get("report_readiness"), Mapping) else {}
+    if readiness:
+        lines.append(f"- 报告状态：{display_label(readiness.get('stage'))}｜可交付 {display_bool(readiness.get('delivery_allowed'))}")
     ranking_validity: Any = decision.get("ranking_validity") if isinstance(decision.get("ranking_validity"), Mapping) else {}
     lines.append(f"- 排序可信度：{display_label(ranking_validity.get('status', ''))}｜{ranking_validity.get('reason', '')}")
     lines.append(f"- 决策说明：{decision.get('decision', '')}")
@@ -2164,9 +2292,9 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     if invalid_ranking:
         lines.extend([
             "",
-            "> 本报告不产生正式优先候选。以下排序仅用于定位数据消费、研究债务和工程修复点，不代表投资研究排序。",
+            "> 本报告不产生正式决策对象。以下排序仅用于定位数据消费、研究债务和工程修复点，不代表投资研究排序。",
         ])
-    ranking_title: str = "工程诊断排序｜非投资候选排序" if invalid_ranking else "候选优先级"
+    ranking_title: str = "工程诊断排序｜非投资候选排序" if invalid_ranking else "研究队列排序"
     lines.extend(["", f"## 1. {ranking_title}", "| 排名 | 标的 | 可形成结论 | 研究分 | 行动分 | 优先级 | 主门控 | 行动状态 | 理由 |", "|---:|---|---|---:|---:|---:|---|---|---|"])
     for row in report.get("candidate_priority_ranking", []):
         if isinstance(row, Mapping):

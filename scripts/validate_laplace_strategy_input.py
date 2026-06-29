@@ -15,6 +15,7 @@ REQUIRED_ROOT: set[str] = {
     "schema_version",
     "generated_at",
     "source_report_path",
+    "strategy_input_ready",
     "companion_skill",
     "decision_context",
     "comparison_summary",
@@ -24,6 +25,7 @@ REQUIRED_ROOT: set[str] = {
     "laplace_execution",
     "ledger_seed",
 }
+STRATEGY_READY_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
 REQUIRED_CANDIDATE: set[str] = {
     "symbol",
     "market",
@@ -86,6 +88,30 @@ def validate_strategy_input(payload: Mapping[str, Any]) -> list[str]:
         errors.append("contract_type must be serenity_laplace_strategy_input")
     if payload.get("schema_version") != "1.0":
         errors.append("schema_version must be 1.0")
+    source_report_path: str = str(payload.get("source_report_path") or "")
+    blocked_source_names: tuple[str, ...] = (
+        "comparison_baseline.json",
+        "comparison_internal_baseline.json",
+        "comparison_diagnostic_baseline.json",
+        "agent_research_queue.json",
+    )
+    if source_report_path.endswith(blocked_source_names):
+        errors.append("source_report_path cannot be an internal baseline or agent queue artifact")
+
+    readiness: Mapping[str, Any] = _as_mapping(payload.get("strategy_input_ready"), "strategy_input_ready", errors)
+    if readiness.get("status") != "READY":
+        errors.append("strategy_input_ready.status must be READY")
+    if readiness.get("source_report_type") != "completed_ai_research":
+        errors.append("strategy_input_ready.source_report_type must be completed_ai_research")
+    report_readiness: Mapping[str, Any] = _as_mapping(readiness.get("report_readiness"), "strategy_input_ready.report_readiness", errors)
+    if report_readiness.get("stage") != "FINAL_REPORT_READY":
+        errors.append("strategy_input_ready.report_readiness.stage must be FINAL_REPORT_READY")
+    if report_readiness.get("delivery_allowed") is not True:
+        errors.append("strategy_input_ready.report_readiness.delivery_allowed must be true")
+    ready_statuses: list[Any] = _as_list(readiness.get("ai_review_statuses"), "strategy_input_ready.ai_review_statuses", errors)
+    blocked_ready_statuses: list[str] = sorted({str(status) for status in ready_statuses if str(status) not in STRATEGY_READY_AI_STATUSES})
+    if blocked_ready_statuses:
+        errors.append(f"strategy_input_ready.ai_review_statuses contains non-strategy-ready statuses: {blocked_ready_statuses}")
 
     companion: Mapping[str, Any] = _as_mapping(payload.get("companion_skill"), "companion_skill", errors)
     for key in ["name", "path", "entrypoint"]:
@@ -111,6 +137,9 @@ def validate_strategy_input(payload: Mapping[str, Any]) -> list[str]:
         errors.extend(_missing(row, REQUIRED_CANDIDATE, f"observed_facts.candidates[{index}]"))
         if not _non_empty_text(row.get("symbol")):
             errors.append(f"observed_facts.candidates[{index}].symbol must not be empty")
+        status: str = str(row.get("ai_review_status") or "")
+        if status not in STRATEGY_READY_AI_STATUSES:
+            errors.append(f"observed_facts.candidates[{index}].ai_review_status is not strategy-ready: {status}")
 
     variables: list[Any] = _as_list(payload.get("forecast_variables"), "forecast_variables", errors)
     if len(variables) < 3:

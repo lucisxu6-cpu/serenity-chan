@@ -459,8 +459,9 @@ python scripts/build_ai_overlay_prompt.py manifest.json --out ai_overlay_prompt.
 python scripts/build_ai_review_packet.py manifest.json --out ai_review_packet.json
 python scripts/validate_ai_overlay.py ai_overlay.json
 python scripts/validate_ai_review_outcome.py ai_review_outcome.json
-python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_report.json --markdown-out comparison_report.md
-python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
+python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_final.json --markdown-out comparison_final.md
+python scripts/validate_research_delivery.py comparison_final.json
+python scripts/render_research_report.py --comparison-report comparison_final.json --mode full_research
 ```
 
 `fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, valuation inputs, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 structured preflight, HKEXnews announcements, HKEX annual/interim report PDF evidence, or HK valuation inputs from HKEX issued-share disclosure plus Yahoo HK quote data. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.

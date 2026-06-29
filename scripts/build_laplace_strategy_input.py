@@ -13,6 +13,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 CONTRACT_TYPE: str = "serenity_laplace_strategy_input"
 SCHEMA_VERSION: str = "1.0"
+STRATEGY_READY_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
@@ -67,6 +68,48 @@ def _research_debt_count(symbol: str, rows: Sequence[Any]) -> int:
         if isinstance(row, Mapping) and _text(row.get("symbol")) == symbol:
             count += 1
     return count
+
+
+def _ai_review_statuses(report: Mapping[str, Any]) -> list[str]:
+    statuses: list[str] = []
+    for row in _as_list(report.get("ai_review_status_matrix")):
+        if not isinstance(row, Mapping):
+            continue
+        status: str = _text(row.get("ai_review_status"))
+        if status:
+            statuses.append(status)
+    return statuses
+
+
+def _ensure_strategy_ready(report: Mapping[str, Any], source_report_path: Path) -> dict[str, Any]:
+    source_name: str = source_report_path.name
+    errors: list[str] = []
+    if source_name in {"comparison_baseline.json", "comparison_internal_baseline.json", "comparison_diagnostic_baseline.json"}:
+        errors.append(f"{source_name} cannot be used for Laplace strategy input")
+    readiness: Mapping[str, Any] = _as_mapping(report.get("report_readiness"))
+    if readiness.get("stage") != "FINAL_REPORT_READY":
+        errors.append("report_readiness.stage must be FINAL_REPORT_READY before strategy handoff")
+    if readiness.get("delivery_allowed") is not True:
+        errors.append("report_readiness.delivery_allowed must be true before strategy handoff")
+    statuses: list[str] = _ai_review_statuses(report)
+    if not statuses:
+        errors.append("ai_review_status_matrix must be present before strategy handoff")
+    blocked_statuses: list[str] = sorted({status for status in statuses if status not in STRATEGY_READY_AI_STATUSES})
+    if blocked_statuses:
+        errors.append(f"AI research is not strategy-ready: {blocked_statuses}")
+    final_decision: Mapping[str, Any] = _as_mapping(report.get("final_decision"))
+    decision_mode: str = _text(final_decision.get("decision_mode"))
+    if not decision_mode:
+        errors.append("final_decision.decision_mode is required before strategy handoff")
+    if errors:
+        raise ValueError("; ".join(errors))
+    return {
+        "status": "READY",
+        "source_report_type": "completed_ai_research",
+        "report_readiness": dict(readiness),
+        "ai_review_statuses": sorted(set(statuses)),
+        "policy": "Strategy input is built only after every candidate has a completed AI overlay or a validated AI outcome.",
+    }
 
 
 def _candidate_name(symbol: str, candidates: Mapping[str, Mapping[str, Any]]) -> str:
@@ -241,6 +284,7 @@ def build_strategy_input(
     decision_use: str,
     default_profile: str,
 ) -> dict[str, Any]:
+    readiness: dict[str, Any] = _ensure_strategy_ready(report, source_report_path)
     comparison_scope: Mapping[str, Any] = _as_mapping(report.get("comparison_scope"))
     final_decision: Mapping[str, Any] = _as_mapping(report.get("final_decision"))
     ranking_validity: Mapping[str, Any] = _as_mapping(final_decision.get("ranking_validity"))
@@ -280,6 +324,7 @@ def build_strategy_input(
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_report_path": str(source_report_path.resolve()),
+        "strategy_input_ready": readiness,
         "companion_skill": {
             "name": "laplace-forecast",
             "path": "companion-skills/laplace-forecast",
@@ -345,7 +390,7 @@ def build_strategy_input(
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Build Laplace strategy input from a Serenity comparison report")
-    parser.add_argument("comparison_report", help="comparison_final.json or comparison_baseline.json")
+    parser.add_argument("comparison_report", help="completed comparison_final.json with AI overlay/outcome merged")
     parser.add_argument("--theme", default="", help="theme or strategy object")
     parser.add_argument("--horizon", default="3-6个月")
     parser.add_argument("--geography", default="", help="geography; defaults to inferred markets from comparison report")

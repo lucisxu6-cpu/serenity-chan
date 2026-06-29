@@ -13,19 +13,20 @@ The final user-facing report must be rendered after one of these outcomes:
 - `CONFLICT_WITH_DATA`: AI generated a validated `ai_review_outcome` because the thesis conflicted with deterministic data, source level, currency normalization, valuation, or capital-action constraints.
 - `SKIPPED_QUICK_AUDIT`: AI generated a validated `ai_review_outcome` because the user explicitly requested quick audit or data-only diagnostics.
 
-Final reports use explicit AI execution statuses: `COMPLETED`, `FAILED_INSUFFICIENT_EVIDENCE`, `CONFLICT_WITH_DATA`, `SKIPPED_QUICK_AUDIT`, or `NOT_RUN`. `NOT_RUN` is allowed only in deterministic baseline or diagnostic output before the AI merge stage; the validated merge entry point rejects missing AI results for formal candidate comparison.
+Formal reports use explicit AI execution statuses: `COMPLETED`, `FAILED_INSUFFICIENT_EVIDENCE`, or `CONFLICT_WITH_DATA`. `NOT_RUN` belongs only to internal data baselines before the agent research queue is executed. `SKIPPED_QUICK_AUDIT` belongs only to explicit diagnostic or quick-audit flows. The validated merge and delivery validators reject missing AI results for formal candidate comparison.
 
 ## Required Workflow
 
 1. Fetch real data and keep every manifest.
 2. Build deterministic comparison JSON.
 3. Build one `ai_review_packet` and one `ai_committee_packet` per candidate.
-4. Read the packets and source artifacts that support the open debts.
-5. Generate one AI result per candidate: `ai_overlay.json` for completed evidence-backed research, or `ai_review_outcome.json` for insufficient evidence, data conflict, or quick audit.
-6. Validate each overlay with `scripts/validate_ai_overlay.py`; validate each outcome with `scripts/validate_ai_review_outcome.py`.
-7. Merge overlays and outcomes with `scripts/validate_and_merge_ai_overlay.py`.
-8. Validate the merged comparison report.
-9. Render the final Chinese report.
+4. If `run_research_analysis.py` returns `AGENT_RESEARCH_QUEUE_READY`, read `agent_research_queue.json` and execute every `work_item`.
+5. Read the packets and source artifacts that support the open debts.
+6. Generate one AI result per candidate: `ai_overlay.json` for completed evidence-backed research, or `ai_review_outcome.json` for insufficient evidence or data conflict. Use `SKIPPED_QUICK_AUDIT` only for explicit diagnostic/quick-audit requests.
+7. Validate each overlay with `scripts/validate_ai_overlay.py`; validate each outcome with `scripts/validate_ai_review_outcome.py`.
+8. Merge overlays and outcomes with `scripts/validate_and_merge_ai_overlay.py`.
+9. Validate the merged comparison report and delivery gate with `scripts/validate_research_delivery.py`.
+10. Render the final Chinese report from `comparison_final.json`.
 
 ## Overlay Content Rules
 
@@ -74,12 +75,23 @@ python scripts/validate_ai_review_outcome.py ai_review_outcome.json
 python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json \
   --overlay SYMBOL_A=ai_overlay.json \
   --ai-outcome SYMBOL_B=ai_review_outcome.json \
-  --report-out comparison_report.json \
-  --markdown-out comparison_report.md
+  --report-out comparison_final.json \
+  --markdown-out comparison_final.md
+python scripts/validate_research_delivery.py comparison_final.json
 ```
 
 The report may remain research-gated, and it must state that AI research was attempted and why it failed.
 
 ## Mode Boundary
 
-`quick_audit` may stop before overlay generation. `candidate_comparison` and `full_research` must execute or explicitly fail the overlay stage before delivery.
+`diagnostic` and `quick_audit` may stop at a data-only baseline when the user explicitly asks for data quality, engineering diagnosis, or fast screening. `candidate_comparison`, `full_research`, strategy recommendation, allocation, and action-plan requests must execute or explicitly fail the overlay stage before delivery.
+
+## Agent Research Queue
+
+When formal mode lacks AI results, `run_research_analysis.py` writes `agent_research_queue.json`. Validate it with:
+
+```bash
+python scripts/validate_agent_research_queue.py <run_dir>/agent_research_queue.json
+```
+
+This artifact is an internal work queue. The current AI agent must complete every `work_item` before formal delivery. Each item points to the manifest, review packet, committee packet, overlay prompt, allowed result types, output paths, validation commands, and guardrails.

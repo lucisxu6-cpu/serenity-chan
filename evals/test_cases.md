@@ -50,7 +50,7 @@ Expected:
 User: 国产机器人产业链哪些 A 股值得研究？
 Expected:
 - Output value-chain map before company names.
-- Rank bottleneck layers before top candidates.
+- Rank bottleneck layers before research candidates.
 - Build a candidate universe or mark initial pass.
 - Include at least one popular but downgraded direction.
 
@@ -126,5 +126,5 @@ Expected:
 - Cross-symbol `valuation_input_ref` values are invalid even when they use the correct `valuation_input_matrix:` prefix.
 - AI overlay supplies `evidence_supported_growth`; `market_implied_growth` is generated from valuation inputs and PE/PS.
 - Missing valuation inputs create `VALUATION_GATED`; if a lower-level quote/history blocker exists, `DATA_GATED` can remain primary while `VALUATION_GATED` stays visible as a secondary gate.
-- `final_decision` includes `decision_mode`, `score_gap_to_runner_up`, and candidate-count warning so close candidate clusters are not overstated as durable top picks.
+- `final_decision` includes `decision_mode`, `score_gap_to_runner_up`, and candidate-count warning so close candidate clusters are not overstated as stable decision objects.
 - AI overlay examples under `examples/comparison_688019_688322/` must validate before they can change layer mapping, evidence-supported growth, or ranking context.

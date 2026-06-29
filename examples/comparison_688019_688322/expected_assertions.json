@@ -13,6 +13,6 @@
     "growth_hypothesis_matrix.0.valuation_input_ref": "valuation_input_matrix:688019.SH",
     "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
     "candidate_priority_ranking.0.symbol": "688019.SH",
-    "final_decision.decision_mode": "tentative_top_candidate"
+    "final_decision.decision_mode": "research_lead"
   }
 }

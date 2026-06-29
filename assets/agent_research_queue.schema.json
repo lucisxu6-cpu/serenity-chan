@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Agent Research Queue",
+  "type": "object",
+  "required": [
+    "contract_type",
+    "schema_version",
+    "workflow_status",
+    "research_mode",
+    "artifact_role",
+    "terminal",
+    "delivery_allowed",
+    "next_phase",
+    "out_dir",
+    "fetch_summaries",
+    "ai_artifacts",
+    "internal_baseline_report",
+    "missing_ai_result_symbols",
+    "work_items",
+    "execution_policy"
+  ],
+  "properties": {
+    "contract_type": { "const": "serenity_agent_research_queue" },
+    "schema_version": { "const": "1.0" },
+    "workflow_status": { "const": "AGENT_RESEARCH_QUEUE_READY" },
+    "research_mode": { "const": "formal" },
+    "artifact_role": { "const": "internal_agent_work_queue" },
+    "terminal": { "const": false },
+    "delivery_allowed": { "const": false },
+    "next_phase": { "const": "execute_agent_research" },
+    "out_dir": { "type": "string", "minLength": 1 },
+    "fetch_summaries": { "type": "array" },
+    "ai_artifacts": { "type": "array" },
+    "internal_baseline_report": { "type": "string", "minLength": 1 },
+    "missing_ai_result_symbols": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "work_items": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/work_item" }
+    },
+    "execution_policy": { "$ref": "#/$defs/execution_policy" }
+  },
+  "$defs": {
+    "work_item": {
+      "type": "object",
+      "required": [
+        "symbol",
+        "required_action",
+        "manifest_path",
+        "review_packet",
+        "committee_packet",
+        "overlay_prompt",
+        "theme_universe",
+        "theme_research_packet",
+        "overlay_schema",
+        "outcome_schema",
+        "overlay_output_path",
+        "outcome_output_path",
+        "allowed_results",
+        "validation_commands",
+        "guardrails"
+      ],
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1 },
+        "required_action": { "const": "produce_validated_ai_overlay_or_outcome" },
+        "manifest_path": { "type": "string", "minLength": 1 },
+        "review_packet": { "type": "string", "minLength": 1 },
+        "committee_packet": { "type": "string", "minLength": 1 },
+        "overlay_prompt": { "type": "string", "minLength": 1 },
+        "theme_universe": { "type": "string" },
+        "theme_research_packet": { "type": "string" },
+        "overlay_schema": { "const": "assets/ai_research_overlay.schema.json" },
+        "outcome_schema": { "const": "assets/ai_review_outcome.schema.json" },
+        "overlay_output_path": { "type": "string", "minLength": 1 },
+        "outcome_output_path": { "type": "string", "minLength": 1 },
+        "allowed_results": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "validation_commands": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "guardrails": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution_policy": {
+      "type": "object",
+      "required": [
+        "current_agent_executes_work_items",
+        "internal_baseline_role",
+        "quick_audit_allowed",
+        "forbidden"
+      ],
+      "properties": {
+        "current_agent_executes_work_items": { "const": true },
+        "internal_baseline_role": { "const": "data_diagnostics_only" },
+        "quick_audit_allowed": { "const": false },
+        "forbidden": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

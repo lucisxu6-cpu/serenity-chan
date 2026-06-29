@@ -18,6 +18,8 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 REPORT_MODES: set[str] = {"candidate_comparison", "full_research", "quick_audit"}
+FORMAL_REPORT_MODES: set[str] = {"candidate_comparison", "full_research"}
+FORMAL_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
 
 
 def _load_json(path: Path) -> Any:
@@ -60,6 +62,23 @@ def _joined(value: Any, *, empty: str = "") -> str:
         items: list[str] = [display_label(item) for item in value if str(item).strip()]
         return ", ".join(items) if items else empty
     return display_label(value, empty)
+
+
+def _ensure_formal_delivery(report: Mapping[str, Any], *, mode: str) -> None:
+    if mode not in FORMAL_REPORT_MODES:
+        return
+    readiness: Mapping[str, Any] = report.get("report_readiness") if isinstance(report.get("report_readiness"), Mapping) else {}
+    if readiness.get("stage") != "FINAL_REPORT_READY" or readiness.get("delivery_allowed") is not True:
+        raise ValueError("formal report rendering requires FINAL_REPORT_READY readiness")
+    blocked_statuses: list[str] = []
+    for row in report.get("ai_review_status_matrix", []) if isinstance(report.get("ai_review_status_matrix"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        status: str = str(row.get("ai_review_status") or "")
+        if status not in FORMAL_AI_STATUSES:
+            blocked_statuses.append(status)
+    if blocked_statuses:
+        raise ValueError(f"formal report rendering blocked by AI statuses: {sorted(set(blocked_statuses))}")
 
 
 def _gate_class_summary(value: Any, *, empty: str = "none") -> str:
@@ -145,7 +164,7 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
             f"- 数据包：`{_text(candidate.get('data_package_path'), 'NA')}`",
             "",
             "### Serenity 研究假设",
-            f"- 产业链层级：{display_label(layer.get('layer'), '待 AI/行业研究复核')}",
+            f"- 产业链层级：{display_label(layer.get('layer'), '待价值链映射')}",
             f"- 瓶颈判断：{_text(layer.get('bottleneck_reason'), '待验证')}",
             f"- 收入传导：{_text(layer.get('revenue_transmission'), '待验证')}",
             f"- 证据缺口：{_text(layer.get('evidence_gap'), '待补证')}",
@@ -179,6 +198,7 @@ def _render_from_report(report: Mapping[str, Any], *, mode: str) -> str:
     errors: list[str] = validate_comparison_report(report)
     if errors:
         raise ValueError("; ".join(errors))
+    _ensure_formal_delivery(report, mode=mode)
     markdown: str = to_markdown(report)
     if mode == "quick_audit":
         return "\n".join([

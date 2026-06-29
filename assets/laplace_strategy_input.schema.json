@@ -7,6 +7,7 @@
     "schema_version",
     "generated_at",
     "source_report_path",
+    "strategy_input_ready",
     "companion_skill",
     "decision_context",
     "comparison_summary",
@@ -30,6 +31,32 @@
     },
     "source_report_path": {
       "type": "string"
+    },
+    "strategy_input_ready": {
+      "type": "object",
+      "required": ["status", "source_report_type", "report_readiness", "ai_review_statuses", "policy"],
+      "properties": {
+        "status": { "type": "string", "const": "READY" },
+        "source_report_type": { "type": "string", "const": "completed_ai_research" },
+        "report_readiness": {
+          "type": "object",
+          "required": ["stage", "delivery_allowed"],
+          "properties": {
+            "stage": { "type": "string", "const": "FINAL_REPORT_READY" },
+            "delivery_allowed": { "type": "boolean", "const": true }
+          },
+          "additionalProperties": true
+        },
+        "ai_review_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"]
+          }
+        },
+        "policy": { "type": "string" }
+      },
+      "additionalProperties": true
     },
     "companion_skill": {
       "type": "object",

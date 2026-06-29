@@ -34,6 +34,8 @@ try:
     from technical_health import analyze_price_rows
     from validate_ai_overlay import validate_overlay
     from validate_ai_review_outcome import validate_review_outcome
+    from validate_agent_research_queue import validate_agent_research_queue
+    from validate_research_delivery import validate_delivery_payload
     from validate_and_merge_ai_overlay import build_validated_merged_report
     from render_research_report import render_report
     from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
@@ -60,6 +62,8 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.technical_health import analyze_price_rows
     from scripts.validate_ai_overlay import validate_overlay
     from scripts.validate_ai_review_outcome import validate_review_outcome
+    from scripts.validate_agent_research_queue import validate_agent_research_queue
+    from scripts.validate_research_delivery import validate_delivery_payload
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
     from scripts.render_research_report import render_report
     from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
@@ -476,12 +480,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif kind == "render_report_mode":
             manifests: Any = case.get("manifests", [])
             mode: str = str(case.get("mode") or "candidate_comparison")
+            overlays: Any = case.get("overlay_values", [])
+            outcomes: Any = case.get("outcome_values", [])
             if not isinstance(manifests, list) or len(manifests) < 2:
                 raise ValueError("render_report_mode static eval requires at least two manifests")
+            if not isinstance(overlays, list) or not isinstance(outcomes, list):
+                raise ValueError("render_report_mode static eval requires overlay_values and outcome_values arrays when supplied")
             try:
                 manifest_paths: list[Path] = [root / str(path) for path in manifests]
-                markdown: str = render_report(manifests=manifest_paths, mode=mode)
-                comparison_markdown: str = render_report(manifests=manifest_paths, mode="candidate_comparison")
+                if overlays or outcomes:
+                    report_payload: dict[str, Any] = build_validated_merged_report(
+                        manifest_paths,
+                        [str(item) for item in overlays],
+                        [str(item) for item in outcomes],
+                    )
+                    with tempfile.TemporaryDirectory(prefix="serenity-static-render-") as temp_dir:
+                        report_path: Path = Path(temp_dir) / "comparison_final.json"
+                        report_path.write_text(json.dumps(report_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                        markdown = render_report(manifests=[], comparison_report=report_path, mode=mode)
+                        comparison_markdown = render_report(manifests=[], comparison_report=report_path, mode="candidate_comparison")
+                else:
+                    markdown = render_report(manifests=manifest_paths, mode=mode)
+                    comparison_markdown = render_report(manifests=manifest_paths, mode="candidate_comparison")
                 result_payload = {
                     "mode": mode,
                     "line_count": len(markdown.splitlines()),
@@ -614,6 +634,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "agent_research_queue_validation":
+            payload = case.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("agent_research_queue_validation static eval requires payload object")
+            errors = validate_agent_research_queue(payload)
+            result_payload = {"ok": not errors, "errors": errors}
+            actual_pass = not errors
+            findings = errors
+        elif kind == "research_delivery_validation":
+            payload = case.get("payload", {})
+            source_path: str = str(case.get("source_path") or "")
+            manifests = case.get("manifests", [])
+            overlays: Any = case.get("overlay_values", [])
+            outcomes: Any = case.get("outcome_values", [])
+            if manifests:
+                if not isinstance(manifests, list) or len(manifests) < 2:
+                    raise ValueError("research_delivery_validation manifests must contain at least two items")
+                if not isinstance(overlays, list) or not isinstance(outcomes, list):
+                    raise ValueError("research_delivery_validation requires overlay_values and outcome_values arrays with manifests")
+                payload = build_validated_merged_report(
+                    [root / str(path) for path in manifests],
+                    [str(item) for item in overlays],
+                    [str(item) for item in outcomes],
+                )
+            if not isinstance(payload, dict):
+                raise ValueError("research_delivery_validation static eval requires payload object or manifests")
+            errors = validate_delivery_payload(payload, source_path=source_path)
+            result_payload = {"ok": not errors, "errors": errors}
+            actual_pass = not errors
+            findings = errors
         elif kind == "ai_review_packet":
             manifest = case.get("manifest")
             if not isinstance(manifest, str):

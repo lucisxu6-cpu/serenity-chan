@@ -112,7 +112,7 @@ news / policy / product launch
 | Weak | 互动平台、普通媒体、KOL、社媒、渠道传闻 |
 | Unverified | 无可追溯来源 |
 
-Final top candidate 至少应有一个 Strong 或多个 Medium 交叉验证。只有 Weak 证据的公司不能排核心。
+正式决策对象至少应有一个 Strong 或多个 Medium 交叉验证。只有 Weak 证据的公司不能进入核心动作。
 
 ---
 

@@ -267,7 +267,7 @@ def validate_text(text: str) -> ValidationResult:
         theme_requirements = [
             (["产业链地图", "Value-chain Map", "Value Chain Map"], "theme_missing_value_chain_map", "theme scan must map value-chain layers before ranking companies"),
             (["瓶颈层级排序", "Layer Ranking", "Bottleneck Layer Ranking"], "theme_missing_layer_ranking", "theme scan must rank bottleneck layers before companies"),
-            (["候选公司池", "Candidate Universe", "Candidate Pool"], "theme_missing_candidate_universe", "theme scan must show the candidate universe before top candidates"),
+            (["候选公司池", "Candidate Universe", "Candidate Pool"], "theme_missing_candidate_universe", "theme scan must show the candidate universe before research candidates"),
         ]
         for keywords, code, message in theme_requirements:
             if not _has_heading(text, keywords):

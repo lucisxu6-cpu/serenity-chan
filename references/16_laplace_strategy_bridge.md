@@ -17,9 +17,14 @@ The current AI agent performs the bridge. Deterministic scripts prepare the stru
 
 ## Required Flow
 
-1. Produce a validated Serenity comparison report.
-2. If the report still has missing AI overlay/outcome for formal research, complete the AI overlay/outcome stage first.
-3. Build the strategy input:
+1. Produce a validated Serenity `comparison_final.json` with `report_readiness.stage=FINAL_REPORT_READY`.
+2. Validate formal delivery:
+
+```bash
+python scripts/validate_research_delivery.py comparison_final.json
+```
+
+3. Build the strategy input; internal baselines, agent queues, `NOT_RUN`, and quick diagnostic outputs are rejected:
 
 ```bash
 python scripts/build_laplace_strategy_input.py comparison_final.json \

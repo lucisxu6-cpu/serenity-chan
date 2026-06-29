@@ -64,7 +64,7 @@ flowchart TB
 | AI 研究没有真正执行 | `build_ai_overlay_prompt.py` 生成可执行研究包；成功输出 overlay，证据不足或冲突输出 `ai_review_outcome`，两者都必须校验后合并 |
 | 资本动作只写“有风险” | `capital_action_quantification` 把定增、H 股上市、减持、回购等拆成新增股份、发行价、锁定期、募资用途、减持比例等字段级任务 |
 | 缺口太多不知道先补什么 | `research_debt_runbook` 把研究债务转成轴线、阻塞等级、首选来源、验证目标和补齐后的决策影响 |
-| 候选池看起来能排但本质不同 | `candidate_pool_semantic_coherence` 区分同层候选、同主题不同层、跨主题诊断和无关诊断，限制正式 top candidate |
+| 候选池看起来能排但本质不同 | `candidate_pool_semantic_coherence` 区分同层候选、同主题不同层、跨主题诊断和无关诊断，限制正式决策对象 |
 | 结论无法复盘 | 输出证据等级、研究债务、证伪条件和候选排序 |
 | 研究结果还需要变成策略 | `laplace_strategy_input` 将 Serenity 报告交给内置 `laplace-forecast` companion，继续生成情景、触发器、失效条件和 ledger claim |
 
@@ -110,9 +110,9 @@ flowchart TB
 | `data_quality` | 当前请求和完整研究的评级上限 |
 | `ai_review` | 需要 AI 判断的源强度、行业口径、warning 和升级条件 |
 | `ai_research_overlay` | AI 对产业层级、卡点、收入传导、反证和下一步问题的结构化判断 |
-| `ai_review_status_matrix` | 每个候选的 AI 研究执行状态，区分 `COMPLETED`、`FAILED_INSUFFICIENT_EVIDENCE`、`CONFLICT_WITH_DATA`、`SKIPPED_QUICK_AUDIT` 和 `NOT_RUN` |
+| `ai_review_status_matrix` | 每个候选的 AI 研究执行状态；正式研究使用 `COMPLETED`、`FAILED_INSUFFICIENT_EVIDENCE` 或 `CONFLICT_WITH_DATA`，诊断基线才允许 `NOT_RUN`，显式快速审计才允许 `SKIPPED_QUICK_AUDIT` |
 | `ai_review_outcome` | AI 已尝试但证据不足、与确定性数据冲突或用户要求快速审计时的结构化结果 |
-| `candidate_pool_semantic_coherence` | 候选池语义一致性；只有同层候选可进入正式 clear top candidate |
+| `candidate_pool_semantic_coherence` | 候选池语义一致性；只有同层候选且行动门控解除后，才能产生正式决策对象 |
 | `capital_action_quantification` | 资本动作量化矩阵，暴露缺失字段、稀释/回购/减持影响和下一步核验任务 |
 | `research_debt_runbook` | 可执行补证清单，按轴线、阻塞等级、首选来源和验证目标组织 |
 | `laplace_strategy_input` | 由候选对比报告派生的策略预测输入，内置 companion skill 路径、决策上下文、候选事实、主导变量、策略问题和 ledger seed |
@@ -144,7 +144,7 @@ flowchart TB
 `MISMATCH` 会使 `ranking_validity=INVALID`；`PARTIAL` / `DATA_GATED` 数据消费或 high/critical `research_debt` 会使 `ranking_validity=PARTIAL`。
 
 AI 研究阶段提交两类正式结果：证据足够时生成 `ai_research_overlay`，证据不足、冲突或快速审计时生成 `ai_review_outcome`。overlay 提交产业链映射、证据支持增长、反证和下一步问题；outcome 记录失败原因、冲突字段和需要补齐的证据。`market_implied_growth` 始终由 `valuation_input_matrix`、PE/PS 和同币种财务口径生成。
-`candidate_pool_semantic_coherence` 会把候选池标记为同层候选、同主题不同层、跨主题诊断或无关诊断；只有同层候选可进入正式 clear top candidate，其余状态只能作为研究优先级或诊断集合。
+`candidate_pool_semantic_coherence` 会把候选池标记为同层候选、同主题不同层、跨主题诊断或无关诊断；只有同层候选且行动门控解除后，才能产生正式决策对象，其余状态只能作为研究优先级或诊断集合。
 用户可读分析默认使用中文描述；机器字段可以保留英文枚举，但必须用中文解释含义和限制。
 
 ### 快速开始
@@ -153,10 +153,21 @@ AI 研究阶段提交两类正式结果：证据足够时生成 `ai_research_ove
 
 ```bash
 python scripts/run_research_analysis.py 688019 688322 \
-  --out-dir /tmp/serenity-chan-run/688019-688322
+  --out-dir /tmp/serenity-chan-run/688019-688322 \
+  --research-mode formal
 ```
 
-这个命令会完成真实取数、生成确定性 baseline，并为每个候选生成 `ai_review_packet.json`、`ai_committee_packet.json` 和 `ai_overlay_prompt.json`。如果尚未提供 AI overlay/outcome，输出状态为 `AI_RESULT_REQUIRED` 并写出 `ai_result_required.json`；当每个候选都有正式 AI 结果后，继续传入 `--overlay SYMBOL=overlay.json` 或 `--ai-outcome SYMBOL=outcome.json`，脚本会执行证据校验、合并并生成最终 JSON/Markdown 报告。
+这个命令会完成真实取数、生成内部数据基线，并为每个候选生成 `ai_review_packet.json`、`ai_committee_packet.json` 和 `ai_overlay_prompt.json`。缺少 AI overlay/outcome 时，formal 模式输出 `AGENT_RESEARCH_QUEUE_READY` 并写出 `agent_research_queue.json`。当前 AI 执行全部 `work_items` 后，继续传入 `--overlay SYMBOL=overlay.json` 或 `--ai-outcome SYMBOL=outcome.json`，脚本会执行证据校验、合并并生成 `comparison_final.json` / `comparison_final.md`。
+
+只做数据质量排查时使用诊断模式：
+
+```bash
+python scripts/run_research_analysis.py 688019 688322 \
+  --out-dir /tmp/serenity-chan-run/688019-688322-diagnostic \
+  --research-mode diagnostic
+```
+
+诊断模式输出只能用于数据状态、缺口和研究任务分派，不能作为正式候选排序或行动建议。
 
 主题扫描先生成候选宇宙：
 
@@ -165,10 +176,23 @@ python scripts/build_theme_candidate_universe.py 机器人 \
   --out /tmp/serenity-chan-data/robotics_universe.json
 
 python scripts/validate_theme_candidate_universe.py /tmp/serenity-chan-data/robotics_universe.json
+
+python scripts/build_theme_research_packet.py /tmp/serenity-chan-data/robotics_universe.json \
+  --out /tmp/serenity-chan-data/robotics_theme_research_packet.json
+
+python scripts/validate_theme_research_packet.py /tmp/serenity-chan-data/robotics_theme_research_packet.json
 ```
 
-AI 基于 `references/17_industry_domain_packs.md` 扩展候选到足够覆盖的产业链层级，再把候选代码交给正式研究入口。
+AI 基于 `references/17_industry_domain_packs.md` 扩展候选到足够覆盖的产业链层级，方向级研究包负责宏观驱动、产业卡点、反证和扩展任务，再把候选代码交给正式研究入口。
 非内置主题由 AI 按 `assets/theme_candidate_universe.schema.json` 先写出候选宇宙并通过 `validate_theme_candidate_universe.py`，不得用占位候选替代真实候选。
+
+主题正式研究入口：
+
+```bash
+python scripts/run_theme_research_analysis.py 机器人 \
+  --out-dir /tmp/serenity-chan-run/robotics-theme \
+  --research-mode formal
+```
 
 解析代码和数据源计划：
 
@@ -215,6 +239,8 @@ python scripts/validate_comparison_report.py /tmp/serenity-chan-data/comparison_
 
 ```bash
 python scripts/build_ai_overlay_prompt.py /tmp/serenity-chan-data/688019/manifest.json \
+  --theme-universe /tmp/serenity-chan-data/robotics_universe.json \
+  --theme-research-packet /tmp/serenity-chan-data/robotics_theme_research_packet.json \
   --out /tmp/serenity-chan-data/688019/ai_overlay_prompt.json
 
 python scripts/build_ai_review_packet.py /tmp/serenity-chan-data/688019/manifest.json \
@@ -239,12 +265,14 @@ python scripts/validate_and_merge_ai_overlay.py \
   /tmp/serenity-chan-data/688322/manifest.json \
   --overlay 688019.SH=/tmp/serenity-chan-data/688019/ai_overlay.json \
   --ai-outcome 688322.SH=/tmp/serenity-chan-data/688322/ai_review_outcome.json \
-  --report-out /tmp/serenity-chan-data/comparison_report.json \
-  --markdown-out /tmp/serenity-chan-data/comparison_report.md \
+  --report-out /tmp/serenity-chan-data/comparison_final.json \
+  --markdown-out /tmp/serenity-chan-data/comparison_final.md \
   --format json
 
+python scripts/validate_research_delivery.py /tmp/serenity-chan-data/comparison_final.json
+
 python scripts/render_research_report.py \
-  --comparison-report /tmp/serenity-chan-data/comparison_report.json \
+  --comparison-report /tmp/serenity-chan-data/comparison_final.json \
   --mode full_research
 ```
 
@@ -254,7 +282,7 @@ python scripts/render_research_report.py \
 进入 Laplace 策略层：
 
 ```bash
-python scripts/build_laplace_strategy_input.py /tmp/serenity-chan-data/comparison_report.json \
+python scripts/build_laplace_strategy_input.py /tmp/serenity-chan-data/comparison_final.json \
   --theme "A股机器人与AI算力" \
   --horizon "3-6个月" \
   --decision-use "watchlist allocation, action triggers, and invalidation" \
@@ -263,7 +291,7 @@ python scripts/build_laplace_strategy_input.py /tmp/serenity-chan-data/compariso
 python scripts/validate_laplace_strategy_input.py /tmp/serenity-chan-data/laplace_strategy_input.json
 ```
 
-AI 读取 `references/16_laplace_strategy_bridge.md` 与 `companion-skills/laplace-forecast/SKILL.md` 后，继续输出中文策略结论：Forecast、Decision、Observed、Inferred、Judgment、Dominant variables、Scenarios、Triggers、Invalidation、Next evidence 和 Action plan。重要主题或中期策略判断同步生成可写入 forecast ledger 的 claim。
+`build_laplace_strategy_input.py` 只接受 `report_readiness.stage=FINAL_REPORT_READY` 的 `comparison_final.json`；内部基线、agent queue、`NOT_RUN` 或快速诊断输出不会进入策略层。AI 读取 `references/16_laplace_strategy_bridge.md` 与 `companion-skills/laplace-forecast/SKILL.md` 后，继续输出中文策略结论：Forecast、Decision、Observed、Inferred、Judgment、Dominant variables、Scenarios、Triggers、Invalidation、Next evidence 和 Action plan。重要主题或中期策略判断同步生成可写入 forecast ledger 的 claim。
 
 交付前门禁：
 
@@ -271,10 +299,12 @@ AI 读取 `references/16_laplace_strategy_bridge.md` 与 `companion-skills/lapla
 # 标准单股 / 主题 / 数据审计输出
 python scripts/validate_output_contract.py <report.md>
 python scripts/validate_output_contract_json.py <contract.json>
+python scripts/validate_research_delivery.py <comparison_final.json>
 
 # 候选对比输出
 python scripts/validate_comparison_report.py <comparison_report.json>
-python scripts/render_research_report.py --comparison-report <comparison_report.json> --mode full_research
+python scripts/validate_research_delivery.py <comparison_final.json>
+python scripts/render_research_report.py --comparison-report <comparison_final.json> --mode full_research
 
 python scripts/run_static_evals.py
 ```
@@ -294,10 +324,10 @@ python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --valid
 python scripts/validate_output_contract_json.py evals/fixtures/pass_output_contract_json.json
 python scripts/build_comparison_report.py evals/fixtures/comparison_688019_manifest.json evals/fixtures/comparison_688322_manifest.json --format json > /tmp/serenity-comparison-report.json
 python scripts/validate_comparison_report.py /tmp/serenity-comparison-report.json
-python scripts/build_laplace_strategy_input.py /tmp/serenity-comparison-report.json --out /tmp/serenity-laplace-strategy-input.json
-python scripts/validate_laplace_strategy_input.py /tmp/serenity-laplace-strategy-input.json
 python scripts/build_theme_candidate_universe.py 机器人 --out /tmp/serenity-theme-universe.json
 python scripts/validate_theme_candidate_universe.py /tmp/serenity-theme-universe.json
+python scripts/build_theme_research_packet.py /tmp/serenity-theme-universe.json --out /tmp/serenity-theme-research-packet.json
+python scripts/validate_theme_research_packet.py /tmp/serenity-theme-research-packet.json
 python scripts/run_static_evals.py
 ```
 
@@ -365,7 +395,7 @@ flowchart TB
 | Theme Before Ticker | Theme scans start from value-chain layers and a candidate universe before fetching individual tickers |
 | Deterministic Market-Implied Growth | Market-implied growth is derived from complete valuation inputs and computable PE/PS |
 | Ranking Over Average | Candidate priority reflects usefulness, not a neutral average |
-| Decision Clarity | Final decisions classify clear top, tentative top, candidate cluster, and non-decision-grade states |
+| Decision Clarity | Final decisions separate research lead, action lead, formal decision object, candidate cluster, and non-decision-grade states |
 | Ranking Validity | Mismatched data consumption invalidates ranking; partial or data-gated consumption and high/critical research debt keep ranking partial |
 
 ### Key Outputs
@@ -393,8 +423,8 @@ flowchart TB
 ### Key Commands
 
 ```bash
-python scripts/run_research_analysis.py 688019 688322 --out-dir /tmp/serenity-chan-run/688019-688322
-python scripts/run_research_analysis.py 688019 688322 --out-dir /tmp/serenity-chan-run/688019-688322 --strategy-theme "A-share robotics" --strategy-horizon "3-6 months"
+python scripts/run_research_analysis.py 688019 688322 --out-dir /tmp/serenity-chan-run/688019-688322 --research-mode formal
+python scripts/run_research_analysis.py 688019 688322 --out-dir /tmp/serenity-chan-run/688019-688322 --research-mode formal --strategy-theme "A-share robotics" --strategy-horizon "3-6 months"
 python scripts/data_router.py fetch NVDA --sec-user-agent "Your Name your.email@example.com"
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format both
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
@@ -403,17 +433,20 @@ python scripts/candidate_ranker.py candidate_a.json candidate_b.json
 python scripts/build_comparison_report.py manifest_a.json manifest_b.json --format json > comparison_report.json
 python scripts/validate_comparison_report.py comparison_report.json
 
-python scripts/build_ai_overlay_prompt.py manifest_a.json --out ai_overlay_prompt.json
+python scripts/build_ai_overlay_prompt.py manifest_a.json --theme-universe theme_candidate_universe.json --theme-research-packet theme_research_packet.json --out ai_overlay_prompt.json
 python scripts/build_ai_review_packet.py manifest_a.json --out ai_review_packet.json
 python scripts/build_ai_committee_packet.py manifest_a.json --out ai_committee_packet.json
 python scripts/validate_ai_overlay.py ai_overlay.json --manifest manifest_a.json
 python scripts/validate_ai_review_outcome.py ai_review_outcome.json
-python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_report.json --markdown-out comparison_report.md
-python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
-python scripts/build_laplace_strategy_input.py comparison_report.json --theme "A-share AI infrastructure" --out laplace_strategy_input.json
+python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_final.json --markdown-out comparison_final.md
+python scripts/validate_research_delivery.py comparison_final.json
+python scripts/render_research_report.py --comparison-report comparison_final.json --mode full_research
+python scripts/build_laplace_strategy_input.py comparison_final.json --theme "A-share AI infrastructure" --out laplace_strategy_input.json
 python scripts/validate_laplace_strategy_input.py laplace_strategy_input.json
 python scripts/build_theme_candidate_universe.py "AI compute" --out ai_compute_universe.json
 python scripts/validate_theme_candidate_universe.py ai_compute_universe.json
+python scripts/build_theme_research_packet.py ai_compute_universe.json --out ai_compute_theme_research_packet.json
+python scripts/validate_theme_research_packet.py ai_compute_theme_research_packet.json
 
 # Standard single-company/theme output contract
 python scripts/validate_output_contract.py <report.md>
@@ -430,9 +463,12 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `scripts/data_contracts.py` | Shared enums and structured data contracts |
 | `scripts/data_layer.py` | Providers, raw artifact persistence, basic validation |
 | `scripts/data_router.py` | Fetch manifest, attempt ledger, gaps, debt, tasks |
-| `scripts/run_research_analysis.py` | Top-level workflow: fetch, baseline, AI packets, validated final report |
+| `scripts/run_research_analysis.py` | Top-level workflow: fetch, internal baseline, agent research queue, validated merge, final report |
 | `scripts/build_theme_candidate_universe.py` | Layer-first candidate universe builder for common themes |
 | `scripts/validate_theme_candidate_universe.py` | Candidate-universe contract validator |
+| `scripts/build_theme_research_packet.py` | Direction-level AI research packet builder |
+| `scripts/validate_theme_research_packet.py` | Direction-level AI research packet validator |
+| `scripts/run_theme_research_analysis.py` | Theme workflow orchestrator: universe, direction packet, real fetch, agent research queue |
 | `scripts/technical_health.py` | Technical-health matrix from adjusted daily history |
 | `scripts/a_share_capital_actions.py` | A-share capital-action detection from announcement metadata |
 | `scripts/a_share_capital_action_quantifier.py` | Field-level capital-action quantification |
@@ -449,6 +485,8 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `scripts/validate_comparison_report.py` | Candidate-comparison contract validator |
 | `scripts/validate_ai_overlay.py` | AI research overlay validator |
 | `scripts/validate_ai_review_outcome.py` | AI review failure/skip outcome validator |
+| `scripts/validate_agent_research_queue.py` | Formal agent research queue validator |
+| `scripts/validate_research_delivery.py` | Formal delivery validator |
 | `scripts/validate_and_merge_ai_overlay.py` | Validated overlay/outcome merge and report builder |
 | `scripts/merge_ai_research_overlay.py` | Validated merge CLI with overlay/outcome checks |
 | `scripts/serenity_chan_scorecard.py` | Decision scorecard and nonlinear gates |
@@ -459,6 +497,8 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `assets/valuation_inputs.schema.json` | Valuation-input data contract |
 | `assets/ai_research_overlay.schema.json` | AI research overlay contract |
 | `assets/ai_review_outcome.schema.json` | AI review failure/skip outcome contract |
+| `assets/agent_research_queue.schema.json` | Formal agent research queue contract |
+| `assets/research_workflow_state.schema.json` | Workflow state contract |
 | `assets/capital_action_quantification.schema.json` | Capital-action quantification contract |
 | `assets/data_acquisition_policy.json` | Source ladder and dataset materiality |
 | `assets/sec_cik_bootstrap.json` | SEC CIK bootstrap for high-frequency US test tickers |

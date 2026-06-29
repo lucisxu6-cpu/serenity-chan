@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Research Workflow State",
+  "type": "object",
+  "required": [
+    "workflow_status",
+    "artifact_role",
+    "terminal",
+    "delivery_allowed",
+    "next_phase",
+    "required_inputs",
+    "produced_artifacts"
+  ],
+  "properties": {
+    "workflow_status": {
+      "type": "string",
+      "enum": [
+        "DATA_BASELINE_READY",
+        "AGENT_RESEARCH_QUEUE_READY",
+        "AI_RESULTS_VALIDATED",
+        "FINAL_REPORT_READY",
+        "STRATEGY_READY"
+      ]
+    },
+    "artifact_role": {
+      "type": "string",
+      "enum": [
+        "internal_data_baseline",
+        "internal_agent_work_queue",
+        "validated_ai_results",
+        "formal_research_report",
+        "strategy_input"
+      ]
+    },
+    "terminal": { "type": "boolean" },
+    "delivery_allowed": { "type": "boolean" },
+    "next_phase": {
+      "type": "string",
+      "enum": [
+        "execute_agent_research",
+        "validate_ai_results",
+        "build_final_report",
+        "build_strategy_input",
+        "deliver"
+      ]
+    },
+    "required_inputs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "produced_artifacts": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "additionalProperties": true
+}
