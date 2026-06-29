@@ -49,6 +49,7 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.dat
 
 
 OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT: int = 4
+HK_VALUATION_REPORT_DOWNLOAD_LIMIT_DEFAULT: int = OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT
 CNINFO_REPORT_SCAN_PAGE_LIMIT_DEFAULT: int = 16
 
 
@@ -4210,6 +4211,126 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
                 break
         return None, None
 
+    @classmethod
+    def _extract_summary_value(
+        cls,
+        page: Mapping[str, Any],
+        label_pattern: str,
+        *,
+        expected_columns: int,
+        value_index: int,
+    ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
+        lines: List[str] = [
+            cls._normalize_pdf_line(line)
+            for line in str(page.get("text") or "").splitlines()
+            if cls._normalize_pdf_line(line)
+        ]
+        for index, line in enumerate(lines):
+            candidates: List[str] = [line]
+            if not cls._pdf_number_tokens(line) and index + 1 < len(lines):
+                candidates.append(f"{line} {lines[index + 1]}")
+            for candidate in candidates:
+                match: Any = re.match(
+                    rf"^{label_pattern}\s+((?:\(?-?\d[\d,]*(?:\.\d+)?\)?\s*){{1,12}})$",
+                    candidate,
+                    flags=re.I,
+                )
+                if not match:
+                    continue
+                values: List[Optional[float]] = cls._line_values(candidate, expected_columns=expected_columns)
+                if len(values) <= value_index or values[value_index] is None:
+                    continue
+                return values[value_index], {
+                    "page_number": page.get("page_number"),
+                    "line": candidate[:260],
+                    "value_index": value_index,
+                    "source_section": "financial_summary",
+                }
+        return None, None
+
+    @classmethod
+    def _extract_hkex_financial_summary_fields(
+        cls,
+        pages: Sequence[Mapping[str, Any]],
+    ) -> Tuple[Dict[str, float], Dict[str, Dict[str, Any]], Optional[str]]:
+        fields: Dict[str, float] = {}
+        evidence: Dict[str, Dict[str, Any]] = {}
+        period: Optional[str] = None
+
+        summary_pages: List[Mapping[str, Any]] = [
+            page for page in pages
+            if "financial summary" in str(page.get("text") or "").lower()
+            and "revenue" in str(page.get("text") or "").lower()
+            and "total assets" in str(page.get("text") or "").lower()
+        ]
+        for page in summary_pages:
+            text: str = str(page.get("text") or "")
+            year_rows: List[List[str]] = [
+                re.findall(r"\b(20\d{2})\b", line)
+                for line in text.splitlines()
+                if len(re.findall(r"\b(20\d{2})\b", line)) >= 2
+            ]
+            if not year_rows:
+                continue
+            years: List[str] = max(year_rows, key=len)
+            expected_columns: int = len(years)
+            value_index: int = expected_columns - 1
+            if "march 31" in text.lower() and years[value_index]:
+                period = f"{years[value_index]}-03-31"
+
+            for field, pattern in {
+                "revenue": r"Revenue",
+                "net_income": r"Net income attributable to ordinary\s+shareholders",
+                "assets": r"Total assets",
+                "liabilities": r"Total liabilities",
+                "equity": r"Total equity",
+            }.items():
+                value: Optional[float]
+                source: Optional[Dict[str, Any]]
+                value, source = cls._extract_summary_value(
+                    page,
+                    pattern,
+                    expected_columns=expected_columns,
+                    value_index=value_index,
+                )
+                if value is not None:
+                    fields[field] = value
+                    if source:
+                        evidence[field] = source
+            if fields:
+                break
+
+        for page in pages:
+            text: str = str(page.get("text") or "")
+            if "net cash provided by operating activities" not in text.lower():
+                continue
+            normalized: str = re.sub(r"\s+", " ", text)
+            value_rows: List[str] = re.findall(
+                r"Net cash provided by operating activities\s+((?:\(?-?\d[\d,]*(?:\.\d+)?\)?\s+){1,8})",
+                normalized,
+                flags=re.I,
+            )
+            if not value_rows:
+                continue
+            raw_values: List[str] = cls._pdf_number_tokens(value_rows[0])
+            parsed_values: List[Optional[float]] = [cls._parse_pdf_number(token) for token in raw_values]
+            values: List[float] = [value for value in parsed_values if value is not None]
+            if not values:
+                continue
+            value_index: int = len(values) - 2 if len(values) >= 4 and "US$" in normalized else len(values) - 1
+            if value_index < 0 or value_index >= len(values):
+                continue
+            fields["operating_cash_flow"] = values[value_index]
+            evidence["operating_cash_flow"] = {
+                "page_number": page.get("page_number"),
+                "line": f"Net cash provided by operating activities {value_rows[0]}".strip()[:260],
+                "value_index": value_index,
+                "source_section": "cash_flow_summary",
+            }
+            break
+
+        return fields, evidence, period
+
     def _extract_hkex_report_period(self, report: Mapping[str, Any], *, raw_dir: Optional[Path] = None) -> Dict[str, Any]:
         pdf_path: Any = str(report.get("pdf_path") or "")
         title: Any = str(report.get("title") or "")
@@ -4273,9 +4394,11 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         }.items():
             value, source = self._extract_label_value(income_pages, labels, expected_columns=income_columns, value_index=income_index)
             put(field, value, source)
-        fields["net_income"] = fields.get("profit_attributable_to_equity_holders") or fields.get("total_net_profit")
-        if "net_income" in fields and "net_income" not in evidence:
-            evidence["net_income"] = evidence.get("profit_attributable_to_equity_holders") or evidence.get("total_net_profit")
+        net_income_value: Any = fields.get("profit_attributable_to_equity_holders") or fields.get("total_net_profit")
+        if net_income_value is not None:
+            fields["net_income"] = net_income_value
+            if "net_income" not in evidence:
+                evidence["net_income"] = evidence.get("profit_attributable_to_equity_holders") or evidence.get("total_net_profit")
 
         for field, labels in {
             "assets": ["total assets"],
@@ -4292,6 +4415,19 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
         }.items():
             value, source = self._extract_label_value(cashflow_pages, labels, expected_columns=2, value_index=0)
             put(field, value, source)
+
+        missing_before_summary: set[str] = {"revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"} - set(fields)
+        if missing_before_summary:
+            summary_fields: Dict[str, float]
+            summary_evidence: Dict[str, Dict[str, Any]]
+            summary_period: Optional[str]
+            summary_fields, summary_evidence, summary_period = self._extract_hkex_financial_summary_fields(pages)
+            for field in sorted(missing_before_summary):
+                value: Optional[float] = summary_fields.get(field)
+                if value is not None:
+                    put(field, value, summary_evidence.get(field))
+            if summary_period and (not period or period == str(report.get("announcement_date") or "")):
+                period = summary_period
 
         required: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
         missing: Any = [field for field in required if fields.get(field) is None]
@@ -4780,7 +4916,10 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
                 return DataResult.failed(dataset, symbol.symbol, self.name, self.level, "Yahoo current quote did not expose a usable HK regular market price")
 
             reports: Any = self._latest_share_count_reports(str(listing["stock_id"]))
-            download_limit: Any = int(kwargs.get("valuation_report_download_limit", 1) or 1)
+            download_limit: Any = int(
+                kwargs.get("valuation_report_download_limit", HK_VALUATION_REPORT_DOWNLOAD_LIMIT_DEFAULT)
+                or HK_VALUATION_REPORT_DOWNLOAD_LIMIT_DEFAULT
+            )
             share_evidence: Any = self._latest_issued_shares_from_reports(
                 reports,
                 raw_dir=raw_dir / "valuation_reports" if raw_dir else None,
@@ -4794,12 +4933,33 @@ class HkexValuationInputsProvider(HkexFinancialReportsProvider):
             market_cap_basis: Any = "Yahoo HK regular_market_price * HKEX official issued shares; listing currency HKD."
             if total_shares is None or total_shares <= 0:
                 if quote_market_cap is None or quote_market_cap <= 0 or price is None or price <= 0:
-                    return DataResult.failed(
+                    raw_path: Optional[str] = None
+                    raw_hash: Optional[str] = None
+                    if raw_dir:
+                        raw_path, raw_hash = save_raw_json(
+                            {
+                                "reports": reports,
+                                "share_evidence": share_evidence,
+                                "quote": quote,
+                                "download_limit": download_limit,
+                                "failure_reason": "HKEX reports did not expose a usable issued-share count and Yahoo quote did not expose both market_cap and regular_market_price",
+                            },
+                            raw_dir,
+                            f"{symbol.symbol}_{dataset.value}_hkex_yahoo_valuation_failed_raw.json",
+                        )
+                    return DataResult(
+                        False,
                         dataset,
                         symbol.symbol,
                         self.name,
                         self.level,
-                        "HKEX reports did not expose a usable issued-share count and Yahoo quote did not expose both market_cap and regular_market_price",
+                        utc_now(),
+                        raw_path=raw_path,
+                        raw_hash=raw_hash,
+                        warnings=warnings,
+                        errors=[
+                            "HKEX reports did not expose a usable issued-share count and Yahoo quote did not expose both market_cap and regular_market_price"
+                        ],
                     )
                 total_shares = quote_market_cap / price
                 total_market_cap = quote_market_cap

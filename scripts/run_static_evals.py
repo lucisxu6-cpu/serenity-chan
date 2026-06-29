@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 try:
     import data_layer as data_layer_module
@@ -36,7 +36,7 @@ try:
     from validate_ai_review_outcome import validate_review_outcome
     from validate_and_merge_ai_overlay import build_validated_merged_report
     from render_research_report import render_report
-    from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
+    from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
     from scripts import data_layer as data_layer_module
     from scripts.validate_output_contract import validate_text
@@ -62,7 +62,7 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.validate_ai_review_outcome import validate_review_outcome
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
     from scripts.render_research_report import render_report
-    from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
+    from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 
 
 def _get_path(payload: Any, path: str) -> Any:
@@ -777,6 +777,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             extracted: Any = data_layer_module.HkexValuationInputsProvider._extract_issued_shares_from_text(str(case.get("text") or ""))
             result_payload = extracted or {}
             actual_pass = extracted is not None
+        elif kind == "hk_financial_summary_extraction":
+            pages: Any = case.get("pages", [])
+            if not isinstance(pages, list):
+                raise ValueError("hk_financial_summary_extraction static eval requires pages array")
+            fields: Dict[str, float]
+            evidence: Dict[str, Dict[str, Any]]
+            period: Optional[str]
+            fields, evidence, period = HkexFinancialReportsProvider._extract_hkex_financial_summary_fields(
+                [page for page in pages if isinstance(page, dict)]
+            )
+            result_payload = {
+                "period": period,
+                "fields": fields,
+                "evidence_keys": sorted(evidence),
+            }
+            actual_pass = bool(fields)
         elif kind == "hk_valuation_quote_fallback":
             symbol = SymbolInfo(
                 input_value=str(case.get("symbol", "0700.HK")),

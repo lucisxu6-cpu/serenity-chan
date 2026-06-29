@@ -1372,6 +1372,30 @@
     }
   },
   {
+    "name": "hk-financial-summary-extracts-core-fields-and-rmb-cash-flow-column",
+    "kind": "hk_financial_summary_extraction",
+    "pages": [
+      {
+        "page_number": 57,
+        "text": "Financial Summary\nYear ended March 31,\n2022 2023 2024 2025 2026\nRMB RMB RMB RMB RMB\n(in millions)\nRevenue 853,062 868,687 941,168 996,347 1,023,670\nNet income attributable to ordinary\nshareholders 61,959 72,509 79,741 129,470 105,904\nAs of March 31,\n2022 2023 2024 2025 2026\nRMB RMB RMB RMB RMB\n(in millions)\nTotal assets 1,695,553 1,753,044 1,764,829 1,804,227 1,909,570\nTotal liabilities 613,360 630,123 652,230 714,121 783,300\nTotal equity 1,072,538 1,113,063 1,101,871 1,078,393 1,118,425\n56 Alibaba Group Holding Limited"
+      },
+      {
+        "page_number": 76,
+        "text": "The following table sets out a summary of our cash flows for the periods indicated:\nYear ended March 31, 2024 2025 2026\nRMB RMB RMB US$\n(in millions)\nNet cash provided by operating activities 182,593 163,509 76,213 11,049\nNet cash used in investing activities (21,824) (185,415) (67,336) (9,762)"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "period": "2026-03-31",
+      "fields.revenue": 1023670.0,
+      "fields.net_income": 105904.0,
+      "fields.operating_cash_flow": 76213.0,
+      "fields.assets": 1909570.0,
+      "fields.liabilities": 783300.0,
+      "fields.equity": 1118425.0
+    }
+  },
+  {
     "name": "hk-valuation-uses-quote-market-cap-preflight-when-official-share-count-unavailable",
     "kind": "hk_valuation_quote_fallback",
     "symbol": "0700.HK",
@@ -1567,6 +1591,7 @@
       {
         "dataset": "valuation_inputs",
         "priority": "high",
+        "gap_type": "SCOPE_NOT_REQUESTED",
         "next_action": "Add total shares and total market cap."
       }
     ],
@@ -1576,6 +1601,45 @@
       "primary_gate_class": "DATA_ACQUISITION",
       "blocking_datasets.0": "valuation",
       "blocking_datasets.1": "valuation_inputs"
+    }
+  },
+  {
+    "name": "valuation-inputs-verification-debt-uses-evidence-validation-gate",
+    "kind": "action_gate_profile",
+    "technical": {
+      "buy_point_claim_allowed": true
+    },
+    "capital": {
+      "summary": {
+        "material_risk_level": "none",
+        "has_dilution_event": false
+      }
+    },
+    "layer": {
+      "layer": "verified_bottleneck",
+      "evidence_gap": "",
+      "ai_review_status": "COMPLETED"
+    },
+    "growth": {
+      "market_implied_growth": "H2",
+      "gap": "evidence_aligned",
+      "required_next_evidence": ""
+    },
+    "research_debt": [
+      {
+        "dataset": "valuation_inputs",
+        "priority": "high",
+        "valuation_stage": "preflight",
+        "source_basis": "quote_derived_preflight",
+        "next_action": "用 L0/L1 股本变动、定期报告或交易所口径复核总股本、市值和每股估值基数。"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "primary_gate": "VALUATION_GATED",
+      "primary_gate_class": "EVIDENCE_VALIDATION",
+      "gate_classes.VALUATION_GATED": "EVIDENCE_VALIDATION",
+      "blocking_datasets.0": "valuation_inputs"
     }
   },
   {
@@ -1609,6 +1673,7 @@
       {
         "dataset": "valuation_inputs",
         "priority": "high",
+        "gap_type": "SCOPE_NOT_REQUESTED",
         "next_action": "Add total shares and total market cap."
       }
     ],

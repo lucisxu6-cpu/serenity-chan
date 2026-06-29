@@ -82,6 +82,28 @@ ACTION_BLOCKING_DEBT_DATASETS: set[str] = {
 }
 VALUATION_DATA_DEBT_DATASETS: set[str] = {"valuation", "valuation_currency", "share_capital", "valuation_inputs", "peer_valuation", "consensus_estimates"}
 VALUATION_RESEARCH_DEBT_DATASETS: set[str] = {"valuation_growth"}
+GATE_CLASS_STRENGTH: dict[str, int] = {
+    "NONE": 0,
+    "ACTION_TIMING": 1,
+    "RESEARCH_VALIDATION": 2,
+    "EVIDENCE_VALIDATION": 3,
+    "DATA_ACQUISITION": 4,
+}
+DATA_ACQUISITION_GAP_TYPES: set[str] = {
+    "ACCESS_FAILURE",
+    "SCOPE_NOT_REQUESTED",
+    "SOURCE_NOT_IMPLEMENTED",
+    "SOURCE_UNAVAILABLE",
+    "ISSUER_NON_DISCLOSURE",
+    "STALE_DATA",
+    "POLICY_BLOCKED",
+}
+EVIDENCE_VALIDATION_GAP_TYPES: set[str] = {
+    "NOT_MACHINE_READABLE",
+    "CONFLICTING_SOURCES",
+    "EVIDENCE_DEPTH_LIMIT",
+    "ADJUSTMENT_BASIS_UNVERIFIED",
+}
 
 
 def _load_json(path: Path) -> Any:
@@ -1147,12 +1169,65 @@ def _research_debt_from_consumption(consumption_rows: Sequence[Mapping[str, Any]
     return rows
 
 
+def _stronger_gate_class(current: str, candidate: str) -> str:
+    current_value: str = current if current in GATE_CLASS_STRENGTH else "NONE"
+    candidate_value: str = candidate if candidate in GATE_CLASS_STRENGTH else "NONE"
+    if GATE_CLASS_STRENGTH[candidate_value] > GATE_CLASS_STRENGTH[current_value]:
+        return candidate_value
+    return current_value
+
+
+def _valuation_inputs_debt_gate_class(row: Mapping[str, Any]) -> str:
+    gap_type: str = str(row.get("gap_type") or "")
+    status: str = str(row.get("status") or "")
+    valuation_stage: str = str(row.get("valuation_stage") or "")
+    source_basis: str = str(row.get("source_basis") or "")
+    next_action: str = str(row.get("next_action") or row.get("objective") or "").lower()
+
+    if gap_type in DATA_ACQUISITION_GAP_TYPES or status in {"FAILED", "PENDING", "STALE", "NOT_REQUESTED"}:
+        return "DATA_ACQUISITION"
+    if gap_type in EVIDENCE_VALIDATION_GAP_TYPES:
+        return "EVIDENCE_VALIDATION"
+    if valuation_stage or source_basis:
+        return "EVIDENCE_VALIDATION"
+    if any(token in next_action for token in ("fetch", "add total", "补齐", "获取", "抓取")):
+        return "DATA_ACQUISITION"
+    return "EVIDENCE_VALIDATION"
+
+
+def _debt_row_gate_class(row: Mapping[str, Any]) -> str:
+    dataset: str = str(row.get("dataset") or row.get("task_type") or "unknown")
+    gap_type: str = str(row.get("gap_type") or "")
+    if dataset in {"current_quote", "price_history_adjusted"}:
+        return "DATA_ACQUISITION"
+    if dataset in {"financials", "filings_announcements"}:
+        return "EVIDENCE_VALIDATION"
+    if dataset == "valuation_inputs":
+        return _valuation_inputs_debt_gate_class(row)
+    if dataset in {"valuation", "valuation_currency", "share_capital", "peer_valuation", "consensus_estimates"}:
+        return "EVIDENCE_VALIDATION" if gap_type in EVIDENCE_VALIDATION_GAP_TYPES else "DATA_ACQUISITION"
+    if dataset in VALUATION_RESEARCH_DEBT_DATASETS:
+        return "RESEARCH_VALIDATION"
+    if dataset in {"serenity_layer", "capital_actions", "capital_action_quantification"}:
+        return "RESEARCH_VALIDATION"
+    if gap_type in DATA_ACQUISITION_GAP_TYPES:
+        return "DATA_ACQUISITION"
+    if gap_type in EVIDENCE_VALIDATION_GAP_TYPES:
+        return "EVIDENCE_VALIDATION"
+    return "RESEARCH_VALIDATION"
+
+
 def _debt_gate_profile(debt_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     priorities_by_dataset: dict[str, set[str]] = {}
+    gate_classes_by_dataset: dict[str, str] = {}
     for row in debt_rows:
         dataset: Any = str(row.get("dataset") or row.get("task_type") or "unknown")
         priority: Any = str(row.get("priority") or "").lower()
         priorities_by_dataset.setdefault(dataset, set()).add(priority)
+        gate_classes_by_dataset[dataset] = _stronger_gate_class(
+            gate_classes_by_dataset.get(dataset, "NONE"),
+            _debt_row_gate_class(row),
+        )
 
     critical_datasets: Any = {dataset for dataset, priorities in priorities_by_dataset.items() if "critical" in priorities}
     high_datasets: Any = {dataset for dataset, priorities in priorities_by_dataset.items() if "high" in priorities}
@@ -1185,6 +1260,7 @@ def _debt_gate_profile(debt_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]
         "critical_datasets": sorted(critical_datasets),
         "high_datasets": sorted(high_datasets),
         "blocking_datasets": sorted(blocking_datasets),
+        "dataset_gate_classes": {dataset: gate_classes_by_dataset[dataset] for dataset in sorted(gate_classes_by_dataset)},
         "debt_drag": min(18.0, drag),
     }
 
@@ -1265,11 +1341,14 @@ def _action_gate_profile(
     reasons: list[str] = []
     blocking_datasets: set[str] = set()
     gate_classes: dict[str, str] = {}
+    dataset_gate_classes: Mapping[str, Any] = debt_profile.get("dataset_gate_classes", {}) if isinstance(debt_profile.get("dataset_gate_classes"), Mapping) else {}
 
     def add(gate: str, reason: str, dataset: str = "", gate_class: str = "RESEARCH_VALIDATION") -> None:
         if gate not in gates:
             gates.append(gate)
             gate_classes[gate] = gate_class
+        else:
+            gate_classes[gate] = _stronger_gate_class(gate_classes.get(gate, "NONE"), gate_class)
         if reason and reason not in reasons:
             reasons.append(reason)
         if dataset:
@@ -1282,8 +1361,11 @@ def _action_gate_profile(
         elif dataset in {"financials", "filings_announcements"}:
             add("EVIDENCE_GATED", f"{dataset} 证据仍需 L0/L1 复核，高置信研究结论保持阻断。", dataset, "EVIDENCE_VALIDATION")
         elif dataset in VALUATION_DATA_DEBT_DATASETS | VALUATION_RESEARCH_DEBT_DATASETS:
+            dataset_gate_class: str = str(dataset_gate_classes.get(dataset) or "")
             if dataset in VALUATION_RESEARCH_DEBT_DATASETS:
                 add("VALUATION_GATED", "市场隐含增长高于证据支持增长，需要 AI/行业研究复核。", dataset, "RESEARCH_VALIDATION")
+            elif dataset_gate_class == "EVIDENCE_VALIDATION":
+                add("VALUATION_GATED", "估值输入已取得，但股本、市值、币种或来源口径仍需 L0/L1 证据复核。", dataset, "EVIDENCE_VALIDATION")
             else:
                 add("VALUATION_GATED", "估值输入不完整，市场隐含增长和赔率判断保持阻断。", dataset, "DATA_ACQUISITION")
         elif dataset == "serenity_layer":
