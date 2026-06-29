@@ -455,10 +455,11 @@ python scripts/data_router.py validate-price prices.csv --market CN_A --adjust q
 python scripts/data_router.py validate-financial financials.json
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format md
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
+python scripts/build_ai_overlay_prompt.py manifest.json --out ai_overlay_prompt.json
 python scripts/build_ai_review_packet.py manifest.json --out ai_review_packet.json
 python scripts/validate_ai_overlay.py ai_overlay.json
-python scripts/merge_ai_research_overlay.py manifest_a.json manifest_b.json --overlay TICKER=ai_overlay.json --format json > comparison_report.json
-python scripts/validate_comparison_report.py comparison_report.json
+python scripts/validate_ai_review_outcome.py ai_review_outcome.json
+python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_report.json --markdown-out comparison_report.md
 python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
 ```
 
@@ -472,6 +473,6 @@ CNINFO financial reports provide A-share L0 official PDF evidence and extract co
 
 Valuation inputs are a first-class dataset. A complete valuation input row records total shares, float shares, total market cap, float market cap, currency, as-of date, source basis, share-count basis, and market-cap basis. Candidate comparisons must expose these rows through `valuation_input_matrix`, and `growth_hypothesis_matrix` must reference that matrix before making market-implied growth or payoff claims. Missing valuation inputs create `VALUATION_IMPACT` gaps and a `VALUATION_GATED` action gate; they block market-implied growth, payoff quality, and core action claims.
 
-AI research overlays are the formal bridge from deterministic data to domain judgment. Build a packet with `scripts/build_ai_review_packet.py`, write the overlay against `assets/ai_research_overlay.schema.json`, validate it with `scripts/validate_ai_overlay.py`, then merge it through `scripts/merge_ai_research_overlay.py`. The overlay can affect layer score, company fit, evidence-supported growth, contrary evidence, and research questions only after validation. Market-implied growth and growth gap are generated from valuation inputs, PE/PS, and evidence-supported growth in the comparison report.
+AI research results are the formal bridge from deterministic data to domain judgment. Build a prompt package with `scripts/build_ai_overlay_prompt.py`, build supporting packets with `scripts/build_ai_review_packet.py` and `scripts/build_ai_committee_packet.py`, then produce one validated result per candidate. Evidence-backed research uses `assets/ai_research_overlay.schema.json` and `scripts/validate_ai_overlay.py`. Insufficient evidence, deterministic-data conflict, and quick audit use `assets/ai_review_outcome.schema.json` and `scripts/validate_ai_review_outcome.py`. Merge both result types through `scripts/validate_and_merge_ai_overlay.py`, which also validates the final comparison report. The overlay can affect layer score, company fit, evidence-supported growth, contrary evidence, and research questions only after validation. Market-implied growth and growth gap are generated from valuation inputs, PE/PS, and evidence-supported growth in the comparison report.
 
 Additional official or licensed CNINFO/Tushare/Wind/Choice adapters can be added without changing the research logic.

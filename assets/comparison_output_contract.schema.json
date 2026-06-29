@@ -4,18 +4,22 @@
   "type": "object",
   "required": [
     "comparison_scope",
+    "candidate_pool_semantic_coherence",
     "candidates",
     "data_acquisition_summary",
     "serenity_layer_matrix",
+    "ai_review_status_matrix",
     "financial_quality_matrix",
     "valuation_input_matrix",
     "currency_normalization_matrix",
     "growth_hypothesis_matrix",
     "technical_timing_matrix",
     "capital_actions",
+    "capital_action_quantification",
     "data_consumption_audit",
     "readiness_matrix",
     "research_debt",
+    "research_debt_runbook",
     "candidate_priority_ranking",
     "final_decision"
   ],
@@ -27,6 +31,24 @@
         "candidate_count": { "type": "integer", "minimum": 2 },
         "as_of": { "type": "string" },
         "basis": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "candidate_pool_semantic_coherence": {
+      "type": "object",
+      "required": ["status", "reason", "market_count", "layer_families", "decision_constraint"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["UNREVIEWED", "SAME_LAYER", "SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"]
+        },
+        "reason": { "type": "string" },
+        "market_count": { "type": "integer", "minimum": 0 },
+        "layer_families": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "decision_constraint": { "type": "string" }
       },
       "additionalProperties": true
     },
@@ -74,6 +96,35 @@
           "company_fit": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
           "revenue_transmission": { "type": "string" },
           "evidence_gap": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "ai_review_status_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "ai_review_status",
+          "overlay_merged",
+          "layer_mapped",
+          "evidence_ref_count",
+          "research_question_count",
+          "blocking_reason"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "ai_review_status": {
+            "type": "string",
+            "enum": ["NOT_RUN", "COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA", "SKIPPED_QUICK_AUDIT"]
+          },
+          "overlay_merged": { "type": "boolean" },
+          "layer_mapped": { "type": "boolean" },
+          "evidence_ref_count": { "type": "integer", "minimum": 0 },
+          "research_question_count": { "type": "integer", "minimum": 0 },
+          "blocking_reason": { "type": "string" }
         },
         "additionalProperties": true
       }
@@ -261,6 +312,11 @@
       "minItems": 2,
       "items": { "$ref": "#/$defs/candidate_table_row" }
     },
+    "capital_action_quantification": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
     "data_consumption_audit": {
       "type": "array",
       "minItems": 2,
@@ -338,6 +394,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/candidate_table_row" }
     },
+    "research_debt_runbook": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate_table_row" }
+    },
     "candidate_priority_ranking": {
       "type": "array",
       "minItems": 2,
@@ -377,6 +437,7 @@
         "decision_mode",
         "score_gap_to_runner_up",
         "candidate_count_warning",
+        "candidate_pool_semantic_coherence",
         "ranking_validity",
         "decision",
         "next_research_actions"
@@ -389,6 +450,10 @@
         },
         "score_gap_to_runner_up": { "type": ["number", "null"] },
         "candidate_count_warning": { "type": "string" },
+        "candidate_pool_semantic_coherence": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "ranking_validity": {
           "type": "object",
           "required": ["status", "reason", "blocked_by", "partial_axes"],

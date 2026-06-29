@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Chan Capital Action Quantification",
+  "type": "object",
+  "required": ["symbol", "summary", "actions", "research_debt"],
+  "properties": {
+    "symbol": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": [
+        "symbol",
+        "action_count",
+        "quantified_action_count",
+        "requires_quantification_count",
+        "quantification_status",
+        "impact_on_action"
+      ],
+      "properties": {
+        "symbol": { "type": "string" },
+        "action_count": { "type": "integer", "minimum": 0 },
+        "quantified_action_count": { "type": "integer", "minimum": 0 },
+        "requires_quantification_count": { "type": "integer", "minimum": 0 },
+        "max_dilution_pct": { "type": ["number", "null"] },
+        "quantification_status": { "type": "string", "enum": ["OK", "PARTIAL"] },
+        "impact_on_action": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "action_type",
+          "title",
+          "quantification_status",
+          "missing_fields",
+          "impact_on_payoff",
+          "impact_on_action",
+          "next_verification"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "action_type": { "type": "string" },
+          "title": { "type": "string" },
+          "announcement_date": { "type": "string" },
+          "source_ref": { "type": "string" },
+          "risk_level": { "type": "string" },
+          "new_shares": { "type": ["number", "null"] },
+          "base_shares": { "type": ["number", "null"] },
+          "dilution_pct": { "type": ["number", "null"] },
+          "issue_price": { "type": ["number", "null"] },
+          "lockup_months": { "type": ["number", "null"] },
+          "buyback_amount": { "type": ["number", "null"] },
+          "buyback_price_ceiling": { "type": ["number", "null"] },
+          "reduction_shares": { "type": ["number", "null"] },
+          "reduction_pct": { "type": ["number", "null"] },
+          "use_of_proceeds": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "quantification_status": {
+            "type": "string",
+            "enum": ["QUANTIFIED", "PARTIAL", "NEEDS_PDF_EXTRACTION", "NOT_REQUIRED"]
+          },
+          "missing_fields": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "impact_on_payoff": { "type": "string" },
+          "impact_on_action": { "type": "string" },
+          "next_verification": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "research_debt": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

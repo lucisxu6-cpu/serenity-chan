@@ -85,6 +85,9 @@ def validate_overlay(payload: Mapping[str, Any]) -> dict[str, Any]:
     for key in ["symbol", "as_of_date", "layer", "bottleneck_reason", "revenue_transmission"]:
         if key in payload and not _is_non_empty_string(payload.get(key)):
             errors.append(f"{key} must be a non-empty string")
+    layer_value: str = str(payload.get("layer") or "").strip().upper()
+    if layer_value in {"VALUE_CHAIN_UNMAPPED", "AI_REVIEW_REQUIRED"}:
+        errors.append("layer must be a concrete value-chain layer for a completed overlay")
     for key in ["required_next_evidence", "posterior_basis"]:
         if key in payload and payload.get(key) is not None and not _is_non_empty_string(payload.get(key)):
             errors.append(f"{key} must be a non-empty string when supplied")

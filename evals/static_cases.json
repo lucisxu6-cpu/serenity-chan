@@ -551,9 +551,9 @@
     "expect_pass": true,
     "expected_result": {
       "candidate_priority_ranking.0.symbol": "688019.SH",
-      "candidate_priority_ranking.0.priority_score": 69.39,
-      "candidate_priority_ranking.0.research_priority_score": 80.58,
-      "candidate_priority_ranking.0.action_priority_score": 40.62,
+      "candidate_priority_ranking.0.priority_score": 68.84,
+      "candidate_priority_ranking.0.research_priority_score": 80.23,
+      "candidate_priority_ranking.0.action_priority_score": 39.56,
       "candidate_priority_ranking.0.rating_cap": "B",
       "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
       "candidate_priority_ranking.0.action_gate.primary_gate": "DATA_GATED",
@@ -575,7 +575,7 @@
       "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
       "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false,
       "final_decision.decision_mode": "tentative_top_candidate",
-      "final_decision.score_gap_to_runner_up": 12.19,
+      "final_decision.score_gap_to_runner_up": 11.64,
       "final_decision.ranking_validity.status": "PARTIAL",
       "final_decision.candidate_count_warning": "insufficient_universe_warning"
     },
@@ -1517,7 +1517,8 @@
     },
     "layer": {
       "layer": "verified_bottleneck",
-      "evidence_gap": ""
+      "evidence_gap": "",
+      "ai_review_status": "COMPLETED"
     },
     "growth": {
       "market_implied_growth": "H2",
@@ -1553,7 +1554,8 @@
     },
     "layer": {
       "layer": "verified_bottleneck",
-      "evidence_gap": ""
+      "evidence_gap": "",
+      "ai_review_status": "COMPLETED"
     },
     "growth": {
       "market_implied_growth": "UNKNOWN",
@@ -1589,7 +1591,8 @@
     },
     "layer": {
       "layer": "verified_bottleneck",
-      "evidence_gap": ""
+      "evidence_gap": "",
+      "ai_review_status": "COMPLETED"
     },
     "growth": {
       "market_implied_growth": "UNKNOWN",
@@ -2047,6 +2050,30 @@
     }
   },
   {
+    "name": "ai-review-outcome-validation-accepts-insufficient-evidence",
+    "kind": "ai_review_outcome_validation",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-29",
+      "ai_review_status": "FAILED_INSUFFICIENT_EVIDENCE",
+      "reason": "Official source artifacts do not yet connect the company to a verifiable bottleneck thesis.",
+      "required_evidence": [
+        "Official filing segment revenue that maps product exposure to the claimed bottleneck",
+        "Primary-source customer, order, or capacity evidence"
+      ],
+      "source_refs": ["ai_review_packet.json"],
+      "research_questions": [
+        "Which official filing line proves the bottleneck exposure?",
+        "Which source verifies revenue transmission into the next two quarters?"
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "normalized_outcome.ai_review_status": "FAILED_INSUFFICIENT_EVIDENCE",
+      "normalized_outcome.required_evidence.0": "Official filing segment revenue that maps product exposure to the claimed bottleneck"
+    }
+  },
+  {
     "name": "ai-overlay-validation-blocks-market-implied-growth-field",
     "kind": "ai_overlay_validation",
     "payload": {
@@ -2072,6 +2099,33 @@
         "Cross-check whether gross-margin durability is supported by official product mix disclosures."
       ],
       "ai_confidence": "HIGH"
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "ai-overlay-validation-blocks-unmapped-completed-layer",
+    "kind": "ai_overlay_validation",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-23",
+      "layer": "VALUE_CHAIN_UNMAPPED",
+      "bottleneck_reason": "The layer is not mapped.",
+      "revenue_transmission": "The transmission path is not mapped.",
+      "serenity_fit": 0.3,
+      "key_evidence_refs": [
+        {
+          "claim": "Placeholder evidence.",
+          "source_ref": "placeholder",
+          "source_level": "L3",
+          "confidence": 0.4
+        }
+      ],
+      "contrary_evidence": ["No concrete layer mapping."],
+      "research_questions": [
+        "Which concrete value-chain layer applies?",
+        "Which evidence maps revenue transmission?"
+      ],
+      "ai_confidence": "LOW"
     },
     "expect_pass": false
   },
@@ -2568,5 +2622,264 @@
       "pe_preflight": null,
       "ps_preflight": null
     }
+  },
+  {
+    "name": "ai-overlay-prompt-builds-executable-package",
+    "kind": "ai_overlay_prompt",
+    "manifest": "evals/fixtures/comparison_688019_manifest.json",
+    "expect_pass": true,
+    "expected_result": {
+      "packet_type": "serenity_ai_overlay_prompt",
+      "symbol": "688019.SH",
+      "expected_output.success_schema_path": "assets/ai_research_overlay.schema.json",
+      "expected_output.outcome_schema_path": "assets/ai_review_outcome.schema.json",
+      "review_packet.symbol": "688019.SH"
+    }
+  },
+  {
+    "name": "capital-action-quantification-generates-field-level-debt",
+    "kind": "capital_action_quantification",
+    "symbol": "688322.SH",
+    "capital_actions": {
+      "actions": [
+        {
+          "action_type": "private_placement",
+          "title": "2025年度向特定对象发行A股股票上市公告书",
+          "announcement_date": "2026-06-23",
+          "risk_level": "medium_high",
+          "pdf_url": "https://static.cninfo.com.cn/finalpage/example.pdf"
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "summary.requires_quantification_count": 1,
+      "summary.impact_on_action": "CAPITAL_ACTION_GATED",
+      "actions.0.quantification_status": "NEEDS_PDF_EXTRACTION",
+      "actions.0.missing_fields.0": "new_shares"
+    }
+  },
+  {
+    "name": "capital-action-quantification-computes-dilution-when-fields-available",
+    "kind": "capital_action_quantification",
+    "symbol": "688322.SH",
+    "capital_actions": {
+      "actions": [
+        {
+          "action_type": "private_placement",
+          "title": "定增发行结果公告",
+          "announcement_date": "2026-06-23",
+          "risk_level": "medium_high",
+          "new_shares": 10000000,
+          "base_shares": 100000000,
+          "issue_price": 50,
+          "lockup_months": 6,
+          "use_of_proceeds": ["补充流动资金"]
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "summary.requires_quantification_count": 0,
+      "summary.quantified_action_count": 1,
+      "actions.0.quantification_status": "QUANTIFIED",
+      "actions.0.dilution_pct": 10.0
+    }
+  },
+  {
+    "name": "capital-action-quantification-does-not-infer-buyback-amount-from-title-year",
+    "kind": "capital_action_quantification",
+    "symbol": "688019.SH",
+    "capital_actions": {
+      "actions": [
+        {
+          "action_type": "buyback",
+          "title": "2026年股份回购方案公告",
+          "announcement_date": "2026-06-23",
+          "risk_level": "supportive"
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "actions.0.buyback_amount": null,
+      "actions.0.quantification_status": "NEEDS_PDF_EXTRACTION",
+      "actions.0.missing_fields.0": "buyback_amount"
+    }
+  },
+  {
+    "name": "ai-overlay-merge-records-completed-ai-status",
+    "kind": "ai_overlay_merge",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlays": {
+      "688019.SH": {
+        "symbol": "688019.SH",
+        "as_of_date": "2026-06-29",
+        "layer": "CMP slurry and wet-process materials bottleneck",
+        "bottleneck_reason": "Official filings connect materials bottleneck to revenue and margin evidence.",
+        "revenue_transmission": "Revenue transmits through fab qualification, materials share gain, and recurring consumables demand.",
+        "serenity_fit": 0.74,
+        "evidence_supported_growth": "H3",
+        "key_evidence_refs": [
+          {
+            "claim": "Official financial rows support constructive preflight growth.",
+            "source_ref": "CNINFO financial report extraction",
+            "source_level": "L0",
+            "confidence": 0.82
+          }
+        ],
+        "contrary_evidence": ["Customer concentration and product mix still need verification."],
+        "research_questions": [
+          "Verify customer/order contribution.",
+          "Check product mix and capacity utilization."
+        ],
+        "ai_confidence": "HIGH"
+      },
+      "688322.SH": {
+        "symbol": "688322.SH",
+        "as_of_date": "2026-06-29",
+        "layer": "3D vision sensing module adoption",
+        "bottleneck_reason": "Robotics perception can be a bottleneck only if customer/order evidence confirms adoption.",
+        "revenue_transmission": "Revenue transmits through module shipments, robot customer orders, and margin recovery.",
+        "serenity_fit": 0.58,
+        "evidence_supported_growth": "H2",
+        "key_evidence_refs": [
+          {
+            "claim": "Official financial rows support recovery but not H5 growth.",
+            "source_ref": "CNINFO financial report extraction",
+            "source_level": "L0",
+            "confidence": 0.72
+          }
+        ],
+        "contrary_evidence": ["Valuation and capital actions remain pressure points."],
+        "research_questions": [
+          "Verify robot customer revenue split.",
+          "Quantify private placement and buyback impact."
+        ],
+        "ai_confidence": "MEDIUM"
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "ai_review_status_matrix.0.ai_review_status": "COMPLETED",
+      "ai_review_status_matrix.1.ai_review_status": "COMPLETED",
+      "candidate_pool_semantic_coherence.status": "SAME_THEME_DIFFERENT_LAYERS",
+      "serenity_layer_matrix.0.layer": "CMP slurry and wet-process materials bottleneck",
+      "final_decision.decision_mode": "tentative_top_candidate",
+      "final_decision.ranking_validity.status": "PARTIAL"
+    }
+  },
+  {
+    "name": "validated-ai-merge-accepts-complete-ai-results",
+    "kind": "validated_ai_merge",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlay_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json"
+    ],
+    "outcome_values": [],
+    "expect_pass": true,
+    "expected_result": {
+      "ai_review_status_matrix.0.ai_review_status": "COMPLETED",
+      "ai_review_status_matrix.1.ai_review_status": "COMPLETED",
+      "final_decision.decision_mode": "tentative_top_candidate"
+    }
+  },
+  {
+    "name": "validated-ai-merge-rejects-missing-candidate-ai-result",
+    "kind": "validated_ai_merge",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlay_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json"
+    ],
+    "outcome_values": [],
+    "expect_pass": false
+  },
+  {
+    "name": "ai-review-outcome-merge-records-attempted-failure-status",
+    "kind": "comparison_report_with_ai_outcomes",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "ai_review_outcomes": {
+      "688019.SH": {
+        "symbol": "688019.SH",
+        "as_of_date": "2026-06-29",
+        "ai_review_status": "FAILED_INSUFFICIENT_EVIDENCE",
+        "reason": "Official source artifacts do not yet connect the company to a verifiable bottleneck thesis.",
+        "required_evidence": [
+          "Official filing segment revenue that maps product exposure to the claimed bottleneck"
+        ],
+        "research_questions": [
+          "Which official filing line proves the bottleneck exposure?"
+        ]
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "ai_review_status_matrix.0.ai_review_status": "FAILED_INSUFFICIENT_EVIDENCE",
+      "ai_review_status_matrix.0.overlay_merged": false,
+      "serenity_layer_matrix.0.layer": "VALUE_CHAIN_UNMAPPED",
+      "candidate_pool_semantic_coherence.status": "UNREVIEWED"
+    },
+    "expected_contains": [
+      {
+        "path": "research_debt",
+        "value": {
+          "symbol": "688019.SH",
+          "dataset": "serenity_layer"
+        }
+      }
+    ]
+  },
+  {
+    "name": "comparison-report-accepts-string-symbol-manifests-without-empty-symbols",
+    "kind": "comparison_report",
+    "manifests": [
+      "evals/fixtures/string_symbol_manifest_aaa.json",
+      "evals/fixtures/string_symbol_manifest_bbb.json"
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "candidates.0.symbol": "AAA",
+      "candidates.0.market": "US",
+      "candidates.0.currency": "USD",
+      "candidates.1.symbol": "BBB",
+      "candidates.1.market": "HK",
+      "candidates.1.currency": "HKD"
+    }
+  },
+  {
+    "name": "research-debt-runbook-builds-field-level-tasks",
+    "kind": "research_debt_runbook",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "expect_pass": true,
+    "expected_contains": [
+      {
+        "path": "runbook",
+        "value": {
+          "dataset": "serenity_layer"
+        }
+      },
+      {
+        "path": "runbook",
+        "value": {
+          "dataset": "capital_action_quantification"
+        }
+      }
+    ]
   }
 ]

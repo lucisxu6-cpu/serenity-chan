@@ -5,6 +5,7 @@
   "items": {
     "type": "object",
     "required": [
+      "symbol",
       "dataset",
       "priority",
       "gap_type",
@@ -18,6 +19,7 @@
       "expected_effect_if_resolved"
     ],
     "properties": {
+      "symbol": { "type": "string" },
       "dataset": { "type": "string" },
       "priority": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
       "gap_type": { "type": "string" },

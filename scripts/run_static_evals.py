@@ -19,9 +19,12 @@ try:
     from data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _fetch_with_attempt_ledger
     from build_falsification_dashboard import build_from_output_contract
     from a_share_capital_actions import analyze_announcements
+    from a_share_capital_action_quantifier import quantify_capital_actions
+    from build_ai_overlay_prompt import build_ai_overlay_prompt
     from build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile, _financial_currency, _growth_hypothesis
     from build_ai_committee_packet import build_ai_committee_packet
     from build_ai_review_packet import build_ai_review_packet
+    from build_research_debt_runbook import build_runbook_rows
     from candidate_ranker import rank_candidates
     from currency_normalizer import normalize_valuation_payload
     from data_consumption import financial_consumption_audit, ranking_validity_from_consumption, valuation_consumption_audit
@@ -30,6 +33,8 @@ try:
     from serenity_chan_scorecard import score
     from technical_health import analyze_price_rows
     from validate_ai_overlay import validate_overlay
+    from validate_ai_review_outcome import validate_review_outcome
+    from validate_and_merge_ai_overlay import build_validated_merged_report
     from render_research_report import render_report
     from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
@@ -40,9 +45,12 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _fetch_with_attempt_ledger
     from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.a_share_capital_actions import analyze_announcements
+    from scripts.a_share_capital_action_quantifier import quantify_capital_actions
+    from scripts.build_ai_overlay_prompt import build_ai_overlay_prompt
     from scripts.build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile, _financial_currency, _growth_hypothesis
     from scripts.build_ai_committee_packet import build_ai_committee_packet
     from scripts.build_ai_review_packet import build_ai_review_packet
+    from scripts.build_research_debt_runbook import build_runbook_rows
     from scripts.candidate_ranker import rank_candidates
     from scripts.currency_normalizer import normalize_valuation_payload
     from scripts.data_consumption import financial_consumption_audit, ranking_validity_from_consumption, valuation_consumption_audit
@@ -51,6 +59,8 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.serenity_chan_scorecard import score
     from scripts.technical_health import analyze_price_rows
     from scripts.validate_ai_overlay import validate_overlay
+    from scripts.validate_ai_review_outcome import validate_review_outcome
+    from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
     from scripts.render_research_report import render_report
     from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 
@@ -380,6 +390,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 raise ValueError("capital_actions static eval requires announcements array")
             result_payload = analyze_announcements({"recent_announcements": announcements})
             actual_pass = True
+        elif kind == "capital_action_quantification":
+            capital_actions: Any = case.get("capital_actions", {})
+            if not isinstance(capital_actions, dict):
+                raise ValueError("capital_action_quantification static eval requires capital_actions object")
+            result_payload = quantify_capital_actions(str(case.get("symbol") or "TEST"), capital_actions)
+            actual_pass = True
         elif kind == "data_consumption_ranking_validity":
             financial_payload: Any = case.get("financial_payload", {})
             financial_row: Any = case.get("financial_row", {})
@@ -530,6 +546,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "comparison_report_with_ai_outcomes":
+            manifests = case.get("manifests", [])
+            outcomes: Any = case.get("ai_review_outcomes", {})
+            if not isinstance(manifests, list) or len(manifests) < 2:
+                raise ValueError("comparison_report_with_ai_outcomes static eval requires at least two manifests")
+            if not isinstance(outcomes, dict):
+                raise ValueError("comparison_report_with_ai_outcomes static eval requires ai_review_outcomes object")
+            try:
+                result_payload = build_comparison_report(
+                    [root / str(path) for path in manifests],
+                    ai_review_outcomes={str(symbol): outcome for symbol, outcome in outcomes.items() if isinstance(outcome, dict)},
+                )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "validated_ai_merge":
+            manifests = case.get("manifests", [])
+            overlays: Any = case.get("overlay_values", [])
+            outcomes: Any = case.get("outcome_values", [])
+            if not isinstance(manifests, list) or len(manifests) < 2:
+                raise ValueError("validated_ai_merge static eval requires at least two manifests")
+            if not isinstance(overlays, list) or not isinstance(outcomes, list):
+                raise ValueError("validated_ai_merge static eval requires overlay_values and outcome_values arrays")
+            try:
+                result_payload = build_validated_merged_report(
+                    [root / str(path) for path in manifests],
+                    [str(item) for item in overlays],
+                    [str(item) for item in outcomes],
+                )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "ai_overlay_validation":
             payload = case.get("payload", {})
             if not isinstance(payload, dict):
@@ -540,12 +590,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_review_outcome_validation":
+            payload = case.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("ai_review_outcome_validation static eval requires payload object")
+            try:
+                result_payload = validate_review_outcome(payload)
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "ai_review_packet":
             manifest = case.get("manifest")
             if not isinstance(manifest, str):
                 raise ValueError("ai_review_packet static eval requires manifest path")
             try:
                 result_payload = build_ai_review_packet(root / manifest)
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_overlay_prompt":
+            manifest = case.get("manifest")
+            if not isinstance(manifest, str):
+                raise ValueError("ai_overlay_prompt static eval requires manifest path")
+            try:
+                result_payload = build_ai_overlay_prompt(root / manifest)
                 actual_pass = True
             except Exception as exc:
                 actual_pass = False
@@ -581,6 +651,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     [root / str(path) for path in manifests],
                     {str(symbol): overlay for symbol, overlay in overlays.items() if isinstance(overlay, dict)},
                 )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "research_debt_runbook":
+            manifests = case.get("manifests", [])
+            overlays = case.get("overlays", {})
+            if not isinstance(manifests, list) or len(manifests) < 2:
+                raise ValueError("research_debt_runbook static eval requires at least two manifests")
+            if not isinstance(overlays, dict):
+                raise ValueError("research_debt_runbook static eval requires overlays object when supplied")
+            try:
+                report_payload: dict[str, Any] = build_comparison_report(
+                    [root / str(path) for path in manifests],
+                    {str(symbol): overlay for symbol, overlay in overlays.items() if isinstance(overlay, dict)},
+                )
+                runbook: list[dict[str, Any]] = build_runbook_rows(report_payload)
+                result_payload = {
+                    "runbook": runbook,
+                    "runbook_count": len(runbook),
+                    "datasets": [str(item.get("dataset") or "") for item in runbook],
+                }
                 actual_pass = True
             except Exception as exc:
                 actual_pass = False

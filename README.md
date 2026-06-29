@@ -2,7 +2,7 @@
 
 Language: [中文](#中文) | [English](#english)
 
-`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research. It turns a theme, ticker, or candidate pool into an auditable research workflow with market-specific source routing, real-data acquisition, valuation input matrices, AI research overlays, research-debt tracking, candidate scoring, action gates, and falsification triggers.
+`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research. It turns a theme, ticker, or candidate pool into an auditable research workflow with market-specific source routing, real-data acquisition, valuation input matrices, AI research execution, validated AI overlays or AI review outcomes, capital-action quantification, research-debt runbooks, candidate scoring, action gates, and falsification triggers.
 
 Scope: research workflow, evidence discipline, rating limits, candidate prioritization, and follow-up tracking. It does not provide personalized investment advice, promise returns, or execute trades.
 
@@ -16,8 +16,9 @@ Scope: research workflow, evidence discipline, rating limits, candidate prioriti
 
 ```text
 先取真实数据 → 记录取数账本 → 补齐估值输入矩阵 → 标出研究债务
-→ AI 研究覆盖层 → 判断产业链瓶颈 → 验证财务兑现
-→ 检查估值赔率 → 观察技术位置 → 输出研究优先级与行动门控
+→ 执行 AI 研究 → 合并 overlay 或记录 outcome → 判断产业链瓶颈
+→ 量化资本动作 → 验证财务兑现 → 检查估值赔率
+→ 观察技术位置 → 输出研究优先级、行动门控和 Runbook
 ```
 
 ```mermaid
@@ -28,10 +29,10 @@ flowchart LR
   D --> E["数据缺口<br/>data_gaps"]
   E --> F["研究债务<br/>research_debt"]
   F --> G["估值输入矩阵<br/>价格 / 股本 / 市值 / 口径"]
-  G --> H["AI 研究覆盖层<br/>层级 / 卡点 / 证据"]
-  H --> I["特征矩阵<br/>财务 / 技术 / 资本动作"]
+  G --> H["AI 研究执行<br/>overlay / outcome"]
+  H --> I["特征矩阵<br/>财务 / 技术 / 资本量化"]
   I --> J["三镜头研究<br/>Serenity / Fundamentals / Chan"]
-  J --> K["候选对比<br/>research / action / gate"]
+  J --> K["候选对比<br/>priority / gate / runbook"]
 ```
 
 ### 它解决什么问题
@@ -48,6 +49,10 @@ flowchart LR
 | 财务数据来源强度不够 | A 股优先抽取 CNINFO L0 官方报告 PDF 核心财务行，覆盖中文与英文版合并报表；仅 F10 预检会生成财报验证债务并封顶到 B |
 | 平均分掩盖关键证据缺口 | 决策矩阵用非线性门控压低优先级，并区分数据获取、研究验证和行动时机 |
 | AI 判断只停留在文字感受 | `ai_research_overlay` 必须带来源、置信度、反证和待验证问题，校验通过后才能影响对比报告 |
+| AI 研究没有真正执行 | `build_ai_overlay_prompt.py` 生成可执行研究包；成功输出 overlay，证据不足或冲突输出 `ai_review_outcome`，两者都必须校验后合并 |
+| 资本动作只写“有风险” | `capital_action_quantification` 把定增、H 股上市、减持、回购等拆成新增股份、发行价、锁定期、募资用途、减持比例等字段级任务 |
+| 缺口太多不知道先补什么 | `research_debt_runbook` 把研究债务转成轴线、阻塞等级、首选来源、验证目标和补齐后的决策影响 |
+| 候选池看起来能排但本质不同 | `candidate_pool_semantic_coherence` 区分同层候选、同主题不同层、跨主题诊断和无关诊断，限制正式 top candidate |
 | 结论无法复盘 | 输出证据等级、研究债务、证伪条件和候选排序 |
 
 ### 核心分层
@@ -57,10 +62,10 @@ flowchart LR
 | 合同层 | 统一市场、数据状态、缺口类型、评级上限、取数记录 | `scripts/data_contracts.py` |
 | 取数层 | 供应商适配、原始数据保存、基础校验 | `scripts/data_layer.py` |
 | 路由层 | 生成 manifest、attempt ledger、data gaps、research debt、manual tasks | `scripts/data_router.py` |
-| 特征层 | 技术健康、A 股资本动作、财务质量、财报金额单位归一、估值输入矩阵、预检级 PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py`, `scripts/financial_amounts.py` |
-| AI 覆盖层 | 生成 AI 审阅包、AI 研究委员会包、校验 AI 研究 overlay、合并到候选对比 | `scripts/build_ai_review_packet.py`, `scripts/build_ai_committee_packet.py`, `scripts/validate_ai_overlay.py`, `scripts/merge_ai_research_overlay.py` |
+| 特征层 | 技术健康、A 股资本动作、资本动作量化、财务质量、财报金额单位归一、估值输入矩阵、预检级 PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py`, `scripts/a_share_capital_action_quantifier.py`, `scripts/financial_amounts.py` |
+| AI 研究层 | 生成 AI 审阅包、AI 研究委员会包、AI overlay prompt、校验 overlay/outcome、合并到候选对比 | `scripts/build_ai_review_packet.py`, `scripts/build_ai_committee_packet.py`, `scripts/build_ai_overlay_prompt.py`, `scripts/validate_ai_overlay.py`, `scripts/validate_ai_review_outcome.py`, `scripts/validate_and_merge_ai_overlay.py` |
 | 决策层 | Thesis Quality、Evidence Confidence、Market Payoff、Action Readiness | `scripts/serenity_chan_scorecard.py` |
-| 对比层 | 多候选研究债务、层级、财务、增长、技术、资本动作和优先级 | `scripts/build_comparison_report.py` |
+| 对比层 | 多候选研究债务、层级、AI 状态、财务、增长、技术、资本动作量化、候选池一致性和优先级 | `scripts/build_comparison_report.py` |
 | 门禁层 | 标准输出合同、候选对比合同、静态 eval、真实数据 smoke | `scripts/validate_output_contract*.py`, `scripts/validate_comparison_report.py`, `scripts/run_*` |
 
 ### 市场路由
@@ -90,6 +95,11 @@ flowchart LR
 | `data_quality` | 当前请求和完整研究的评级上限 |
 | `ai_review` | 需要 AI 判断的源强度、行业口径、warning 和升级条件 |
 | `ai_research_overlay` | AI 对产业层级、卡点、收入传导、反证和下一步问题的结构化判断 |
+| `ai_review_status_matrix` | 每个候选的 AI 研究执行状态，区分 `COMPLETED`、`FAILED_INSUFFICIENT_EVIDENCE`、`CONFLICT_WITH_DATA`、`SKIPPED_QUICK_AUDIT` 和 `NOT_RUN` |
+| `ai_review_outcome` | AI 已尝试但证据不足、与确定性数据冲突或用户要求快速审计时的结构化结果 |
+| `candidate_pool_semantic_coherence` | 候选池语义一致性；只有同层候选可进入正式 clear top candidate |
+| `capital_action_quantification` | 资本动作量化矩阵，暴露缺失字段、稀释/回购/减持影响和下一步核验任务 |
+| `research_debt_runbook` | 可执行补证清单，按轴线、阻塞等级、首选来源和验证目标组织 |
 | `assets/sec_cik_bootstrap.json` | SEC ticker 目录不可用时的稳定 CIK 启动表 |
 
 关键缺口类型：
@@ -117,7 +127,8 @@ flowchart LR
 `ranking_validity` 决定排序能否作为正式结论。`VALID` 可以输出正式候选排序，`PARTIAL` 只能作为研究优先级，`INVALID` 只输出工程诊断和补数/修复任务；报告标题会显示“工程诊断排序｜非投资候选排序”，并将 `decision_grade=false`。
 `MISMATCH` 会使 `ranking_validity=INVALID`；`PARTIAL` / `DATA_GATED` 数据消费或 high/critical `research_debt` 会使 `ranking_validity=PARTIAL`。
 
-AI overlay 提交产业链映射、证据支持增长、反证和下一步问题；`market_implied_growth` 由 `valuation_input_matrix`、PE/PS 和同币种财务口径生成。
+AI 研究阶段提交两类正式结果：证据足够时生成 `ai_research_overlay`，证据不足、冲突或快速审计时生成 `ai_review_outcome`。overlay 提交产业链映射、证据支持增长、反证和下一步问题；outcome 记录失败原因、冲突字段和需要补齐的证据。`market_implied_growth` 始终由 `valuation_input_matrix`、PE/PS 和同币种财务口径生成。
+`candidate_pool_semantic_coherence` 会把候选池标记为同层候选、同主题不同层、跨主题诊断或无关诊断；只有同层候选可进入正式 clear top candidate，其余状态只能作为研究优先级或诊断集合。
 用户可读分析默认使用中文描述；机器字段可以保留英文枚举，但必须用中文解释含义和限制。
 
 ### 快速开始
@@ -152,7 +163,7 @@ python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --forma
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json candidate_c.json
 ```
 
-从真实取数 manifest 生成候选对比报告：
+从真实取数 manifest 生成确定性 baseline：
 
 ```bash
 python scripts/build_comparison_report.py \
@@ -161,15 +172,14 @@ python scripts/build_comparison_report.py \
   --format json > /tmp/serenity-chan-data/comparison_report.json
 
 python scripts/validate_comparison_report.py /tmp/serenity-chan-data/comparison_report.json
-
-python scripts/render_research_report.py \
-  --comparison-report /tmp/serenity-chan-data/comparison_report.json \
-  --mode full_research
 ```
 
-生成并合并 AI 研究覆盖层：
+执行 AI 研究并合并正式结果：
 
 ```bash
+python scripts/build_ai_overlay_prompt.py /tmp/serenity-chan-data/688019/manifest.json \
+  --out /tmp/serenity-chan-data/688019/ai_overlay_prompt.json
+
 python scripts/build_ai_review_packet.py /tmp/serenity-chan-data/688019/manifest.json \
   --out /tmp/serenity-chan-data/688019/ai_review_packet.json
 
@@ -177,21 +187,23 @@ python scripts/build_ai_committee_packet.py /tmp/serenity-chan-data/688019/manif
   --out /tmp/serenity-chan-data/688019/ai_committee_packet.json
 ```
 
-AI committee 的 `consensus`、`dissent`、`upgrade_conditions`、`downgrade_conditions` 是研究记录；最终 `ai_overlay.json` 只写 `assets/ai_research_overlay.schema.json` 允许字段。可用 `committee_to_overlay.py` 将已有 AI 委员会输出收敛为严格 overlay；脚本只做字段映射和校验，不凭空生成研究判断。
+AI 读取 prompt、review packet、committee packet 和源文件后产出一个正式结果：证据足够时写 `ai_overlay.json`，证据不足、数据冲突或用户要求快速审计时写 `ai_review_outcome.json`。AI committee 的 `consensus`、`dissent`、`upgrade_conditions`、`downgrade_conditions` 是研究记录；最终 `ai_overlay.json` 只写 `assets/ai_research_overlay.schema.json` 允许字段。可用 `committee_to_overlay.py` 将已有 AI 委员会输出收敛为严格 overlay；脚本只做字段映射和校验，不凭空生成研究判断。
 
 ```bash
 python scripts/committee_to_overlay.py /tmp/serenity-chan-data/688019/ai_committee_output.json \
   --out /tmp/serenity-chan-data/688019/ai_overlay.json
 
 python scripts/validate_ai_overlay.py /tmp/serenity-chan-data/688019/ai_overlay.json
+python scripts/validate_ai_review_outcome.py /tmp/serenity-chan-data/688322/ai_review_outcome.json
 
-python scripts/merge_ai_research_overlay.py \
+python scripts/validate_and_merge_ai_overlay.py \
   /tmp/serenity-chan-data/688019/manifest.json \
   /tmp/serenity-chan-data/688322/manifest.json \
   --overlay 688019.SH=/tmp/serenity-chan-data/688019/ai_overlay.json \
-  --format json > /tmp/serenity-chan-data/comparison_report.json
-
-python scripts/validate_comparison_report.py /tmp/serenity-chan-data/comparison_report.json
+  --ai-outcome 688322.SH=/tmp/serenity-chan-data/688322/ai_review_outcome.json \
+  --report-out /tmp/serenity-chan-data/comparison_report.json \
+  --markdown-out /tmp/serenity-chan-data/comparison_report.md \
+  --format json
 
 python scripts/render_research_report.py \
   --comparison-report /tmp/serenity-chan-data/comparison_report.json \
@@ -234,7 +246,7 @@ python scripts/run_static_evals.py
 
 ### 安装
 
-Codex / Agent Skills-compatible clients:
+Codex / Agent Skills clients:
 
 ```bash
 SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/serenity-chan-stock-skill"
@@ -256,14 +268,15 @@ cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
 
 ### What It Is
 
-`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market workflows. It helps an agent move from a theme, ticker, or candidate pool to a verifiable research output with market routing, data acquisition records, research debt, decision scoring, candidate ranking, and falsification triggers.
+`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market workflows. It helps an agent move from a theme, ticker, or candidate pool to a verifiable research output with market routing, data acquisition records, AI research execution, validated overlays or review outcomes, capital-action quantification, research-debt runbooks, decision scoring, candidate ranking, and falsification triggers.
 
 ### Core Workflow
 
 ```text
 Resolve market → fetch real data → record attempts → classify gaps
-→ create research debt → add valuation input matrix → apply AI research overlay
-→ score research/action priority → rank candidates → deliver guarded output
+→ create research debt → add valuation input matrix → execute AI research
+→ merge overlay or outcome → quantify capital actions → score research/action priority
+→ rank candidates → deliver guarded output and runbook
 ```
 
 ```mermaid
@@ -274,10 +287,10 @@ flowchart LR
   D --> E["Data Gaps"]
   E --> F["Research Debt"]
   F --> G["Valuation Input Matrix"]
-  G --> H["AI Research Overlay"]
-  H --> I["Feature Matrices"]
+  G --> H["AI Research<br/>overlay / outcome"]
+  H --> I["Feature Matrices<br/>financial / technical / capital"]
   I --> J["Research Lenses"]
-  J --> K["Comparison Report"]
+  J --> K["Comparison Report<br/>priority / gate / runbook"]
 ```
 
 ### Design Principles
@@ -289,6 +302,9 @@ flowchart LR
 | Evidence Before Rating | L0/L1 evidence controls high-conviction ratings |
 | Debt Before Action | Critical research debt blocks core-candidate action states |
 | AI With Evidence | AI overlays need source references, confidence, contrary evidence, and research questions |
+| AI Execution Closure | AI research must end with a validated overlay or a validated review outcome |
+| Capital Actions Are Quantified | Dilution, buyback, listing, reduction, lockup, and use-of-proceeds fields become explicit tasks |
+| Research Debt Becomes Runbooks | Open debt is converted into sources, validation targets, and expected decision impact |
 | Deterministic Market-Implied Growth | Market-implied growth is derived from complete valuation inputs and computable PE/PS |
 | Ranking Over Average | Candidate priority reflects usefulness, not a neutral average |
 | Decision Clarity | Final decisions classify clear top, tentative top, candidate cluster, and non-decision-grade states |
@@ -306,7 +322,11 @@ flowchart LR
 | `valuation_inputs.json` | Current price, total shares, total market cap, currency, as-of date, share-count basis, market-cap basis; float shares and float market cap when available |
 | `valuation_input_matrix` | Comparison-level audit table for price, shares, market cap, source, basis, verification need, and warnings |
 | `data_consumption_audit` | Downstream-consumption audit for fetched financial and valuation data |
-| AI review packet / overlay | Structured bridge between deterministic data and domain research judgment |
+| AI review packet / overlay / outcome | Structured bridge between deterministic data and domain research judgment |
+| `ai_review_status_matrix` | Per-candidate AI execution state: completed, insufficient evidence, data conflict, quick audit, or not run |
+| `candidate_pool_semantic_coherence` | Semantic coherence of the candidate pool and its decision constraint |
+| `capital_action_quantification` | Field-level capital-action impact and missing quantitative inputs |
+| `research_debt_runbook` | Executable source and validation plan for open research debt |
 | Official report PDFs | Downloaded CNINFO/HKEX report artifacts with `pdf_hash`; A-share Chinese/English consolidated reports and HK reports include extracted core financial lines when PDF text is readable; A-share financial-sector reports include bank, securities, or insurance profiles when required fields are extracted |
 | Scorecard result | Research rating, evidence confidence, action readiness, candidate priority |
 | Comparison report | Candidate-level acquisition, layer, financial, valuation-input, growth, technical, capital-action, debt, and priority matrices |
@@ -321,13 +341,13 @@ python scripts/candidate_ranker.py candidate_a.json candidate_b.json
 # Candidate-comparison contract
 python scripts/build_comparison_report.py manifest_a.json manifest_b.json --format json > comparison_report.json
 python scripts/validate_comparison_report.py comparison_report.json
-python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
 
+python scripts/build_ai_overlay_prompt.py manifest_a.json --out ai_overlay_prompt.json
 python scripts/build_ai_review_packet.py manifest_a.json --out ai_review_packet.json
 python scripts/build_ai_committee_packet.py manifest_a.json --out ai_committee_packet.json
 python scripts/validate_ai_overlay.py ai_overlay.json
-python scripts/merge_ai_research_overlay.py manifest_a.json manifest_b.json --overlay TICKER=ai_overlay.json --format json > comparison_report.json
-python scripts/validate_comparison_report.py comparison_report.json
+python scripts/validate_ai_review_outcome.py ai_review_outcome.json
+python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_report.json --markdown-out comparison_report.md
 python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
 
 # Standard single-company/theme output contract
@@ -347,20 +367,27 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `scripts/data_router.py` | Fetch manifest, attempt ledger, gaps, debt, tasks |
 | `scripts/technical_health.py` | Technical-health matrix from adjusted daily history |
 | `scripts/a_share_capital_actions.py` | A-share capital-action detection from announcement metadata |
+| `scripts/a_share_capital_action_quantifier.py` | Field-level capital-action quantification |
 | `scripts/build_comparison_report.py` | Candidate comparison report from fetch manifests |
 | `scripts/build_ai_review_packet.py` | AI review packet builder from fetch manifest |
 | `scripts/build_ai_committee_packet.py` | Multi-role AI research committee packet builder |
+| `scripts/build_ai_overlay_prompt.py` | Executable prompt package for AI overlay generation |
 | `scripts/data_consumption.py` | Audit whether fetched datasets are consumed by downstream matrices |
+| `scripts/build_research_debt_runbook.py` | Converts open debt into an executable runbook |
 | `scripts/financial_periods.py` | Cross-market fiscal-period normalization |
 | `scripts/render_research_report.py` | Full Markdown research-report renderer |
 | `scripts/validate_comparison_report.py` | Candidate-comparison contract validator |
 | `scripts/validate_ai_overlay.py` | AI research overlay validator |
-| `scripts/merge_ai_research_overlay.py` | Overlay-aware comparison report builder |
+| `scripts/validate_ai_review_outcome.py` | AI review failure/skip outcome validator |
+| `scripts/validate_and_merge_ai_overlay.py` | Validated overlay/outcome merge and report builder |
+| `scripts/merge_ai_research_overlay.py` | Validated merge CLI with overlay/outcome checks |
 | `scripts/serenity_chan_scorecard.py` | Decision scorecard and nonlinear gates |
 | `scripts/candidate_ranker.py` | Relative candidate ranking for scorecard payloads |
 | `assets/comparison_output_contract.schema.json` | Structured comparison-report contract |
 | `assets/valuation_inputs.schema.json` | Valuation-input data contract |
 | `assets/ai_research_overlay.schema.json` | AI research overlay contract |
+| `assets/ai_review_outcome.schema.json` | AI review failure/skip outcome contract |
+| `assets/capital_action_quantification.schema.json` | Capital-action quantification contract |
 | `assets/data_acquisition_policy.json` | Source ladder and dataset materiality |
 | `assets/sec_cik_bootstrap.json` | SEC CIK bootstrap for high-frequency US test tickers |
 | `assets/output_contract.schema.json` | Structured delivery contract |

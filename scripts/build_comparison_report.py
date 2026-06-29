@@ -13,6 +13,8 @@ from typing import Any, Mapping, Optional, Sequence
 
 try:
     from a_share_capital_actions import analyze_announcements
+    from a_share_capital_action_quantifier import quantify_capital_actions
+    from build_research_debt_runbook import build_runbook_rows
     from currency_normalizer import build_currency_normalization_row
     from data_consumption import financial_consumption_audit, ranking_validity_from_consumption, valuation_consumption_audit
     from financial_amounts import financial_unit_multiplier, normalize_financial_amount
@@ -24,8 +26,11 @@ try:
     from report_labels import display_bool, display_label, display_list, display_mapping_pairs
     from technical_health import analyze_price_csv
     from validate_ai_overlay import validate_overlay
+    from validate_ai_review_outcome import validate_review_outcome
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.build_comparison_report
     from scripts.a_share_capital_actions import analyze_announcements
+    from scripts.a_share_capital_action_quantifier import quantify_capital_actions
+    from scripts.build_research_debt_runbook import build_runbook_rows
     from scripts.currency_normalizer import build_currency_normalization_row
     from scripts.data_consumption import financial_consumption_audit, ranking_validity_from_consumption, valuation_consumption_audit
     from scripts.financial_amounts import financial_unit_multiplier, normalize_financial_amount
@@ -37,6 +42,7 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.bui
     from scripts.report_labels import display_bool, display_label, display_list, display_mapping_pairs
     from scripts.technical_health import analyze_price_csv
     from scripts.validate_ai_overlay import validate_overlay
+    from scripts.validate_ai_review_outcome import validate_review_outcome
 
 
 RATING_SCORE_LIMIT: dict[str, float] = {"S": 100.0, "A": 84.0, "B": 72.0, "C": 55.0, "D": 35.0, "OBSERVE_ONLY": 25.0}
@@ -57,6 +63,8 @@ ACTION_GATE_TYPES: set[str] = {
 ACTION_GATE_CLASSES: set[str] = {"NONE", "DATA_ACQUISITION", "EVIDENCE_VALIDATION", "RESEARCH_VALIDATION", "ACTION_TIMING"}
 DECISION_MODES: set[str] = {"single_candidate", "clear_top_candidate", "tentative_top_candidate", "candidate_cluster", "comparison_not_decision_grade"}
 RANKING_VALIDITY_STATUSES: set[str] = {"VALID", "PARTIAL", "INVALID"}
+AI_REVIEW_STATUSES: set[str] = {"NOT_RUN", "COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA", "SKIPPED_QUICK_AUDIT"}
+CANDIDATE_POOL_COHERENCE: set[str] = {"UNREVIEWED", "SAME_LAYER", "SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"}
 CONSUMPTION_AUDIT_DATASETS: set[str] = {"financials", "valuation_inputs"}
 ACTION_BLOCKING_DEBT_DATASETS: set[str] = {
     "current_quote",
@@ -325,21 +333,21 @@ def _symbol(manifest: Mapping[str, Any]) -> str:
     symbol: Any = manifest.get("symbol")
     if isinstance(symbol, Mapping):
         return str(symbol.get("symbol") or symbol.get("input_value") or "")
-    return ""
+    return str(symbol or "")
 
 
 def _market(manifest: Mapping[str, Any]) -> str:
     symbol: Any = manifest.get("symbol")
     if isinstance(symbol, Mapping):
         return str(symbol.get("market") or "UNKNOWN")
-    return "UNKNOWN"
+    return str(manifest.get("market") or "UNKNOWN")
 
 
 def _currency(manifest: Mapping[str, Any]) -> str:
     symbol: Any = manifest.get("symbol")
     if isinstance(symbol, Mapping):
         return str(symbol.get("currency") or "UNKNOWN")
-    return "UNKNOWN"
+    return str(manifest.get("currency") or "UNKNOWN")
 
 
 def _candidate_name(manifest: Mapping[str, Any]) -> str:
@@ -652,6 +660,7 @@ def _profile_from_overlay(symbol: str, overlay: Mapping[str, Any]) -> dict[str, 
         "revenue_transmission": validated["revenue_transmission"],
         "evidence_gap": "; ".join(validated.get("research_questions", [])) or "AI overlay supplied evidence-backed layer mapping.",
         "ai_confidence": validated["ai_confidence"],
+        "ai_review_status": "COMPLETED",
         "key_evidence_refs": validated.get("key_evidence_refs", []),
         "contrary_evidence": validated.get("contrary_evidence", []),
         "research_questions": validated.get("research_questions", []),
@@ -660,6 +669,47 @@ def _profile_from_overlay(symbol: str, overlay: Mapping[str, Any]) -> dict[str, 
         if key in validated:
             profile[key] = validated[key]
     return profile
+
+
+def _profile_from_review_outcome(symbol: str, outcome: Mapping[str, Any]) -> dict[str, Any]:
+    validated: Any = validate_review_outcome(outcome)["normalized_outcome"]
+    outcome_symbol: str = str(validated.get("symbol") or "")
+    if outcome_symbol != symbol:
+        raise ValueError(f"AI review outcome assignment {symbol} does not match outcome.symbol {outcome_symbol}")
+    status: str = str(validated.get("ai_review_status") or "NOT_RUN")
+    reason: str = str(validated.get("reason") or "")
+    required: list[str] = [str(item) for item in validated.get("required_evidence") or []]
+    conflicts: list[str] = [str(item) for item in validated.get("conflicting_fields") or []]
+    questions: list[str] = [str(item) for item in validated.get("research_questions") or []]
+    if not questions:
+        questions = required or conflicts
+    evidence_gap_parts: list[str] = [reason]
+    if required:
+        evidence_gap_parts.append("需补证据：" + "；".join(required))
+    if conflicts:
+        evidence_gap_parts.append("冲突字段：" + "；".join(conflicts))
+    if status == "CONFLICT_WITH_DATA":
+        bottleneck_reason: str = "AI 研究已执行，当前候选结论与确定性数据存在冲突。"
+        revenue_transmission: str = "收入传导结论需要先解决数据冲突后再合并。"
+    elif status == "SKIPPED_QUICK_AUDIT":
+        bottleneck_reason = "本轮为快速审计，未执行完整产业链映射。"
+        revenue_transmission = "快速审计不形成可验证的收入传导结论。"
+    else:
+        bottleneck_reason = "AI 研究已执行，当前证据不足以形成可合并的产业链映射。"
+        revenue_transmission = "AI 研究未形成可验证的收入传导结论。"
+    return {
+        "layer": "VALUE_CHAIN_UNMAPPED",
+        "bottleneck_reason": bottleneck_reason,
+        "layer_score": None,
+        "company_fit": None,
+        "revenue_transmission": revenue_transmission,
+        "evidence_gap": " ".join(part for part in evidence_gap_parts if part),
+        "ai_confidence": "NOT_PROVIDED",
+        "ai_review_status": status if status in AI_REVIEW_STATUSES else "NOT_RUN",
+        "key_evidence_refs": [{"source_ref": str(ref)} for ref in validated.get("source_refs") or []],
+        "contrary_evidence": conflicts,
+        "research_questions": questions,
+    }
 
 
 def _overlay_profiles(manifests: Sequence[Mapping[str, Any]], overlays: Optional[Mapping[str, Mapping[str, Any]]]) -> dict[str, dict[str, Any]]:
@@ -679,9 +729,43 @@ def _overlay_profiles(manifests: Sequence[Mapping[str, Any]], overlays: Optional
     }
 
 
+def _review_outcome_profiles(
+    manifests: Sequence[Mapping[str, Any]],
+    outcomes: Optional[Mapping[str, Mapping[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    if outcomes is None:
+        return {}
+    if not isinstance(outcomes, Mapping):
+        raise ValueError("ai_review_outcomes must be a mapping from candidate symbol to AI review outcome JSON object")
+    candidate_symbols: set[str] = {_symbol(manifest) for manifest in manifests}
+    normalized_outcomes: dict[str, Mapping[str, Any]] = {str(symbol): outcome for symbol, outcome in outcomes.items()}
+    outcome_symbols: set[str] = set(normalized_outcomes)
+    unknown: list[str] = sorted(outcome_symbols - candidate_symbols)
+    if unknown:
+        raise ValueError(f"AI review outcome supplied for non-candidate symbol(s): {', '.join(unknown)}")
+    return {
+        symbol: _profile_from_review_outcome(symbol, normalized_outcomes[symbol])
+        for symbol in sorted(outcome_symbols)
+    }
+
+
+def _ai_review_profiles(
+    manifests: Sequence[Mapping[str, Any]],
+    overlays: Optional[Mapping[str, Mapping[str, Any]]],
+    outcomes: Optional[Mapping[str, Mapping[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    overlay_profiles: dict[str, dict[str, Any]] = _overlay_profiles(manifests, overlays)
+    outcome_profiles: dict[str, dict[str, Any]] = _review_outcome_profiles(manifests, outcomes)
+    overlap: list[str] = sorted(set(overlay_profiles) & set(outcome_profiles))
+    if overlap:
+        raise ValueError(f"candidate(s) cannot have both AI overlay and AI review outcome: {', '.join(overlap)}")
+    return {**overlay_profiles, **outcome_profiles}
+
+
 def _serenity_layer(manifest: Mapping[str, Any], profile: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     profile = profile or {}
-    layer: Any = str(profile.get("layer") or "AI_REVIEW_REQUIRED")
+    ai_review_status: str = str(profile.get("ai_review_status") or "NOT_RUN")
+    layer: Any = str(profile.get("layer") or "VALUE_CHAIN_UNMAPPED")
     serenity_fit: Any = _as_float(profile.get("serenity_fit"))
     layer_score: Any = _as_float(profile.get("layer_score"))
     company_fit: Any = _as_float(profile.get("company_fit"))
@@ -696,11 +780,83 @@ def _serenity_layer(manifest: Mapping[str, Any], profile: Optional[Mapping[str, 
         "layer_score": _round(layer_score),
         "company_fit": _round(company_fit),
         "revenue_transmission": str(profile.get("revenue_transmission") or "需要用公告、财报或公司披露把产品/客户映射到财务行项目。"),
-        "evidence_gap": str(profile.get("evidence_gap") or "产业链层级映射需要 AI/行业研究复核，不能只从 ticker 数据推断。"),
+        "evidence_gap": str(profile.get("evidence_gap") or "AI 研究尚未执行；必须生成、校验并合并 ai_research_overlay 后才能完成产业链映射。"),
         "ai_confidence": str(profile.get("ai_confidence") or "NOT_PROVIDED"),
+        "ai_review_status": ai_review_status if ai_review_status in AI_REVIEW_STATUSES else "NOT_RUN",
         "key_evidence_refs": profile.get("key_evidence_refs", []) if isinstance(profile.get("key_evidence_refs", []), list) else [],
         "contrary_evidence": profile.get("contrary_evidence", []) if isinstance(profile.get("contrary_evidence", []), list) else [],
         "research_questions": profile.get("research_questions", []) if isinstance(profile.get("research_questions", []), list) else [],
+    }
+
+
+def _ai_review_status_row(layer: Mapping[str, Any]) -> dict[str, Any]:
+    status: str = str(layer.get("ai_review_status") or "NOT_RUN")
+    if status not in AI_REVIEW_STATUSES:
+        status = "NOT_RUN"
+    completed: bool = status == "COMPLETED"
+    evidence_refs: Any = layer.get("key_evidence_refs", [])
+    questions: Any = layer.get("research_questions", [])
+    return {
+        "symbol": str(layer.get("symbol") or ""),
+        "ai_review_status": status,
+        "overlay_merged": completed,
+        "layer_mapped": completed and str(layer.get("layer") or "") not in {"", "VALUE_CHAIN_UNMAPPED"},
+        "evidence_ref_count": len(evidence_refs) if isinstance(evidence_refs, list) else 0,
+        "research_question_count": len(questions) if isinstance(questions, list) else 0,
+        "blocking_reason": "" if completed else str(layer.get("evidence_gap") or "AI overlay has not been generated and merged."),
+    }
+
+
+def _layer_family(layer: str) -> str:
+    text: str = layer.lower()
+    if not text or text == "value_chain_unmapped":
+        return "unmapped"
+    if any(token in text for token in ["gpu", "accelerator", "cuda", "compute", "data center"]):
+        return "ai_compute"
+    if any(token in text for token in ["cmp", "slurry", "wet", "semicap", "semiconductor-material", "materials"]):
+        return "semicap_materials"
+    if any(token in text for token in ["robot", "vision", "sensing", "module", "embodied"]):
+        return "robotics_vision"
+    if any(token in text for token in ["internet", "gaming", "advertising", "social", "platform"]):
+        return "internet_platform"
+    return "_".join(text.split()[:3])
+
+
+def _candidate_pool_semantic_coherence(candidates: Sequence[Mapping[str, Any]], layer_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    markets: set[str] = {str(candidate.get("market") or "") for candidate in candidates if str(candidate.get("market") or "")}
+    reviewed_layers: list[str] = [
+        str(row.get("layer") or "")
+        for row in layer_rows
+        if str(row.get("ai_review_status") or "") == "COMPLETED"
+    ]
+    if len(reviewed_layers) != len(candidates):
+        return {
+            "status": "UNREVIEWED",
+            "reason": "候选池语义一致性需要在所有候选完成可合并产业层级映射后判断。",
+            "market_count": len(markets),
+            "layer_families": [],
+            "decision_constraint": "COMPLETE_LAYER_MAPPING_REQUIRED",
+        }
+    families: set[str] = {_layer_family(layer) for layer in reviewed_layers}
+    families.discard("unmapped")
+    if len(families) <= 1:
+        status: str = "SAME_LAYER"
+        constraint: str = "NONE"
+        reason: str = "候选公司处于同一主要产业层级，可作为同池候选比较。"
+    elif len(markets) > 1 and len(families) > 1:
+        status = "CROSS_THEME_DIAGNOSTIC"
+        constraint = "NO_CLEAR_TOP_CANDIDATE"
+        reason = "候选池横跨市场和产业层级，只能作为诊断/研究优先级集合，不能视为同池投资排序。"
+    else:
+        status = "SAME_THEME_DIFFERENT_LAYERS"
+        constraint = "RESEARCH_PRIORITY_ONLY"
+        reason = "候选公司不在同一细分层级，排序应解释为主题内研究优先级。"
+    return {
+        "status": status,
+        "reason": reason,
+        "market_count": len(markets),
+        "layer_families": sorted(families),
+        "decision_constraint": constraint,
     }
 
 
@@ -858,6 +1014,7 @@ def _growth_hypothesis(
 def _research_debt_rows(
     manifest: Mapping[str, Any],
     capital: Mapping[str, Any],
+    capital_quantification: Mapping[str, Any],
     financial: Mapping[str, Any],
     technical: Mapping[str, Any],
     layer: Mapping[str, Any],
@@ -874,6 +1031,8 @@ def _research_debt_rows(
             rows.append({"symbol": symbol, "task_type": "manual_retrieval", **dict(task)})
     for item in capital.get("research_debt", []) if isinstance(capital.get("research_debt"), list) else []:
         rows.append({"symbol": symbol, "dataset": "capital_actions", "priority": "high", "next_action": str(item)})
+    for item in capital_quantification.get("research_debt", []) if isinstance(capital_quantification.get("research_debt"), list) else []:
+        rows.append({"symbol": symbol, "dataset": "capital_action_quantification", "priority": "high", "next_action": str(item)})
     if financial.get("research_debt"):
         rows.append({"symbol": symbol, "dataset": "financials", "priority": "critical", "next_action": str(financial.get("research_debt"))})
     if technical.get("status") == "DATA_GATED" or technical.get("chan_action") == "DATA_REQUIRED":
@@ -883,7 +1042,7 @@ def _research_debt_rows(
             "priority": "high",
             "next_action": "补齐足够长度的复权日线历史后，才能输出缠论时机或买点判断。",
         })
-    if layer.get("layer") == "AI_REVIEW_REQUIRED":
+    if layer.get("ai_review_status") != "COMPLETED":
         rows.append({"symbol": symbol, "dataset": "serenity_layer", "priority": "high", "next_action": str(layer.get("evidence_gap"))})
     if growth.get("gap") == "valuation_currency_reconciliation_required":
         rows.append({"symbol": symbol, "dataset": "valuation_currency", "priority": "high", "next_action": str(growth.get("required_next_evidence"))})
@@ -953,11 +1112,13 @@ def _debt_gate_profile(debt_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]
         drag += 4.0
     if "capital_actions" in high_datasets:
         drag += 3.0
+    if "capital_action_quantification" in high_datasets:
+        drag += 3.0
     if "current_quote" in high_datasets:
         drag += 4.0
     if "price_history_adjusted" in high_datasets:
         drag += 4.0
-    other_high: Any = high_datasets - {"valuation_growth", "valuation", "share_capital", "valuation_inputs", "peer_valuation", "consensus_estimates", "serenity_layer", "capital_actions", "current_quote", "price_history_adjusted"}
+    other_high: Any = high_datasets - {"valuation_growth", "valuation", "share_capital", "valuation_inputs", "peer_valuation", "consensus_estimates", "serenity_layer", "capital_actions", "capital_action_quantification", "current_quote", "price_history_adjusted"}
     drag += min(4.0, 2.0 * len(other_high))
 
     return {
@@ -997,6 +1158,28 @@ def _ranking_validity(
         reason = f"{reason} 仍存在高优先级或关键研究债务。".strip()
     return {
         "status": "PARTIAL",
+        "reason": reason,
+        "blocked_by": list(validity.get("blocked_by") or []),
+        "partial_axes": partial_axes,
+    }
+
+
+def _apply_candidate_pool_coherence(validity: Mapping[str, Any], coherence: Mapping[str, Any]) -> dict[str, Any]:
+    status: str = str(coherence.get("status") or "")
+    if status not in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"}:
+        return dict(validity)
+    partial_axis: str = f"candidate_pool_semantic_coherence:{status}"
+    partial_axes: list[str] = [str(item) for item in validity.get("partial_axes") or []]
+    if partial_axis not in partial_axes:
+        partial_axes.append(partial_axis)
+    reason: str = str(validity.get("reason") or "")
+    coherence_reason: str = str(coherence.get("reason") or "")
+    if str(validity.get("status") or "") == "VALID":
+        reason = coherence_reason
+    elif coherence_reason and coherence_reason not in reason:
+        reason = f"{reason} {coherence_reason}".strip()
+    return {
+        "status": "PARTIAL" if str(validity.get("status") or "") != "INVALID" else "INVALID",
         "reason": reason,
         "blocked_by": list(validity.get("blocked_by") or []),
         "partial_axes": partial_axes,
@@ -1045,13 +1228,13 @@ def _action_gate_profile(
                 add("VALUATION_GATED", "估值输入不完整，市场隐含增长和赔率判断保持阻断。", dataset, "DATA_ACQUISITION")
         elif dataset == "serenity_layer":
             add("AI_REVIEW_GATED", "产业链层级、瓶颈位置和收入传导仍需 AI/行业研究复核。", dataset, "RESEARCH_VALIDATION")
-        elif dataset == "capital_actions":
+        elif dataset in {"capital_actions", "capital_action_quantification"}:
             add("CAPITAL_ACTION_GATED", "资本动作需要量化稀释、回购、上市或减持影响。", dataset, "RESEARCH_VALIDATION")
 
     if growth.get("market_implied_growth") == "UNKNOWN" or growth.get("gap") == "valuation_input_required":
         add("VALUATION_GATED", str(growth.get("required_next_evidence") or "Valuation inputs are required."), "valuation", "DATA_ACQUISITION")
-    if layer.get("layer") == "AI_REVIEW_REQUIRED":
-        add("AI_REVIEW_GATED", str(layer.get("evidence_gap") or "需要 AI/行业研究复核。"), "serenity_layer", "RESEARCH_VALIDATION")
+    if layer.get("ai_review_status") != "COMPLETED":
+        add("AI_REVIEW_GATED", str(layer.get("evidence_gap") or "需要执行 AI 研究 overlay。"), "serenity_layer", "RESEARCH_VALIDATION")
 
     risk_level: Any = str((capital.get("summary") or {}).get("material_risk_level") or "none") if isinstance(capital.get("summary"), Mapping) else "none"
     has_dilution: Any = bool((capital.get("summary") or {}).get("has_dilution_event")) if isinstance(capital.get("summary"), Mapping) else False
@@ -1149,6 +1332,7 @@ def _final_decision(
     ranked: Sequence[Mapping[str, Any]],
     next_actions: Sequence[str],
     ranking_validity: Mapping[str, Any],
+    candidate_pool_semantic_coherence: Mapping[str, Any],
 ) -> dict[str, Any]:
     top: Any = ranked[0] if ranked else {}
     top_symbol: Any = str(top.get("symbol") or "")
@@ -1177,12 +1361,17 @@ def _final_decision(
     else:
         decision_mode = "candidate_cluster"
         decision = "将领先候选视为同一候选簇，先处理区分度研究债务，再命名稳定优先候选。"
+    coherence_status: str = str(candidate_pool_semantic_coherence.get("status") or "")
+    if coherence_status in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"} and decision_mode == "clear_top_candidate":
+        decision_mode = "tentative_top_candidate"
+        decision = f"优先跟进 {top_symbol}，但候选池未达到同层可比条件，不能视为正式同池投资排序。"
     candidate_count_warning: Any = "insufficient_universe_warning" if len(ranked) < 3 else ""
     return {
         "top_candidate": top_symbol,
         "decision_mode": decision_mode,
         "score_gap_to_runner_up": score_gap,
         "candidate_count_warning": candidate_count_warning,
+        "candidate_pool_semantic_coherence": dict(candidate_pool_semantic_coherence),
         "ranking_validity": dict(ranking_validity),
         "decision": decision,
         "next_research_actions": list(next_actions)[:12],
@@ -1264,18 +1453,22 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     required: Any = {
         "comparison_scope",
+        "candidate_pool_semantic_coherence",
         "candidates",
         "data_acquisition_summary",
         "serenity_layer_matrix",
+        "ai_review_status_matrix",
         "financial_quality_matrix",
         "valuation_input_matrix",
         "currency_normalization_matrix",
         "growth_hypothesis_matrix",
         "technical_timing_matrix",
         "capital_actions",
+        "capital_action_quantification",
         "data_consumption_audit",
         "readiness_matrix",
         "research_debt",
+        "research_debt_runbook",
         "candidate_priority_ranking",
         "final_decision",
     }
@@ -1286,7 +1479,7 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     if not isinstance(final_decision, Mapping):
         errors.append("final_decision must be an object")
     else:
-        for field in ["top_candidate", "decision_mode", "score_gap_to_runner_up", "candidate_count_warning", "ranking_validity", "decision", "next_research_actions"]:
+        for field in ["top_candidate", "decision_mode", "score_gap_to_runner_up", "candidate_count_warning", "candidate_pool_semantic_coherence", "ranking_validity", "decision", "next_research_actions"]:
             if field not in final_decision:
                 errors.append(f"final_decision missing {field}")
         if str(final_decision.get("decision_mode") or "") not in DECISION_MODES:
@@ -1321,14 +1514,32 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
                 errors.append("PARTIAL ranking_validity requires non-empty partial_axes")
             if validity_status == "VALID" and (blocked_items or partial_items):
                 errors.append("VALID ranking_validity cannot carry blocked_by or partial_axes")
+            final_coherence: Any = final_decision.get("candidate_pool_semantic_coherence")
+            if isinstance(final_coherence, Mapping):
+                final_coherence_status: str = str(final_coherence.get("status") or "")
+                if final_coherence_status in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"} and final_decision.get("decision_mode") == "clear_top_candidate":
+                    errors.append("candidate pools without same-layer coherence cannot use clear_top_candidate")
     candidates: Any = report.get("candidates", [])
     if not isinstance(candidates, list) or len(candidates) < 2:
         errors.append("comparison report requires at least two candidates")
     symbols: set[str] = {str(item.get("symbol")) for item in candidates if isinstance(item, Mapping)}
-    for key in ["data_acquisition_summary", "serenity_layer_matrix", "financial_quality_matrix", "valuation_input_matrix", "currency_normalization_matrix", "growth_hypothesis_matrix", "technical_timing_matrix", "capital_actions", "readiness_matrix"]:
+    coherence: Any = report.get("candidate_pool_semantic_coherence")
+    if not isinstance(coherence, Mapping):
+        errors.append("candidate_pool_semantic_coherence must be an object")
+    elif str(coherence.get("status") or "") not in CANDIDATE_POOL_COHERENCE:
+        errors.append("candidate_pool_semantic_coherence.status is unknown")
+    for key in ["data_acquisition_summary", "serenity_layer_matrix", "ai_review_status_matrix", "financial_quality_matrix", "valuation_input_matrix", "currency_normalization_matrix", "growth_hypothesis_matrix", "technical_timing_matrix", "capital_actions", "capital_action_quantification", "readiness_matrix"]:
         rows: Any = report.get(key, [])
         if not isinstance(rows, list) or {str(item.get("symbol")) for item in rows if isinstance(item, Mapping)} != symbols:
             errors.append(f"{key} must contain one row per candidate")
+    for row in report.get("ai_review_status_matrix", []) if isinstance(report.get("ai_review_status_matrix"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        status = str(row.get("ai_review_status") or "")
+        if status not in AI_REVIEW_STATUSES:
+            errors.append(f"{row.get('symbol')} ai_review_status_matrix.ai_review_status is unknown")
+        if status == "COMPLETED" and not row.get("overlay_merged"):
+            errors.append(f"{row.get('symbol')} completed AI review must have overlay_merged=true")
     for row in report.get("currency_normalization_matrix", []) if isinstance(report.get("currency_normalization_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
@@ -1407,6 +1618,10 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     for row in report.get("serenity_layer_matrix", []) if isinstance(report.get("serenity_layer_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
+        if row.get("layer") == "AI_REVIEW_REQUIRED":
+            errors.append(f"{row.get('symbol')} serenity_layer_matrix.layer must not use ambiguous AI_REVIEW_REQUIRED")
+        if row.get("ai_review_status") == "COMPLETED" and str(row.get("layer") or "") == "VALUE_CHAIN_UNMAPPED":
+            errors.append(f"{row.get('symbol')} completed AI overlay must provide a concrete serenity layer")
         for field in ["layer_score", "company_fit"]:
             value: Any = row.get(field)
             if value is None:
@@ -1595,6 +1810,29 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
         for action in actions:
             if isinstance(action, Mapping) and action.get("action_type") == "private_placement" and not str(action.get("research_debt", "")).strip():
                 errors.append(f"{row.get('symbol')} private placement requires dilution research debt")
+    for row in report.get("capital_action_quantification", []) if isinstance(report.get("capital_action_quantification"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        actions = row.get("actions", [])
+        if not isinstance(actions, list):
+            errors.append("capital_action_quantification.actions must be an array")
+            continue
+        for action in actions:
+            if not isinstance(action, Mapping):
+                continue
+            status_value: str = str(action.get("quantification_status") or "")
+            if status_value not in {"QUANTIFIED", "PARTIAL", "NEEDS_PDF_EXTRACTION", "NOT_REQUIRED"}:
+                errors.append(f"{row.get('symbol')} capital action quantification status is unknown")
+            if status_value in {"PARTIAL", "NEEDS_PDF_EXTRACTION"}:
+                debt_rows_for_check = report.get("research_debt", [])
+                has_quant_debt: bool = any(
+                    isinstance(item, Mapping)
+                    and item.get("symbol") == row.get("symbol")
+                    and item.get("dataset") == "capital_action_quantification"
+                    for item in debt_rows_for_check
+                ) if isinstance(debt_rows_for_check, list) else False
+                if not has_quant_debt:
+                    errors.append(f"{row.get('symbol')} unquantified capital action requires capital_action_quantification debt")
     for row in report.get("technical_timing_matrix", []) if isinstance(report.get("technical_timing_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
@@ -1613,21 +1851,27 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     return errors
 
 
-def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[Mapping[str, Mapping[str, Any]]] = None) -> dict[str, Any]:
+def build_comparison_report(
+    manifest_paths: Sequence[Path],
+    overlays: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    ai_review_outcomes: Optional[Mapping[str, Mapping[str, Any]]] = None,
+) -> dict[str, Any]:
     manifests: Any = [_load_manifest(path) for path in manifest_paths]
     if len(manifests) < 2:
         raise ValueError("comparison requires at least two manifest paths")
-    profiles: Any = _overlay_profiles(manifests, overlays)
+    profiles: Any = _ai_review_profiles(manifests, overlays, ai_review_outcomes)
 
     candidates: Any = []
     data_rows: Any = []
     layer_rows: Any = []
+    ai_review_rows: list[dict[str, Any]] = []
     financial_rows: Any = []
     valuation_rows: Any = []
     currency_rows: Any = []
     growth_rows: Any = []
     technical_rows: Any = []
     capital_rows: Any = []
+    capital_quantification_rows: list[dict[str, Any]] = []
     consumption_rows: list[dict[str, Any]] = []
     debt_rows: list[dict[str, Any]] = []
     ranking_seed: Any = []
@@ -1641,6 +1885,7 @@ def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[M
         currency_normalization: Any = _currency_normalization_row(manifest, financial, valuation)
         technical: Any = _technical_summary(manifest)
         capital: Any = _capital_summary(manifest)
+        capital_quantification: dict[str, Any] = quantify_capital_actions(symbol, capital)
         layer: Any = _serenity_layer(manifest, profile)
         growth: Any = _growth_hypothesis(manifest, financial, profile, currency_normalization)
         candidate_consumption: Any = [
@@ -1659,7 +1904,7 @@ def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[M
                 currency_normalization_row=currency_normalization,
             ),
         ]
-        candidate_debt: Any = _research_debt_rows(manifest, capital, financial, technical, layer, growth)
+        candidate_debt: Any = _research_debt_rows(manifest, capital, capital_quantification, financial, technical, layer, growth)
         candidate_debt.extend(_research_debt_from_consumption(candidate_consumption))
         score: Any
         research_score: Any
@@ -1679,12 +1924,14 @@ def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[M
         })
         data_rows.append(data_summary)
         layer_rows.append(layer)
+        ai_review_rows.append(_ai_review_status_row(layer))
         financial_rows.append(financial)
         valuation_rows.append(valuation)
         currency_rows.append(currency_normalization)
         growth_rows.append(growth)
         technical_rows.append(technical)
         capital_rows.append(capital)
+        capital_quantification_rows.append(capital_quantification)
         consumption_rows.extend(candidate_consumption)
         debt_rows.extend(candidate_debt)
         ranking_seed.append({
@@ -1708,7 +1955,11 @@ def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[M
         if action and action not in next_actions:
             next_actions.append(action)
 
-    ranking_validity: Any = _ranking_validity(consumption_rows, debt_rows)
+    candidate_pool_semantic_coherence: dict[str, Any] = _candidate_pool_semantic_coherence(candidates, layer_rows)
+    ranking_validity: Any = _apply_candidate_pool_coherence(
+        _ranking_validity(consumption_rows, debt_rows),
+        candidate_pool_semantic_coherence,
+    )
     for item in ranked:
         item["decision_grade"] = ranking_validity.get("status") == "VALID"
     readiness_rows: list[dict[str, Any]] = _readiness_matrix(
@@ -1724,21 +1975,25 @@ def build_comparison_report(manifest_paths: Sequence[Path], overlays: Optional[M
             "as_of": dt.datetime.now(dt.timezone.utc).isoformat(),
             "basis": "fetch_manifest_plus_deterministic_decision_matrices",
         },
+        "candidate_pool_semantic_coherence": candidate_pool_semantic_coherence,
         "candidates": candidates,
         "data_acquisition_summary": data_rows,
         "serenity_layer_matrix": layer_rows,
+        "ai_review_status_matrix": ai_review_rows,
         "financial_quality_matrix": financial_rows,
         "valuation_input_matrix": valuation_rows,
         "currency_normalization_matrix": currency_rows,
         "growth_hypothesis_matrix": growth_rows,
         "technical_timing_matrix": technical_rows,
         "capital_actions": capital_rows,
+        "capital_action_quantification": capital_quantification_rows,
         "data_consumption_audit": consumption_rows,
         "readiness_matrix": readiness_rows,
         "research_debt": debt_rows,
         "candidate_priority_ranking": ranked,
-        "final_decision": _final_decision(ranked, next_actions, ranking_validity),
+        "final_decision": _final_decision(ranked, next_actions, ranking_validity, candidate_pool_semantic_coherence),
     }
+    report["research_debt_runbook"] = build_runbook_rows(report)
     errors: Any = validate_comparison_report(report)
     if errors:
         raise ValueError("; ".join(errors))
@@ -1757,6 +2012,9 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     lines.append(f"- 与第二名分差：{decision.get('score_gap_to_runner_up', '')}")
     if decision.get("candidate_count_warning"):
         lines.append(f"- 候选池提示：{display_label(decision.get('candidate_count_warning'))}")
+    coherence: Any = decision.get("candidate_pool_semantic_coherence") if isinstance(decision.get("candidate_pool_semantic_coherence"), Mapping) else report.get("candidate_pool_semantic_coherence", {})
+    if isinstance(coherence, Mapping):
+        lines.append(f"- 候选池一致性：{display_label(coherence.get('status'))}｜{coherence.get('reason', '')}")
     ranking_validity: Any = decision.get("ranking_validity") if isinstance(decision.get("ranking_validity"), Mapping) else {}
     lines.append(f"- 排序可信度：{display_label(ranking_validity.get('status', ''))}｜{ranking_validity.get('reason', '')}")
     lines.append(f"- 决策说明：{decision.get('decision', '')}")
@@ -1773,11 +2031,6 @@ def to_markdown(report: Mapping[str, Any]) -> str:
             gate: Any = row.get("action_gate") if isinstance(row.get("action_gate"), Mapping) else {}
             decision_grade: bool = bool(row.get("decision_grade"))
             lines.append(f"| {row.get('rank')} | {row.get('symbol')} | {display_bool(decision_grade)} | {row.get('research_priority_score')} | {row.get('action_priority_score')} | {row.get('priority_score')} | {display_label(gate.get('primary_gate', ''))} | {display_label(row.get('action_readiness'))} | {row.get('key_reason')} |")
-    lines.extend(["", "## 1.2 三层状态", "| 标的 | 数据获取状态 | 研究状态 | 行动状态 | 数据证据上限 | 原因码 |", "|---|---|---|---|---|---|"])
-    for row in report.get("readiness_matrix", []):
-        if isinstance(row, Mapping):
-            reasons: Any = display_list(row.get("reason_codes", []), empty="")
-            lines.append(f"| {row.get('symbol')} | {display_label(row.get('fetch_status'))} | {display_label(row.get('research_readiness'))} | {display_label(row.get('action_readiness'))} | {row.get('data_evidence_cap')} | {reasons} |")
     lines.extend(["", "## 1.1 行动门控", "| 标的 | 主门控 | 门控类别 | 次级门控 | 门控类别明细 | 阻断数据集 | 阻断原因 |", "|---|---|---|---|---|---|---|"])
     for row in report.get("candidate_priority_ranking", []):
         if isinstance(row, Mapping):
@@ -1787,6 +2040,15 @@ def to_markdown(report: Mapping[str, Any]) -> str:
             datasets: Any = display_list(gate.get("blocking_datasets", []), empty="")
             reasons: Any = "; ".join(str(item) for item in gate.get("blocking_reasons", []) if item) if isinstance(gate.get("blocking_reasons", []), list) else ""
             lines.append(f"| {row.get('symbol')} | {display_label(gate.get('primary_gate', ''))} | {display_label(gate.get('primary_gate_class', ''))} | {secondary} | {gate_classes} | {datasets} | {reasons} |")
+    lines.extend(["", "## 1.2 三层状态", "| 标的 | 数据获取状态 | 研究状态 | 行动状态 | 数据证据上限 | 原因码 |", "|---|---|---|---|---|---|"])
+    for row in report.get("readiness_matrix", []):
+        if isinstance(row, Mapping):
+            reasons = display_list(row.get("reason_codes", []), empty="")
+            lines.append(f"| {row.get('symbol')} | {display_label(row.get('fetch_status'))} | {display_label(row.get('research_readiness'))} | {display_label(row.get('action_readiness'))} | {row.get('data_evidence_cap')} | {reasons} |")
+    lines.extend(["", "## 1.3 AI 研究状态", "| 标的 | AI 状态 | Overlay 已合并 | 产业层级已映射 | 证据数 | 问题数 | 阻断说明 |", "|---|---|---|---|---:|---:|---|"])
+    for row in report.get("ai_review_status_matrix", []):
+        if isinstance(row, Mapping):
+            lines.append(f"| {row.get('symbol')} | {display_label(row.get('ai_review_status'))} | {display_bool(row.get('overlay_merged'))} | {display_bool(row.get('layer_mapped'))} | {row.get('evidence_ref_count')} | {row.get('research_question_count')} | {row.get('blocking_reason', '')} |")
     lines.extend(["", "## 2. 数据消费审计", "| 标的 | 数据集 | 原始状态 | 行数 | 消费状态 | 原因码 | 必需转换 | 阻断矩阵 | 选中期间 | 选择规则 | 警告 |", "|---|---|---|---:|---|---|---|---|---|---|---|"])
     for row in report.get("data_consumption_audit", []):
         if isinstance(row, Mapping):
@@ -1797,6 +2059,11 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     for row in report.get("research_debt", []):
         if isinstance(row, Mapping):
             lines.append(f"| {row.get('symbol')} | {display_label(row.get('dataset', ''))} | {display_label(row.get('priority', ''))} | {row.get('next_action') or row.get('objective', '')} |")
+    lines.extend(["", "## 3.1 研究债务 Runbook", "| 标的 | 数据集 | 轴线 | 阻断级别 | 下一步动作 | 验证目标 | 预期效果 |", "|---|---|---|---|---|---|---|"])
+    for row in report.get("research_debt_runbook", []):
+        if isinstance(row, Mapping):
+            targets: Any = display_list(row.get("validation_target", []), empty="")
+            lines.append(f"| {row.get('symbol')} | {display_label(row.get('dataset', ''))} | {display_label(row.get('axis', ''))} | {display_label(row.get('blocking_level', ''))} | {row.get('next_action', '')} | {targets} | {row.get('expected_effect_if_resolved', '')} |")
     lines.extend(["", "## 4. 财务质量矩阵", "| 标的 | 分数 | 年报期间 | 选择规则 | 金额单位 | 收入增速 | 净利率 | 经营现金流/净利润 | 负债/资产 | 预检标签 |", "|---|---:|---|---|---|---:|---:|---:|---:|---|"])
     for row in report.get("financial_quality_matrix", []):
         if isinstance(row, Mapping):
@@ -1825,6 +2092,17 @@ def to_markdown(report: Mapping[str, Any]) -> str:
         if isinstance(row, Mapping):
             summary: Any = row.get("summary", {}) if isinstance(row.get("summary"), Mapping) else {}
             lines.append(f"| {row.get('symbol')} | {display_label(summary.get('material_risk_level'))} | {display_list(summary.get('action_types', []), empty='无')} | {'; '.join(row.get('research_debt', [])) if isinstance(row.get('research_debt'), list) else ''} |")
+    lines.extend(["", "## 8.1 资本动作量化", "| 标的 | 状态 | 需量化动作数 | 最大摊薄 | 行动影响 | 字段级缺口 |", "|---|---|---:|---:|---|---|"])
+    for row in report.get("capital_action_quantification", []):
+        if isinstance(row, Mapping):
+            summary = row.get("summary", {}) if isinstance(row.get("summary"), Mapping) else {}
+            missing: list[str] = []
+            actions = row.get("actions", [])
+            if isinstance(actions, list):
+                for action in actions:
+                    if isinstance(action, Mapping) and isinstance(action.get("missing_fields"), list) and action.get("missing_fields"):
+                        missing.append(f"{display_label(action.get('action_type'))}: {', '.join(str(item) for item in action.get('missing_fields', []))}")
+            lines.append(f"| {row.get('symbol')} | {display_label(summary.get('quantification_status'))} | {summary.get('requires_quantification_count')} | {_display_cell(summary.get('max_dilution_pct'))} | {display_label(summary.get('impact_on_action'))} | {'; '.join(missing)} |")
     lines.append("")
     return "\n".join(lines)
 

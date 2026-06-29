@@ -83,15 +83,18 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
     candidates: list[Mapping[str, Any]] = _mapping_rows(report.get("candidates"))
     data_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("data_acquisition_summary")))
     layer_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("serenity_layer_matrix")))
+    ai_review_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("ai_review_status_matrix")))
     financial_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("financial_quality_matrix")))
     valuation_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("valuation_input_matrix")))
     currency_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("currency_normalization_matrix")))
     growth_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("growth_hypothesis_matrix")))
     technical_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("technical_timing_matrix")))
     capital_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("capital_actions")))
+    capital_quantification_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("capital_action_quantification")))
     ranking_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("candidate_priority_ranking")))
     readiness_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("readiness_matrix")))
     debt_rows: dict[str, list[Mapping[str, Any]]] = _many_by_symbol(_mapping_rows(report.get("research_debt")))
+    runbook_rows: dict[str, list[Mapping[str, Any]]] = _many_by_symbol(_mapping_rows(report.get("research_debt_runbook")))
 
     lines: list[str] = [
         comparison_markdown,
@@ -106,18 +109,27 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
         name: str = _text(candidate.get("name"), "")
         data: Mapping[str, Any] = data_rows.get(symbol, {})
         layer: Mapping[str, Any] = layer_rows.get(symbol, {})
+        ai_review: Mapping[str, Any] = ai_review_rows.get(symbol, {})
         financial: Mapping[str, Any] = financial_rows.get(symbol, {})
         valuation: Mapping[str, Any] = valuation_rows.get(symbol, {})
         currency: Mapping[str, Any] = currency_rows.get(symbol, {})
         growth: Mapping[str, Any] = growth_rows.get(symbol, {})
         technical: Mapping[str, Any] = technical_rows.get(symbol, {})
         capital: Mapping[str, Any] = capital_rows.get(symbol, {})
+        capital_quantification: Mapping[str, Any] = capital_quantification_rows.get(symbol, {})
         ranking: Mapping[str, Any] = ranking_rows.get(symbol, {})
         readiness: Mapping[str, Any] = readiness_rows.get(symbol, {})
         action_gate: Mapping[str, Any] = ranking.get("action_gate") if isinstance(ranking.get("action_gate"), Mapping) else {}
         status_by_dataset: Mapping[str, Any] = data.get("status_by_dataset") if isinstance(data.get("status_by_dataset"), Mapping) else {}
         company_debt: list[Mapping[str, Any]] = debt_rows.get(symbol, [])
+        company_runbook: list[Mapping[str, Any]] = runbook_rows.get(symbol, [])
         sector_fallback: Mapping[str, Any] = financial.get("financial_sector_profile_fallback") if isinstance(financial.get("financial_sector_profile_fallback"), Mapping) else {}
+        runbook_lines: list[str] = [
+            f"- `{display_label(row.get('dataset'), '未知数据集')}`：{row.get('next_action', '')}；验证 {display_list(row.get('validation_target', []), empty='待补充')}；优先源 {display_list(row.get('preferred_sources', []), empty='待补充')}；完成后 {row.get('expected_effect_if_resolved', '')}"
+            for row in company_runbook
+        ]
+        if not runbook_lines:
+            runbook_lines = ["- 当前未生成字段级 runbook。"]
 
         lines.extend([
             "",
@@ -129,6 +141,7 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
             f"- 研究优先级：`{_text(ranking.get('research_priority_score'), 'NA')}`；行动优先级：`{_text(ranking.get('action_priority_score'), 'NA')}`；行动状态：`{display_label(ranking.get('action_readiness'), 'NA')}`",
             f"- 主门控：`{display_label(action_gate.get('primary_gate'), 'NA')}`；门控类别：`{display_label(action_gate.get('primary_gate_class'), 'NA')}`",
             f"- 门控类别明细：{_gate_class_summary(action_gate.get('gate_classes'), empty='无')}",
+            f"- AI 研究状态：`{display_label(ai_review.get('ai_review_status'), 'NA')}`；Overlay 已合并 `{display_bool(ai_review.get('overlay_merged'))}`；证据数 `{_text(ai_review.get('evidence_ref_count'), '0')}`",
             f"- 数据包：`{_text(candidate.get('data_package_path'), 'NA')}`",
             "",
             "### Serenity 研究假设",
@@ -149,11 +162,14 @@ def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str
             "### 技术与资本动作",
             f"- 技术状态：历史深度 `{display_label(technical.get('history_depth_status'), 'NA')}`；趋势 `{display_label(technical.get('trend_state'), 'NA')}`；缠论动作 `{display_label(technical.get('chan_action'), 'NA')}`；允许买点判断 `{display_bool(technical.get('buy_point_claim_allowed'))}`",
             f"- 资本动作：风险 `{display_label((capital.get('summary') or {}).get('material_risk_level') if isinstance(capital.get('summary'), Mapping) else None, 'NA')}`；动作 `{display_list((capital.get('summary') or {}).get('action_types') if isinstance(capital.get('summary'), Mapping) else [], empty='无')}`",
+            f"- 资本动作量化：状态 `{display_label((capital_quantification.get('summary') or {}).get('quantification_status') if isinstance(capital_quantification.get('summary'), Mapping) else None, 'NA')}`；需量化 `{_text((capital_quantification.get('summary') or {}).get('requires_quantification_count') if isinstance(capital_quantification.get('summary'), Mapping) else None, '0')}` 项；行动影响 `{display_label((capital_quantification.get('summary') or {}).get('impact_on_action') if isinstance(capital_quantification.get('summary'), Mapping) else None, 'NA')}`",
             "",
             "### 待补证与 AI 研究任务",
             f"- 下一步关键证据：{_text(growth.get('required_next_evidence'), '待拆解')}",
             f"- 门控原因：{_joined(action_gate.get('blocking_reasons'), empty='无')}",
             *_research_debt_lines(company_debt),
+            "### 执行 Runbook",
+            *runbook_lines,
         ])
 
     return "\n".join(lines)

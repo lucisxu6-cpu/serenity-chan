@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 try:
+    from a_share_capital_action_quantifier import quantify_capital_actions
     from build_comparison_report import (
         _capital_summary,
         _currency_normalization_row,
@@ -25,6 +26,7 @@ try:
         _valuation_payload,
     )
 except ModuleNotFoundError:  # pragma: no cover
+    from scripts.a_share_capital_action_quantifier import quantify_capital_actions
     from scripts.build_comparison_report import (
         _capital_summary,
         _currency_normalization_row,
@@ -70,12 +72,13 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     financial = _financial_quality(manifest)
     technical = _technical_summary(manifest)
     capital = _capital_summary(manifest)
+    capital_quantification = quantify_capital_actions(_symbol(manifest), capital)
     layer_seed = _serenity_layer(manifest, {})
     valuation_inputs = dict(_valuation_payload(manifest))
     valuation_input_matrix_row = _valuation_input_row(manifest)
     currency_normalization = _currency_normalization_row(manifest, financial, valuation_input_matrix_row)
     growth = _growth_hypothesis(manifest, financial, {}, currency_normalization)
-    research_debt = _research_debt_rows(manifest, capital, financial, technical, layer_seed, growth)
+    research_debt = _research_debt_rows(manifest, capital, capital_quantification, financial, technical, layer_seed, growth)
     acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
     ai_questions = [
         "Identify the value-chain layer and the concrete bottleneck this company may control.",
@@ -107,6 +110,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
             "currency_normalization": currency_normalization,
             "technical_timing": technical,
             "capital_actions": capital,
+            "capital_action_quantification": capital_quantification,
             "growth_hypothesis": growth,
             "open_research_debt": research_debt,
         },

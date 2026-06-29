@@ -1,0 +1,28 @@
+{
+  "symbol": "NVDA",
+  "as_of_date": "2026-06-29",
+  "layer": "AI 加速器与数据中心计算平台",
+  "bottleneck_reason": "瓶颈假设来自加速计算平台、CUDA/软件生态锁定、高端 GPU 供应、网络互联和数据中心系统级采用。",
+  "revenue_transmission": "收入通过数据中心计算、网络、整机系统和软件/服务需求传导；证据需要把分部收入增长与毛利率、库存、客户集中度和供应承诺放在一起复核。",
+  "serenity_fit": 0.82,
+  "evidence_supported_growth": "H3",
+  "h4_h5_evidence_bar_met": false,
+  "required_next_evidence": "升级到 H4 前，需要用 L0/L1 分部披露、采购承诺、客户集中度、出口管制表述，以及毛利率/库存信号做交叉验证。",
+  "posterior_basis": "SEC 官方事实支持强财务质量和 H3 证据支持增长；当前估值隐含 H4，需要更深的 L0/L1 确认后才能升级为行动级判断。",
+  "key_evidence_refs": [
+    {
+      "claim": "SEC companyfacts 和当前估值输入显示收入、净利润和现金转化很强，但估值隐含增长仍高于当前已证明证据。",
+      "source_ref": "SEC Companyfacts L0 财务数据与估值输入矩阵",
+      "source_level": "L0",
+      "confidence": 0.82
+    }
+  ],
+  "contrary_evidence": [
+    "估值已经隐含 H4 增长；出口管制、云厂商资本开支消化、ASIC 竞争和毛利率正常化都可能削弱 thesis。"
+  ],
+  "research_questions": [
+    "哪些 L0/L1 披露能证明数据中心增长持续性足以支持 H4，而不只是 H3？",
+    "库存、采购承诺、客户集中度、出口管制披露或毛利率趋势是否反驳当前市场隐含增长档位？"
+  ],
+  "ai_confidence": "HIGH"
+}

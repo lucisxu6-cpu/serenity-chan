@@ -1,0 +1,14 @@
+{
+  "symbol": "AAA",
+  "market": "US",
+  "currency": "USD",
+  "data_quality": {
+    "rating_cap": "OBSERVE_ONLY"
+  },
+  "data_acquisition": {
+    "status_by_dataset": {},
+    "research_debt": [],
+    "manual_retrieval_tasks": []
+  },
+  "results": []
+}
