@@ -1,0 +1,4 @@
+interface:
+  display_name: "Laplace Forecast"
+  short_description: "Recursive forecasting, search, and calibration engine"
+  default_prompt: "Use $laplace-forecast to predict and revisit a trend, event, market, or decision by anchoring with priors, modeling the decision-maker, testing evidence, logging structured claims, and returning scenarios, next evidence, and invalidation signals."

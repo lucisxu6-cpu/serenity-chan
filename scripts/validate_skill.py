@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import py_compile
 import re
 import sys
 from pathlib import Path
@@ -17,6 +16,8 @@ REQUIRED_FILES: Any = [
     "references/05_output_templates.md",
     "references/06_risk_compliance_no_guess.md",
     "references/15_ai_overlay_execution_protocol.md",
+    "references/16_laplace_strategy_bridge.md",
+    "references/17_industry_domain_packs.md",
     "assets/analysis_request.schema.json",
     "assets/evidence_ledger.schema.json",
     "assets/falsification_dashboard.schema.json",
@@ -34,6 +35,8 @@ REQUIRED_FILES: Any = [
     "assets/capital_actions.schema.json",
     "assets/technical_health.schema.json",
     "assets/comparison_output_contract.schema.json",
+    "assets/laplace_strategy_input.schema.json",
+    "assets/theme_candidate_universe.schema.json",
     "assets/scorecard_template.json",
     "assets/scorecard.schema.json",
     "assets/output_contract.schema.json",
@@ -44,6 +47,8 @@ REQUIRED_FILES: Any = [
     "scripts/build_falsification_dashboard.py",
     "scripts/a_share_capital_actions.py",
     "scripts/a_share_capital_action_quantifier.py",
+    "scripts/build_theme_candidate_universe.py",
+    "scripts/validate_theme_candidate_universe.py",
     "scripts/technical_health.py",
     "scripts/build_comparison_report.py",
     "scripts/build_ai_review_packet.py",
@@ -53,7 +58,9 @@ REQUIRED_FILES: Any = [
     "scripts/data_consumption.py",
     "scripts/financial_periods.py",
     "scripts/render_research_report.py",
+    "scripts/build_laplace_strategy_input.py",
     "scripts/validate_comparison_report.py",
+    "scripts/validate_laplace_strategy_input.py",
     "scripts/validate_ai_overlay.py",
     "scripts/validate_ai_review_outcome.py",
     "scripts/merge_ai_research_overlay.py",
@@ -64,6 +71,12 @@ REQUIRED_FILES: Any = [
     "scripts/validate_output_contract_json.py",
     "scripts/run_static_evals.py",
     "scripts/run_real_data_smoke.py",
+    "companion-skills/laplace-forecast/SKILL.md",
+    "companion-skills/laplace-forecast/agents/openai.yaml",
+    "companion-skills/laplace-forecast/references/first-order-lenses.md",
+    "companion-skills/laplace-forecast/references/evidence-loop.md",
+    "companion-skills/laplace-forecast/references/ledger-schema.md",
+    "companion-skills/laplace-forecast/scripts/forecast_ledger.py",
 ]
 
 
@@ -120,16 +133,20 @@ def main() -> None:
     for file_name in REQUIRED_FILES:
         if not (root / file_name).exists():
             errors.append(f"missing file: {file_name}")
-    scripts_dir: Any = root / "scripts"
-    if scripts_dir.exists():
-        for script in sorted(scripts_dir.glob("*.py")):
-            text = script.read_text(encoding="utf-8", errors="replace")
-            if len(text.splitlines()) < 5 and script.stat().st_size > 200:
-                errors.append(f"{script.relative_to(root)} appears newline-collapsed")
-            try:
-                py_compile.compile(str(script), doraise=True)
-            except Exception as exc:
-                errors.append(f"Python syntax error in {script.relative_to(root)}: {exc}")
+    script_dirs: list[Any] = [root / "scripts"]
+    companion_root: Any = root / "companion-skills"
+    if companion_root.exists():
+        script_dirs.extend(sorted(companion_root.glob("*/scripts")))
+    for scripts_dir in script_dirs:
+        if scripts_dir.exists():
+            for script in sorted(scripts_dir.glob("*.py")):
+                text = script.read_text(encoding="utf-8", errors="replace")
+                if len(text.splitlines()) < 5 and script.stat().st_size > 200:
+                    errors.append(f"{script.relative_to(root)} appears newline-collapsed")
+                try:
+                    compile(text, str(script), "exec")
+                except Exception as exc:
+                    errors.append(f"Python syntax error in {script.relative_to(root)}: {exc}")
     if errors:
         for e in errors:
             print("ERROR:", e)

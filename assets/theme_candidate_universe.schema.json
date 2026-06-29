@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Theme Candidate Universe",
+  "type": "object",
+  "required": [
+    "contract_type",
+    "schema_version",
+    "theme",
+    "generated_at",
+    "universe_source",
+    "value_chain_layers",
+    "candidate_universe",
+    "downgraded_hot_directions",
+    "ai_expansion_tasks"
+  ],
+  "properties": {
+    "contract_type": {
+      "type": "string",
+      "const": "serenity_theme_candidate_universe"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "theme": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "universe_source": {"type": "string"},
+    "value_chain_layers": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["layer", "bottleneck_question", "evidence_to_seek", "candidate_symbols"],
+        "properties": {
+          "layer": {"type": "string"},
+          "bottleneck_question": {"type": "string"},
+          "evidence_to_seek": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "candidate_symbols": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "candidate_universe": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "market", "name", "layer", "why_in_universe", "initial_evidence_need"],
+        "properties": {
+          "symbol": {"type": "string"},
+          "market": {"type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL", "OTHER"]},
+          "name": {"type": "string"},
+          "layer": {"type": "string"},
+          "why_in_universe": {"type": "string"},
+          "initial_evidence_need": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "downgraded_hot_directions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["direction", "downgrade_reason", "evidence_to_upgrade"],
+        "properties": {
+          "direction": {"type": "string"},
+          "downgrade_reason": {"type": "string"},
+          "evidence_to_upgrade": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "ai_expansion_tasks": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": true
+}

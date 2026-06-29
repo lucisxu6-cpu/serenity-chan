@@ -16,6 +16,7 @@ try:
     from build_ai_overlay_prompt import build_ai_overlay_prompt
     from build_ai_review_packet import build_ai_review_packet
     from build_comparison_report import build_comparison_report, to_markdown
+    from build_laplace_strategy_input import build_strategy_input, infer_geography
     from data_router import fetch_real_data
     from validate_and_merge_ai_overlay import build_validated_merged_report
 except ModuleNotFoundError:  # pragma: no cover
@@ -23,6 +24,7 @@ except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_ai_overlay_prompt import build_ai_overlay_prompt
     from scripts.build_ai_review_packet import build_ai_review_packet
     from scripts.build_comparison_report import build_comparison_report, to_markdown
+    from scripts.build_laplace_strategy_input import build_strategy_input, infer_geography
     from scripts.data_router import fetch_real_data
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
 
@@ -82,6 +84,11 @@ def run_analysis(
     sec_user_agent: str,
     overlay_values: Sequence[str],
     outcome_values: Sequence[str],
+    strategy_theme: str,
+    strategy_horizon: str,
+    strategy_geography: str,
+    strategy_decision_use: str,
+    strategy_profile: str,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     if sec_user_agent:
@@ -161,8 +168,20 @@ def run_analysis(
     final_markdown_path: Path = out_dir / "comparison_final.md"
     _write_json(final_report_path, final_report)
     _write_text(final_markdown_path, to_markdown(final_report))
+    strategy_input: dict[str, Any] = build_strategy_input(
+        final_report,
+        source_report_path=final_report_path,
+        theme=strategy_theme,
+        horizon=strategy_horizon,
+        geography=strategy_geography or infer_geography(final_report),
+        decision_use=strategy_decision_use,
+        default_profile=strategy_profile,
+    )
+    strategy_input_path: Path = out_dir / "laplace_strategy_input.json"
+    _write_json(strategy_input_path, strategy_input)
     summary["final_report"] = str(final_report_path)
     summary["final_markdown"] = str(final_markdown_path)
+    summary["laplace_strategy_input"] = str(strategy_input_path)
     _write_json(out_dir / "workflow_summary.json", summary)
     return summary
 
@@ -178,6 +197,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--sec-user-agent", default="", help="SEC-compliant User-Agent for US symbols")
     parser.add_argument("--overlay", action="append", default=[], help="SYMBOL=overlay.json")
     parser.add_argument("--ai-outcome", action="append", default=[], help="SYMBOL=ai_review_outcome.json")
+    parser.add_argument("--strategy-theme", default="", help="theme or strategy object for laplace_strategy_input.json")
+    parser.add_argument("--strategy-horizon", default="3-6个月", help="strategy horizon for laplace_strategy_input.json")
+    parser.add_argument("--strategy-geography", default="", help="strategy geography; defaults to inferred candidate markets")
+    parser.add_argument("--strategy-decision-use", default="watchlist allocation, action triggers, and invalidation")
+    parser.add_argument("--strategy-profile", default="balanced")
     args: argparse.Namespace = parser.parse_args(argv)
     try:
         summary: dict[str, Any] = run_analysis(
@@ -190,6 +214,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             sec_user_agent=args.sec_user_agent,
             overlay_values=args.overlay,
             outcome_values=args.ai_outcome,
+            strategy_theme=args.strategy_theme,
+            strategy_horizon=args.strategy_horizon,
+            strategy_geography=args.strategy_geography,
+            strategy_decision_use=args.strategy_decision_use,
+            strategy_profile=args.strategy_profile,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     except Exception as exc:

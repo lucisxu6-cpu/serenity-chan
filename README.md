@@ -2,7 +2,7 @@
 
 Language: [中文](#中文) | [English](#english)
 
-`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market stock research. It turns a theme, ticker, or candidate pool into an auditable research workflow with market-specific source routing, real-data acquisition, valuation input matrices, AI research execution, validated AI overlays or AI review outcomes, capital-action quantification, research-debt runbooks, candidate scoring, action gates, and falsification triggers.
+`serenity-chan-stock-skill` is an evidence-first equity research operating system for A-share, US, HK, and cross-market workflows. It turns a theme, ticker, or candidate pool into auditable data packages, validated AI research, decision gates, candidate priority, action triggers, and a bundled `laplace-forecast` strategy layer.
 
 Scope: research workflow, evidence discipline, rating limits, candidate prioritization, and follow-up tracking. It does not provide personalized investment advice, promise returns, or execute trades.
 
@@ -12,28 +12,39 @@ Scope: research workflow, evidence discipline, rating limits, candidate prioriti
 
 ### 一句话
 
-把“这条主线/这家公司值不值得继续研究？”转成一份可以复核、可以补数、可以比较优先级的研究结果。
+把“这条主线/这家公司值不值得继续研究、现在该怎么跟踪？”转成一份可以取数、复核、比较、门控、行动和复盘的研究系统。
 
-```text
-先取真实数据 → 记录取数账本 → 补齐估值输入矩阵 → 标出研究债务
-→ 执行 AI 研究 → 合并 overlay 或记录 outcome → 判断产业链瓶颈
-→ 量化资本动作 → 验证财务兑现 → 检查估值赔率
-→ 观察技术位置 → 输出研究优先级、行动门控和 Runbook
-```
+### 一眼看懂
+
+| 你输入 | 系统做什么 | 你得到什么 |
+|---|---|---|
+| 一个主题 | 先建价值链层级和候选宇宙，再逐个取真实数据 | 哪些层级值得研究，哪些热门方向需要降级 |
+| 一只股票 | 解析市场、抓行情/财报/公告/股本、市值和复权历史 | 数据质量、证据强度、评级上限、证伪条件 |
+| 一组候选 | 对比产业链卡点、财务、估值、技术、资本动作和 AI overlay | 研究优先级、行动门控、补证 runbook |
+| 一个策略问题 | 读取 Serenity 报告并进入 `laplace-forecast` companion | 情景推演、30/90/180 天触发器、失效条件和复盘 claim |
+
+### 顶层设计
 
 ```mermaid
-flowchart LR
-  A["输入<br/>主题 / 股票 / 候选池"] --> B["市场解析<br/>CN_A / US / HK"]
-  B --> C["取数阶梯<br/>L0 / L1 / L2 / L3"]
-  C --> D["取数账本<br/>attempt_ledger"]
-  D --> E["数据缺口<br/>data_gaps"]
-  E --> F["研究债务<br/>research_debt"]
-  F --> G["估值输入矩阵<br/>价格 / 股本 / 市值 / 口径"]
-  G --> H["AI 研究执行<br/>overlay / outcome"]
-  H --> I["特征矩阵<br/>财务 / 技术 / 资本量化"]
-  I --> J["三镜头研究<br/>Serenity / Fundamentals / Chan"]
-  J --> K["候选对比<br/>priority / gate / runbook"]
+flowchart TB
+  A["用户问题<br/>主题 / 股票 / 候选池 / 策略"] --> B["Market Router<br/>A股 / 美股 / 港股"]
+  B --> C["Data Evidence Layer<br/>行情 / 复权 / 财报 / 公告 / 股本市值"]
+  C --> D["Contract And Audit Layer<br/>attempt ledger / data gaps / consumption audit"]
+  D --> E["AI Research Layer<br/>review packet / committee packet / overlay or outcome"]
+  E --> F["Decision Gate Layer<br/>rating cap / priority / readiness / runbook"]
+  F --> G["Laplace Strategy Layer<br/>scenario / trigger / invalidation / ledger"]
+  G --> H["中文交付<br/>研究结论 / 行动框架 / 下一证据"]
 ```
+
+### 可信边界
+
+| 原则 | 含义 |
+|---|---|
+| No Data, No Guess | 当前价、市值、财报、公告、客户、订单和买点都必须先走真实取数或明确降级 |
+| Market-Specific Routing | A 股走 CNINFO/交易所，美股走 SEC/IR，港股走 HKEXnews，跨市场显式处理货币和股本口径 |
+| Evidence Before Rating | L0/L1 证据、数据消费审计和 AI overlay 决定评级上限，高分不能覆盖关键债务 |
+| AI With Contracts | AI 研究必须输出可校验的 `ai_research_overlay` 或 `ai_review_outcome` |
+| Strategy After Research | 策略判断基于 `laplace_strategy_input`，把研究债务转成触发器、失效条件和下一证据 |
 
 ### 它解决什么问题
 
@@ -46,6 +57,7 @@ flowchart LR
 | 港股/跨市场币种不一致 | `currency_normalization_matrix` 把市值口径归一到财报口径；FX 失败时保留估值门控，不输出市场隐含增长 |
 | 财报金额单位和市值金额单位不同 | 财务矩阵显式记录 `financial_statement_unit` 与 `financial_unit_multiplier`；PE/PS 只使用绝对金额计算 |
 | 热点题材直接映射股票 | 先排产业链层级和瓶颈，再排公司候选 |
+| 主题扫描靠手工挑票 | `build_theme_candidate_universe.py` 基于行业 domain pack 先生成价值链层级、候选宇宙、热门降级方向和 AI 扩展任务 |
 | 财务数据来源强度不够 | A 股优先抽取 CNINFO L0 官方报告 PDF 核心财务行，覆盖中文与英文版合并报表；仅 F10 预检会生成财报验证债务并封顶到 B |
 | 平均分掩盖关键证据缺口 | 决策矩阵用非线性门控压低优先级，并区分数据获取、研究验证和行动时机 |
 | AI 判断只停留在文字感受 | `ai_research_overlay` 必须带来源、置信度、反证和待验证问题，校验通过后才能影响对比报告 |
@@ -54,6 +66,7 @@ flowchart LR
 | 缺口太多不知道先补什么 | `research_debt_runbook` 把研究债务转成轴线、阻塞等级、首选来源、验证目标和补齐后的决策影响 |
 | 候选池看起来能排但本质不同 | `candidate_pool_semantic_coherence` 区分同层候选、同主题不同层、跨主题诊断和无关诊断，限制正式 top candidate |
 | 结论无法复盘 | 输出证据等级、研究债务、证伪条件和候选排序 |
+| 研究结果还需要变成策略 | `laplace_strategy_input` 将 Serenity 报告交给内置 `laplace-forecast` companion，继续生成情景、触发器、失效条件和 ledger claim |
 
 ### 核心分层
 
@@ -64,9 +77,11 @@ flowchart LR
 | 路由层 | 生成 manifest、attempt ledger、data gaps、research debt、manual tasks | `scripts/data_router.py` |
 | 特征层 | 技术健康、A 股资本动作、资本动作量化、财务质量、财报金额单位归一、估值输入矩阵、预检级 PE/PS 和增长假设矩阵 | `scripts/technical_health.py`, `scripts/a_share_capital_actions.py`, `scripts/a_share_capital_action_quantifier.py`, `scripts/financial_amounts.py` |
 | AI 研究层 | 生成 AI 审阅包、AI 研究委员会包、AI overlay prompt、校验 overlay/outcome、合并到候选对比 | `scripts/build_ai_review_packet.py`, `scripts/build_ai_committee_packet.py`, `scripts/build_ai_overlay_prompt.py`, `scripts/validate_ai_overlay.py`, `scripts/validate_ai_review_outcome.py`, `scripts/validate_and_merge_ai_overlay.py` |
+| 主题层 | 行业 domain pack、价值链层级、候选宇宙、热门降级方向和 AI 扩展任务 | `references/17_industry_domain_packs.md`, `scripts/build_theme_candidate_universe.py`, `scripts/validate_theme_candidate_universe.py` |
 | 决策层 | Thesis Quality、Evidence Confidence、Market Payoff、Action Readiness | `scripts/serenity_chan_scorecard.py` |
 | 对比层 | 多候选研究债务、层级、AI 状态、财务、增长、技术、资本动作量化、候选池一致性和优先级 | `scripts/build_comparison_report.py` |
 | 门禁层 | 标准输出合同、候选对比合同、静态 eval、真实数据 smoke | `scripts/validate_output_contract*.py`, `scripts/validate_comparison_report.py`, `scripts/run_*` |
+| 策略层 | 从候选对比进入预测、情景、触发器、行动计划和复盘账本 | `scripts/build_laplace_strategy_input.py`, `scripts/validate_laplace_strategy_input.py`, `companion-skills/laplace-forecast/` |
 
 ### 市场路由
 
@@ -100,6 +115,7 @@ flowchart LR
 | `candidate_pool_semantic_coherence` | 候选池语义一致性；只有同层候选可进入正式 clear top candidate |
 | `capital_action_quantification` | 资本动作量化矩阵，暴露缺失字段、稀释/回购/减持影响和下一步核验任务 |
 | `research_debt_runbook` | 可执行补证清单，按轴线、阻塞等级、首选来源和验证目标组织 |
+| `laplace_strategy_input` | 由候选对比报告派生的策略预测输入，内置 companion skill 路径、决策上下文、候选事实、主导变量、策略问题和 ledger seed |
 | `assets/sec_cik_bootstrap.json` | SEC ticker 目录不可用时的稳定 CIK 启动表 |
 
 关键缺口类型：
@@ -141,6 +157,18 @@ python scripts/run_research_analysis.py 688019 688322 \
 ```
 
 这个命令会完成真实取数、生成确定性 baseline，并为每个候选生成 `ai_review_packet.json`、`ai_committee_packet.json` 和 `ai_overlay_prompt.json`。如果尚未提供 AI overlay/outcome，输出状态为 `AI_RESULT_REQUIRED` 并写出 `ai_result_required.json`；当每个候选都有正式 AI 结果后，继续传入 `--overlay SYMBOL=overlay.json` 或 `--ai-outcome SYMBOL=outcome.json`，脚本会执行证据校验、合并并生成最终 JSON/Markdown 报告。
+
+主题扫描先生成候选宇宙：
+
+```bash
+python scripts/build_theme_candidate_universe.py 机器人 \
+  --out /tmp/serenity-chan-data/robotics_universe.json
+
+python scripts/validate_theme_candidate_universe.py /tmp/serenity-chan-data/robotics_universe.json
+```
+
+AI 基于 `references/17_industry_domain_packs.md` 扩展候选到足够覆盖的产业链层级，再把候选代码交给正式研究入口。
+非内置主题由 AI 按 `assets/theme_candidate_universe.schema.json` 先写出候选宇宙并通过 `validate_theme_candidate_universe.py`，不得用占位候选替代真实候选。
 
 解析代码和数据源计划：
 
@@ -223,6 +251,20 @@ python scripts/render_research_report.py \
 正式合并时，overlay 的 `source_ref` 会解析到对应 manifest 的真实 source artifact 或 AI review packet；无法解析的引用、与证据不一致的数字 claim 会阻断合并。
 可参考 `examples/comparison_688019_688322/` 中的 AI overlay benchmark。
 
+进入 Laplace 策略层：
+
+```bash
+python scripts/build_laplace_strategy_input.py /tmp/serenity-chan-data/comparison_report.json \
+  --theme "A股机器人与AI算力" \
+  --horizon "3-6个月" \
+  --decision-use "watchlist allocation, action triggers, and invalidation" \
+  --out /tmp/serenity-chan-data/laplace_strategy_input.json
+
+python scripts/validate_laplace_strategy_input.py /tmp/serenity-chan-data/laplace_strategy_input.json
+```
+
+AI 读取 `references/16_laplace_strategy_bridge.md` 与 `companion-skills/laplace-forecast/SKILL.md` 后，继续输出中文策略结论：Forecast、Decision、Observed、Inferred、Judgment、Dominant variables、Scenarios、Triggers、Invalidation、Next evidence 和 Action plan。重要主题或中期策略判断同步生成可写入 forecast ledger 的 claim。
+
 交付前门禁：
 
 ```bash
@@ -252,6 +294,10 @@ python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --valid
 python scripts/validate_output_contract_json.py evals/fixtures/pass_output_contract_json.json
 python scripts/build_comparison_report.py evals/fixtures/comparison_688019_manifest.json evals/fixtures/comparison_688322_manifest.json --format json > /tmp/serenity-comparison-report.json
 python scripts/validate_comparison_report.py /tmp/serenity-comparison-report.json
+python scripts/build_laplace_strategy_input.py /tmp/serenity-comparison-report.json --out /tmp/serenity-laplace-strategy-input.json
+python scripts/validate_laplace_strategy_input.py /tmp/serenity-laplace-strategy-input.json
+python scripts/build_theme_candidate_universe.py 机器人 --out /tmp/serenity-theme-universe.json
+python scripts/validate_theme_candidate_universe.py /tmp/serenity-theme-universe.json
 python scripts/run_static_evals.py
 ```
 
@@ -262,7 +308,7 @@ Codex / Agent Skills clients:
 ```bash
 SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/serenity-chan-stock-skill"
 mkdir -p "$SKILL_DIR"
-cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
+cp -R SKILL.md references assets scripts examples evals agents companion-skills "$SKILL_DIR"/
 ```
 
 Claude Code:
@@ -270,7 +316,7 @@ Claude Code:
 ```bash
 SKILL_DIR="$HOME/.claude/skills/serenity-chan-stock-skill"
 mkdir -p "$SKILL_DIR"
-cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
+cp -R SKILL.md references assets scripts examples evals agents companion-skills "$SKILL_DIR"/
 ```
 
 ---
@@ -279,29 +325,28 @@ cp -R SKILL.md references assets scripts examples evals agents "$SKILL_DIR"/
 
 ### What It Is
 
-`serenity-chan-stock-skill` is a data-first equity research skill for A-share, US, HK, and cross-market workflows. It helps an agent move from a theme, ticker, or candidate pool to a verifiable research output with market routing, data acquisition records, AI research execution, validated overlays or review outcomes, capital-action quantification, research-debt runbooks, decision scoring, candidate ranking, and falsification triggers.
+`serenity-chan-stock-skill` is an evidence-first equity research operating system for A-share, US, HK, and cross-market workflows. It moves from a theme, ticker, candidate pool, or strategy question to auditable data, validated AI research, decision gates, scenario strategy, and follow-up evidence.
 
-### Core Workflow
+### At A Glance
 
-```text
-Resolve market → fetch real data → record attempts → classify gaps
-→ create research debt → add valuation input matrix → execute AI research
-→ merge overlay or outcome → quantify capital actions → score research/action priority
-→ rank candidates → deliver guarded output and runbook
-```
+| Input | What The System Does | Output |
+|---|---|---|
+| Theme | Builds value-chain layers and a candidate universe before fetching tickers | Layer map, candidate pool, downgraded hot directions |
+| Ticker | Resolves market and fetches quote, adjusted history, filings, financials, shares, and valuation inputs | Data quality, evidence strength, rating cap, falsification |
+| Candidate set | Compares bottlenecks, financials, valuation, technical state, capital actions, and AI overlays | Research priority, action gates, runbook |
+| Strategy question | Converts the Serenity report into `laplace_strategy_input` | Scenarios, triggers, invalidation, ledger claims |
+
+### Top-Level Design
 
 ```mermaid
-flowchart LR
-  A["Input<br/>theme / ticker / candidates"] --> B["Market Route"]
-  B --> C["Data Acquisition Ladder"]
-  C --> D["Attempt Ledger"]
-  D --> E["Data Gaps"]
-  E --> F["Research Debt"]
-  F --> G["Valuation Input Matrix"]
-  G --> H["AI Research<br/>overlay / outcome"]
-  H --> I["Feature Matrices<br/>financial / technical / capital"]
-  I --> J["Research Lenses"]
-  J --> K["Comparison Report<br/>priority / gate / runbook"]
+flowchart TB
+  A["User Request<br/>theme / ticker / candidates / strategy"] --> B["Market Router<br/>A-share / US / HK"]
+  B --> C["Data Evidence Layer<br/>quote / adjusted history / filings / financials / shares"]
+  C --> D["Contract And Audit Layer<br/>attempt ledger / data gaps / consumption audit"]
+  D --> E["AI Research Layer<br/>review packet / committee packet / overlay or outcome"]
+  E --> F["Decision Gate Layer<br/>rating cap / priority / readiness / runbook"]
+  F --> G["Laplace Strategy Layer<br/>scenario / trigger / invalidation / ledger"]
+  G --> H["Delivery<br/>research conclusion / action frame / next evidence"]
 ```
 
 ### Design Principles
@@ -316,6 +361,8 @@ flowchart LR
 | AI Execution Closure | AI research must end with a validated overlay or a validated review outcome |
 | Capital Actions Are Quantified | Dilution, buyback, listing, reduction, lockup, and use-of-proceeds fields become explicit tasks |
 | Research Debt Becomes Runbooks | Open debt is converted into sources, validation targets, and expected decision impact |
+| Research Becomes Strategy | Validated comparison reports generate `laplace_strategy_input` for the bundled `laplace-forecast` companion |
+| Theme Before Ticker | Theme scans start from value-chain layers and a candidate universe before fetching individual tickers |
 | Deterministic Market-Implied Growth | Market-implied growth is derived from complete valuation inputs and computable PE/PS |
 | Ranking Over Average | Candidate priority reflects usefulness, not a neutral average |
 | Decision Clarity | Final decisions classify clear top, tentative top, candidate cluster, and non-decision-grade states |
@@ -338,6 +385,7 @@ flowchart LR
 | `candidate_pool_semantic_coherence` | Semantic coherence of the candidate pool and its decision constraint |
 | `capital_action_quantification` | Field-level capital-action impact and missing quantitative inputs |
 | `research_debt_runbook` | Executable source and validation plan for open research debt |
+| `laplace_strategy_input` | Structured handoff from Serenity research to Laplace scenarios, triggers, invalidation, action planning, and ledger claims |
 | Official report PDFs | Downloaded CNINFO/HKEX report artifacts with `pdf_hash`; A-share Chinese/English consolidated reports and HK reports include extracted core financial lines when PDF text is readable; A-share financial-sector reports include bank, securities, or insurance profiles when required fields are extracted |
 | Scorecard result | Research rating, evidence confidence, action readiness, candidate priority |
 | Comparison report | Candidate-level acquisition, layer, financial, valuation-input, growth, technical, capital-action, debt, and priority matrices |
@@ -346,6 +394,7 @@ flowchart LR
 
 ```bash
 python scripts/run_research_analysis.py 688019 688322 --out-dir /tmp/serenity-chan-run/688019-688322
+python scripts/run_research_analysis.py 688019 688322 --out-dir /tmp/serenity-chan-run/688019-688322 --strategy-theme "A-share robotics" --strategy-horizon "3-6 months"
 python scripts/data_router.py fetch NVDA --sec-user-agent "Your Name your.email@example.com"
 python scripts/serenity_chan_scorecard.py assets/scorecard_template.json --format both
 python scripts/candidate_ranker.py candidate_a.json candidate_b.json
@@ -361,6 +410,10 @@ python scripts/validate_ai_overlay.py ai_overlay.json --manifest manifest_a.json
 python scripts/validate_ai_review_outcome.py ai_review_outcome.json
 python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_report.json --markdown-out comparison_report.md
 python scripts/render_research_report.py --comparison-report comparison_report.json --mode full_research
+python scripts/build_laplace_strategy_input.py comparison_report.json --theme "A-share AI infrastructure" --out laplace_strategy_input.json
+python scripts/validate_laplace_strategy_input.py laplace_strategy_input.json
+python scripts/build_theme_candidate_universe.py "AI compute" --out ai_compute_universe.json
+python scripts/validate_theme_candidate_universe.py ai_compute_universe.json
 
 # Standard single-company/theme output contract
 python scripts/validate_output_contract.py <report.md>
@@ -378,6 +431,8 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `scripts/data_layer.py` | Providers, raw artifact persistence, basic validation |
 | `scripts/data_router.py` | Fetch manifest, attempt ledger, gaps, debt, tasks |
 | `scripts/run_research_analysis.py` | Top-level workflow: fetch, baseline, AI packets, validated final report |
+| `scripts/build_theme_candidate_universe.py` | Layer-first candidate universe builder for common themes |
+| `scripts/validate_theme_candidate_universe.py` | Candidate-universe contract validator |
 | `scripts/technical_health.py` | Technical-health matrix from adjusted daily history |
 | `scripts/a_share_capital_actions.py` | A-share capital-action detection from announcement metadata |
 | `scripts/a_share_capital_action_quantifier.py` | Field-level capital-action quantification |
@@ -389,6 +444,8 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `scripts/build_research_debt_runbook.py` | Converts open debt into an executable runbook |
 | `scripts/financial_periods.py` | Cross-market fiscal-period normalization |
 | `scripts/render_research_report.py` | Full Markdown research-report renderer |
+| `scripts/build_laplace_strategy_input.py` | Strategy handoff builder for the bundled Laplace companion |
+| `scripts/validate_laplace_strategy_input.py` | Strategy handoff contract validator |
 | `scripts/validate_comparison_report.py` | Candidate-comparison contract validator |
 | `scripts/validate_ai_overlay.py` | AI research overlay validator |
 | `scripts/validate_ai_review_outcome.py` | AI review failure/skip outcome validator |
@@ -397,6 +454,8 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `scripts/serenity_chan_scorecard.py` | Decision scorecard and nonlinear gates |
 | `scripts/candidate_ranker.py` | Relative candidate ranking for scorecard payloads |
 | `assets/comparison_output_contract.schema.json` | Structured comparison-report contract |
+| `assets/laplace_strategy_input.schema.json` | Serenity-to-Laplace strategy input contract |
+| `assets/theme_candidate_universe.schema.json` | Theme candidate universe and value-chain layer contract |
 | `assets/valuation_inputs.schema.json` | Valuation-input data contract |
 | `assets/ai_research_overlay.schema.json` | AI research overlay contract |
 | `assets/ai_review_outcome.schema.json` | AI review failure/skip outcome contract |
@@ -404,4 +463,6 @@ python scripts/run_real_data_smoke.py --case-set all --out-root /tmp/serenity-ch
 | `assets/data_acquisition_policy.json` | Source ladder and dataset materiality |
 | `assets/sec_cik_bootstrap.json` | SEC CIK bootstrap for high-frequency US test tickers |
 | `assets/output_contract.schema.json` | Structured delivery contract |
+| `references/17_industry_domain_packs.md` | Robotics, AI compute, innovative medicine, and grid/power domain packs |
 | `evals/static_cases.json` | Regression cases |
+| `companion-skills/laplace-forecast/` | Bundled companion skill for forecasting, scenarios, action triggers, invalidation, and forecast ledgering |

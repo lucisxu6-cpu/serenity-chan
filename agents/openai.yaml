@@ -1,4 +1,4 @@
 interface:
   display_name: "Serenity Chan Stock"
-  short_description: "Data-first stock research with real-data routing, consumption audits, AI committee review, and decision gates"
-  default_prompt: "Use $serenity-chan-stock-skill to analyze a stock, theme, or candidate set with market-specific data routing, data-consumption audit, research-debt tracking, AI committee review, layer-first bottleneck research, evidence-gated growth assumptions, valuation inputs, capital-action checks, full-research reporting, and Chan buy-point discipline."
+  short_description: "Data-first stock research with theme universe building, AI committee review, decision gates, and Laplace strategy follow-through"
+  default_prompt: "Use $serenity-chan-stock-skill to analyze a stock, theme, or candidate set with market-specific data routing, theme candidate universe building, data-consumption audit, research-debt tracking, AI committee review, layer-first bottleneck research, evidence-gated growth assumptions, valuation inputs, capital-action checks, full-research reporting, Chan buy-point discipline, and bundled Laplace strategy forecasting when the user asks what to do next."
