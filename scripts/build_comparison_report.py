@@ -1243,7 +1243,7 @@ def _action_gate_profile(
 
     if technical.get("buy_point_claim_allowed") is not True:
         action: Any = str(technical.get("chan_action") or "")
-        if action in {"WAIT_FOR_SECOND_BUY", "WAIT_FOR_THIRD_BUY", "WAIT_FOR_STRUCTURE_CONFIRMATION", "DATA_REQUIRED"}:
+        if action in {"NO_BUY_POINT", "WAIT_FOR_SECOND_BUY", "WAIT_FOR_THIRD_BUY", "WAIT_FOR_STRUCTURE_CONFIRMATION", "DATA_REQUIRED"}:
             add("BUY_POINT_GATED", str(technical.get("decision_note") or "当前没有确认的缠论买点。"), "price_history_adjusted", "ACTION_TIMING")
 
     ordered: Any = [gate for gate in gate_order if gate in gates]

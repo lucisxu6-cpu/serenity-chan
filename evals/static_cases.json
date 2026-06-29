@@ -1622,6 +1622,38 @@
     }
   },
   {
+    "name": "technical-no-buy-point-creates-buy-point-gate",
+    "kind": "action_gate_profile",
+    "technical": {
+      "buy_point_claim_allowed": false,
+      "chan_action": "NO_BUY_POINT",
+      "decision_note": "价格低于长期均线，不能把反弹当成长线买点。"
+    },
+    "capital": {
+      "summary": {
+        "material_risk_level": "none",
+        "has_dilution_event": false
+      }
+    },
+    "layer": {
+      "layer": "verified_bottleneck",
+      "evidence_gap": "",
+      "ai_review_status": "COMPLETED"
+    },
+    "growth": {
+      "market_implied_growth": "H1",
+      "gap": "roughly_matched"
+    },
+    "research_debt": [],
+    "expect_pass": true,
+    "expected_result": {
+      "primary_gate": "BUY_POINT_GATED",
+      "primary_gate_class": "ACTION_TIMING",
+      "state": "NOT_ACTIONABLE",
+      "blocking_datasets.0": "price_history_adjusted"
+    }
+  },
+  {
     "name": "sec-companyfacts-extracts-latest-shares-outstanding",
     "kind": "sec_shares_outstanding",
     "companyfacts": {
