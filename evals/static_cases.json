@@ -2939,6 +2939,54 @@
     }
   },
   {
+    "name": "a-share-capital-actions-collapse-undated-private-placement-supporting-documents",
+    "kind": "capital_actions",
+    "announcements": [
+      {
+        "title": "2025年度向特定对象发行A股股票上市公告书",
+        "announcement_date": "2026-06-23",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/private-placement-listing.pdf"
+      },
+      {
+        "title": "奥比中光科技集团股份有限公司验资报告",
+        "announcement_date": "2026-06-23",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/private-placement-capital-verification.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "summary.action_count": 1,
+      "summary.source_announcement_count": 2,
+      "actions.0.action_type": "private_placement",
+      "actions.0.event_theme": "2025:向特定对象发行",
+      "actions.0.source_count": 2
+    }
+  },
+  {
+    "name": "a-share-capital-actions-collapse-reduction-plan-and-result",
+    "kind": "capital_actions",
+    "announcements": [
+      {
+        "title": "部分董事及高管减持股份计划公告",
+        "announcement_date": "2026-06-03",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/reduction-plan.pdf"
+      },
+      {
+        "title": "部分董事及高管减持股份计划时间届满暨未减持股份的结果公告",
+        "announcement_date": "2026-06-01",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/reduction-result.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "summary.action_count": 1,
+      "summary.source_announcement_count": 2,
+      "actions.0.action_type": "reduction",
+      "actions.0.event_theme": "current:部分董事及高管:减持计划",
+      "actions.0.source_count": 2
+    }
+  },
+  {
     "name": "capital-action-quantification-extracts-private-placement-fields-from-text",
     "kind": "capital_action_quantification",
     "symbol": "688322.SH",

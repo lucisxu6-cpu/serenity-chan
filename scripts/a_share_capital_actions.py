@@ -141,7 +141,7 @@ def _event_theme(action_type: str, title: str) -> str:
     year_match: Optional[re.Match[str]] = re.search(r"(20\d{2})", cleaned)
     year: str = year_match.group(1) if year_match else "current"
     if action_type == "private_placement":
-        return f"{year}:向特定对象发行"
+        return f"{year_match.group(1) if year_match else 'unknown'}:向特定对象发行"
     if action_type == "convertible_bond":
         return f"{year}:可转债"
     if action_type == "rights_issue":
@@ -157,8 +157,12 @@ def _event_theme(action_type: str, title: str) -> str:
     if action_type == "pledge":
         return f"{year}:股份质押"
     if action_type == "reduction":
-        seller_match: Optional[re.Match[str]] = re.search(r"([一-龥A-Za-z0-9]+)(?:拟|计划)?减持", cleaned)
-        seller: str = seller_match.group(1)[-12:] if seller_match else "减持"
+        plan_match: Optional[re.Match[str]] = re.search(r"(.{0,28}?)(?:减持股份计划|减持计划)", cleaned)
+        if plan_match:
+            seller: str = plan_match.group(1).removeprefix("关于")[-18:] or "相关股东"
+            return f"{year}:{seller}:减持计划"
+        seller_match: Optional[re.Match[str]] = re.search(r"([一-龥A-Za-z0-9、及其一致行动人]+)(?:拟|计划)?减持", cleaned)
+        seller = seller_match.group(1)[-18:] if seller_match else "相关股东"
         return f"{year}:{seller}:减持"
     return f"{year}:{cleaned[:24]}"
 
@@ -171,10 +175,30 @@ def _event_id(action_type: str, theme: str) -> str:
 def _merge_action_events(actions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     order: list[str] = []
-    for action in actions:
+    raw_themes: list[tuple[Mapping[str, Any], str]] = [
+        (action, _event_theme(str(action.get("action_type") or ""), str(action.get("title") or "")))
+        for action in actions
+    ]
+    known_theme_by_base: dict[tuple[str, str], set[str]] = {}
+    for action, theme in raw_themes:
+        action_type: str = str(action.get("action_type") or "")
+        year, _, base = theme.partition(":")
+        if year not in {"unknown", "current"} and base:
+            known_theme_by_base.setdefault((action_type, base), set()).add(theme)
+
+    def canonical_theme(action: Mapping[str, Any], theme: str) -> str:
+        action_type: str = str(action.get("action_type") or "")
+        year, _, base = theme.partition(":")
+        if year == "unknown" and base:
+            known_themes: set[str] = known_theme_by_base.get((action_type, base), set())
+            if len(known_themes) == 1:
+                return next(iter(known_themes))
+        return theme
+
+    for action, raw_theme in raw_themes:
         action_type: str = str(action.get("action_type") or "")
         title: str = str(action.get("title") or "")
-        theme: str = _event_theme(action_type, title)
+        theme: str = canonical_theme(action, raw_theme)
         event_id: str = _event_id(action_type, theme)
         if event_id not in grouped:
             grouped[event_id] = {
