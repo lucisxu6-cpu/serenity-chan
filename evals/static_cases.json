@@ -1111,6 +1111,7 @@
       "中国平安2026年第一季度报告": true,
       "中国平安：平安银行股份有限公司2026年第一季度报告": false,
       "中国平安关于披露平安银行2026年第一季度报告的公告": false,
+      "中国平安2025年年度报告披露提示性公告": false,
       "中国平安2025年年度权益分派实施公告": false
     },
     "expect_pass": true
@@ -2063,7 +2064,7 @@
       "key_evidence_refs": [
         {
           "claim": "Revenue and margin expansion are visible in official reports.",
-          "source_ref": "CNINFO annual report line extraction",
+          "source_ref": "filings_announcements:CNINFO_Announcements_L0",
           "source_level": "L0",
           "confidence": 0.82
         }
@@ -2120,7 +2121,7 @@
       "key_evidence_refs": [
         {
           "claim": "Revenue and margin expansion are visible in official reports.",
-          "source_ref": "CNINFO annual report line extraction",
+          "source_ref": "filings_announcements:CNINFO_Announcements_L0",
           "source_level": "L0",
           "confidence": 0.82
         }
@@ -2177,7 +2178,7 @@
       "key_evidence_refs": [
         {
           "claim": "Revenue and margin expansion are visible in official reports.",
-          "source_ref": "CNINFO annual report line extraction",
+          "source_ref": "filings_announcements:CNINFO_Announcements_L0",
           "source_level": "L0",
           "confidence": 0.82
         }
@@ -2279,7 +2280,7 @@
         "key_evidence_refs": [
           {
             "claim": "Revenue and margin expansion are visible in official reports.",
-            "source_ref": "CNINFO annual report line extraction",
+            "source_ref": "filings_announcements:CNINFO_Announcements_L0",
             "source_level": "L0",
             "confidence": 0.82
           }
@@ -2302,7 +2303,7 @@
         "key_evidence_refs": [
           {
             "claim": "Revenue is improving, while cash-flow and valuation evidence remain incomplete for H5.",
-            "source_ref": "CNINFO annual report line extraction",
+            "source_ref": "filings_announcements:CNINFO_Announcements_L0",
             "source_level": "L0",
             "confidence": 0.72
           }
@@ -2757,8 +2758,8 @@
         "evidence_supported_growth": "H3",
         "key_evidence_refs": [
           {
-            "claim": "Official financial rows support constructive preflight growth.",
-            "source_ref": "CNINFO financial report extraction",
+            "claim": "CNINFO announcement artifacts anchor the official disclosure trail used by the research packet.",
+            "source_ref": "filings_announcements:CNINFO_Announcements_L0",
             "source_level": "L0",
             "confidence": 0.82
           }
@@ -2780,8 +2781,8 @@
         "evidence_supported_growth": "H2",
         "key_evidence_refs": [
           {
-            "claim": "Official financial rows support recovery but not H5 growth.",
-            "source_ref": "CNINFO financial report extraction",
+            "claim": "CNINFO announcement artifacts anchor the official disclosure trail used by the research packet.",
+            "source_ref": "filings_announcements:CNINFO_Announcements_L0",
             "source_level": "L0",
             "confidence": 0.72
           }
@@ -2913,5 +2914,162 @@
         }
       }
     ]
+  },
+  {
+    "name": "a-share-capital-actions-collapse-supporting-documents-into-one-event",
+    "kind": "capital_actions",
+    "announcements": [
+      {
+        "title": "2025年度向特定对象发行A股股票上市公告书",
+        "announcement_date": "2026-06-23",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/private-placement-listing.pdf"
+      },
+      {
+        "title": "2025年度向特定对象发行A股股票发行过程和认购对象合规性的法律意见书",
+        "announcement_date": "2026-06-23",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/private-placement-legal.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "summary.action_count": 1,
+      "summary.source_announcement_count": 2,
+      "actions.0.action_type": "private_placement",
+      "actions.0.source_count": 2
+    }
+  },
+  {
+    "name": "capital-action-quantification-extracts-private-placement-fields-from-text",
+    "kind": "capital_action_quantification",
+    "symbol": "688322.SH",
+    "capital_actions": {
+      "actions": [
+        {
+          "action_type": "private_placement",
+          "title": "向特定对象发行A股股票发行情况报告书",
+          "announcement_date": "2026-06-23",
+          "risk_level": "medium_high",
+          "text": "本次发行数量为10,000,000股，发行价格为50.00元/股，限售期为6个月，募集资金用于补充流动资金、研发项目。"
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "summary.quantified_action_count": 1,
+      "summary.requires_quantification_count": 0,
+      "actions.0.quantification_status": "QUANTIFIED",
+      "actions.0.new_shares": 10000000.0,
+      "actions.0.issue_price": 50.0,
+      "actions.0.lockup_months": 6.0,
+      "actions.0.extraction_status": "FIELD_EXTRACTED"
+    }
+  },
+  {
+    "name": "a-share-official-report-download-selection-covers-comparable-annual-and-q1-periods",
+    "kind": "official_report_selection",
+    "limit": 4,
+    "reports": [
+      {
+        "title": "2026年半年度报告",
+        "report_kind": "semiannual",
+        "announcement_date": "2026-08-20",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/semiannual.pdf"
+      },
+      {
+        "title": "2025年年度报告",
+        "report_kind": "annual",
+        "announcement_date": "2026-04-20",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/annual-2025.pdf"
+      },
+      {
+        "title": "2024年年度报告",
+        "report_kind": "annual",
+        "announcement_date": "2025-04-20",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/annual-2024.pdf"
+      },
+      {
+        "title": "2026年第一季度报告",
+        "report_kind": "q1",
+        "announcement_date": "2026-04-28",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/q1-2026.pdf"
+      },
+      {
+        "title": "2025年第一季度报告",
+        "report_kind": "q1",
+        "announcement_date": "2025-04-28",
+        "pdf_url": "https://static.cninfo.com.cn/finalpage/q1-2025.pdf"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "selected_report_kinds.0": "annual",
+      "selected_report_kinds.1": "q1",
+      "selected_report_kinds.2": "annual",
+      "selected_report_kinds.3": "q1",
+      "selected_titles.2": "2024年年度报告",
+      "selected_titles.3": "2025年第一季度报告"
+    }
+  },
+  {
+    "name": "ai-overlay-validation-with-context-blocks-unresolved-source-ref",
+    "kind": "ai_overlay_validation_with_context",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-29",
+      "layer": "CMP slurry bottleneck",
+      "bottleneck_reason": "官方资料能够说明材料认证和收入传导。",
+      "revenue_transmission": "收入通过客户认证、产能释放和材料份额提升传导。",
+      "serenity_fit": 0.74,
+      "evidence_supported_growth": "H3",
+      "key_evidence_refs": [
+        {
+          "claim": "2025 revenue reached 100.0.",
+          "source_ref": "missing source",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["客户集中度仍需追踪。"],
+      "research_questions": [
+        "下一期客户结构是否继续改善？",
+        "毛利率是否由产品结构而非一次性因素驱动？"
+      ],
+      "ai_confidence": "HIGH"
+    },
+    "evidence_context": {
+      "CNINFO annual report": "2025 revenue reached 100.0 and gross margin improved."
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "ai-overlay-validation-with-context-blocks-unsupported-numeric-claim",
+    "kind": "ai_overlay_validation_with_context",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-29",
+      "layer": "CMP slurry bottleneck",
+      "bottleneck_reason": "官方资料能够说明材料认证和收入传导。",
+      "revenue_transmission": "收入通过客户认证、产能释放和材料份额提升传导。",
+      "serenity_fit": 0.74,
+      "evidence_supported_growth": "H3",
+      "key_evidence_refs": [
+        {
+          "claim": "2025 revenue reached 999.0.",
+          "source_ref": "CNINFO annual report",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["客户集中度仍需追踪。"],
+      "research_questions": [
+        "下一期客户结构是否继续改善？",
+        "毛利率是否由产品结构而非一次性因素驱动？"
+      ],
+      "ai_confidence": "HIGH"
+    },
+    "evidence_context": {
+      "CNINFO annual report": "2025 revenue reached 100.0 and gross margin improved."
+    },
+    "expect_pass": false
   }
 ]

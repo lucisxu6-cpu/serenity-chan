@@ -10,10 +10,16 @@
   "posterior_basis": "Official report evidence supports H3 evidence-supported growth while customer and order reconciliation remain active research tasks.",
   "key_evidence_refs": [
     {
-      "claim": "Revenue and margin expansion are visible in official financial-report extraction.",
-      "source_ref": "CNINFO annual report line extraction",
+      "claim": "CNINFO announcement artifacts anchor the official disclosure trail used by the research packet.",
+      "source_ref": "filings_announcements:CNINFO_Announcements_L0",
       "source_level": "L0",
       "confidence": 0.82
+    },
+    {
+      "claim": "The financial quality matrix carries the revenue and margin preflight evidence.",
+      "source_ref": "financial quality matrix",
+      "source_level": "L3",
+      "confidence": 0.62
     }
   ],
   "contrary_evidence": [

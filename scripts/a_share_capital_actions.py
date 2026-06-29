@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -87,6 +89,18 @@ ACTION_RULES = [
 ]
 
 RISK_ORDER = {"none": 0, "supportive": 0, "low": 1, "medium": 2, "medium_high": 3, "high": 4}
+SUPPORTING_DOCUMENT_KEYWORDS = [
+    "保荐",
+    "法律意见",
+    "律师",
+    "验资",
+    "上市公告书",
+    "发行情况报告书",
+    "发行过程和认购对象",
+    "募集说明书",
+    "独立财务顾问",
+    "核查意见",
+]
 
 
 def _announcements(payload: Any) -> list[Mapping[str, Any]]:
@@ -100,8 +114,105 @@ def _announcements(payload: Any) -> list[Mapping[str, Any]]:
     return []
 
 
+def _announcement_ref(announcement: Mapping[str, Any]) -> dict[str, Any]:
+    ref: dict[str, Any] = {
+        "announcement_id": str(announcement.get("announcement_id") or announcement.get("id") or ""),
+        "title": str(announcement.get("title") or announcement.get("short_title") or ""),
+        "announcement_date": str(announcement.get("announcement_date") or announcement.get("date") or ""),
+        "pdf_url": str(announcement.get("pdf_url") or announcement.get("url") or ""),
+    }
+    for key in ("text", "pdf_text", "abstract", "summary"):
+        if announcement.get(key):
+            ref[key] = str(announcement.get(key))
+    return ref
+
+
+def _supporting_role(title: str) -> str:
+    if any(keyword in title for keyword in SUPPORTING_DOCUMENT_KEYWORDS):
+        return "supporting_document"
+    if any(keyword in title for keyword in ["进展", "完成", "结果", "实施", "上市流通"]):
+        return "progress_or_result"
+    return "primary_disclosure"
+
+
+def _event_theme(action_type: str, title: str) -> str:
+    cleaned: str = re.sub(r"[（）()【】\\[\\]《》<>]", "", title)
+    cleaned = re.sub(r"\s+", "", cleaned)
+    year_match: Optional[re.Match[str]] = re.search(r"(20\d{2})", cleaned)
+    year: str = year_match.group(1) if year_match else "current"
+    if action_type == "private_placement":
+        return f"{year}:向特定对象发行"
+    if action_type == "convertible_bond":
+        return f"{year}:可转债"
+    if action_type == "rights_issue":
+        return f"{year}:配股"
+    if action_type == "buyback":
+        return f"{year}:回购"
+    if action_type == "equity_incentive":
+        return f"{year}:股权激励"
+    if action_type == "h_share_listing":
+        return f"{year}:H股上市"
+    if action_type == "unlock":
+        return f"{year}:限售解禁"
+    if action_type == "pledge":
+        return f"{year}:股份质押"
+    if action_type == "reduction":
+        seller_match: Optional[re.Match[str]] = re.search(r"([一-龥A-Za-z0-9]+)(?:拟|计划)?减持", cleaned)
+        seller: str = seller_match.group(1)[-12:] if seller_match else "减持"
+        return f"{year}:{seller}:减持"
+    return f"{year}:{cleaned[:24]}"
+
+
+def _event_id(action_type: str, theme: str) -> str:
+    digest: str = hashlib.sha1(f"{action_type}:{theme}".encode("utf-8")).hexdigest()[:10]
+    return f"{action_type}:{digest}"
+
+
+def _merge_action_events(actions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for action in actions:
+        action_type: str = str(action.get("action_type") or "")
+        title: str = str(action.get("title") or "")
+        theme: str = _event_theme(action_type, title)
+        event_id: str = _event_id(action_type, theme)
+        if event_id not in grouped:
+            grouped[event_id] = {
+                **dict(action),
+                "event_id": event_id,
+                "event_theme": theme,
+                "event_role": _supporting_role(title),
+                "source_count": 0,
+                "source_announcements": [],
+            }
+            order.append(event_id)
+        event: dict[str, Any] = grouped[event_id]
+        event["source_count"] = int(event.get("source_count") or 0) + 1
+        source_refs: list[Any] = event.get("source_announcements", [])
+        if isinstance(source_refs, list):
+            source_ref: dict[str, Any] = dict(action.get("source_announcement")) if isinstance(action.get("source_announcement"), Mapping) else {}
+            source_ref.update({
+                "title": title,
+                "announcement_date": str(action.get("announcement_date") or ""),
+                "pdf_url": str(action.get("pdf_url") or ""),
+                "event_role": _supporting_role(title),
+            })
+            source_refs.append(source_ref)
+        existing_role: str = str(event.get("event_role") or "")
+        current_role: str = _supporting_role(title)
+        if existing_role != "primary_disclosure" and current_role == "primary_disclosure":
+            for key, value in action.items():
+                if value not in (None, "", []):
+                    event[key] = value
+            event["event_id"] = event_id
+            event["event_theme"] = theme
+            event["event_role"] = current_role
+            event["source_announcements"] = source_refs
+    return [grouped[event_id] for event_id in order]
+
+
 def analyze_announcements(payload: Any) -> dict[str, Any]:
-    actions: list[dict[str, Any]] = []
+    raw_actions: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for announcement in _announcements(payload):
         title = str(announcement.get("title") or announcement.get("short_title") or "")
@@ -116,7 +227,7 @@ def analyze_announcements(payload: Any) -> dict[str, Any]:
             if key in seen:
                 continue
             seen.add(key)
-            actions.append({
+            action: dict[str, Any] = {
                 "action_type": rule["action_type"],
                 "title": title,
                 "announcement_date": str(announcement.get("announcement_date") or ""),
@@ -125,7 +236,11 @@ def analyze_announcements(payload: Any) -> dict[str, Any]:
                 "market_payoff_effect": rule["market_payoff_effect"],
                 "action_readiness_effect": rule["action_readiness_effect"],
                 "research_debt": rule["research_debt"],
-            })
+                "source_announcement": _announcement_ref(announcement),
+            }
+            raw_actions.append(action)
+
+    actions: list[dict[str, Any]] = _merge_action_events(raw_actions)
 
     risk_level = "none"
     for action in actions:
@@ -139,6 +254,7 @@ def analyze_announcements(payload: Any) -> dict[str, Any]:
     return {
         "summary": {
             "action_count": len(actions),
+            "source_announcement_count": len(raw_actions),
             "material_action_count": sum(1 for action in actions if RISK_ORDER.get(str(action.get("risk_level")), 0) >= 2),
             "material_risk_level": risk_level,
             "action_types": action_types,

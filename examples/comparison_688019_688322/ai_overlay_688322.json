@@ -10,10 +10,16 @@
   "posterior_basis": "Official report evidence supports H2 evidence-supported growth until L0/L1 business-line proof covers customer, order, and cash-flow conversion.",
   "key_evidence_refs": [
     {
-      "claim": "Revenue is improving, while cash-flow and valuation evidence remain incomplete for H5 support.",
-      "source_ref": "CNINFO annual report line extraction",
+      "claim": "CNINFO announcement artifacts anchor the official disclosure trail used by the research packet.",
+      "source_ref": "filings_announcements:CNINFO_Announcements_L0",
       "source_level": "L0",
       "confidence": 0.72
+    },
+    {
+      "claim": "The financial quality matrix shows recovery evidence while cash-flow and valuation evidence remain incomplete for H5 support.",
+      "source_ref": "financial quality matrix",
+      "source_level": "L3",
+      "confidence": 0.62
     }
   ],
   "contrary_evidence": [

@@ -419,6 +419,8 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
     latest_q1_meta: Any = normalize_financial_period(latest_q1, market=market, source=source_name) if latest_q1 else {}
     latest_q1_year: Any = latest_q1_meta.get("fiscal_year") if isinstance(latest_q1_meta.get("fiscal_year"), int) else None
     previous_q1: Any = _latest_quarter(rows, "q1", before_period_end=str(latest_q1_meta.get("period_end") or ""), market=market, source=source_name) if latest_q1 else None
+    previous_annual_meta: Any = normalize_financial_period(previous_annual, market=market, source=source_name) if previous_annual else {}
+    previous_q1_meta: Any = normalize_financial_period(previous_q1, market=market, source=source_name) if previous_q1 else {}
 
     if not latest_annual:
         research_debt: Any = (
@@ -434,6 +436,12 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
             "period_row_count": len(rows),
             "research_debt": research_debt,
         }
+    missing_comparison_periods: list[str] = []
+    if not previous_annual:
+        missing_comparison_periods.append("previous_annual")
+    if latest_q1 and not previous_q1:
+        missing_comparison_periods.append("previous_q1")
+    period_coverage_status: str = "OK" if not missing_comparison_periods else "PARTIAL"
 
     revenue: Any = _as_float(latest_annual.get("revenue"))
     previous_revenue: Any = _as_float(previous_annual.get("revenue")) if previous_annual else None
@@ -515,6 +523,28 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
     else:
         label = "weak_preflight"
 
+    research_debt_items: list[dict[str, str]] = []
+    if source_level.startswith("L3"):
+        research_debt_items.append({
+            "priority": "critical",
+            "next_action": "用 L0/L1 年报和季报复核核心财务行项目后，才能给出 A/S 级结论。",
+        })
+    if source_usage.get("structured_supplement_used"):
+        supplemented_periods: Any = source_usage.get("structured_supplemented_periods", [])
+        period_text: str = "、".join(
+            str(item.get("period") or "")
+            for item in supplemented_periods
+            if isinstance(item, Mapping) and item.get("period")
+        )
+        research_debt_items.append({
+            "priority": "high",
+            "next_action": f"财务可比期使用了 L3 结构化补充{f'（{period_text}）' if period_text else ''}，需要用 L0/L1 定期报告或授权数据库复核后再升级评级。",
+        })
+    if missing_comparison_periods:
+        research_debt_items.append({
+            "priority": "high",
+            "next_action": "补齐上一年年报和上一年同季一季报，重新计算收入、利润和经营现金流的同口径变化。",
+        })
     return {
         "symbol": _symbol(manifest),
         "status": "OK",
@@ -525,8 +555,14 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "latest_annual_fiscal_year": latest_annual_year,
         "latest_annual_period_type": str(latest_annual_meta.get("period_type") or ""),
         "latest_annual_selection_rule": str(latest_annual_meta.get("selection_rule") or ""),
+        "previous_annual_period": str(previous_annual.get("period")) if previous_annual else "",
+        "previous_annual_fiscal_year": previous_annual_meta.get("fiscal_year") if isinstance(previous_annual_meta.get("fiscal_year"), int) else None,
         "latest_q1_period": str(latest_q1.get("period")) if latest_q1 else "",
         "latest_q1_fiscal_year": latest_q1_year,
+        "previous_q1_period": str(previous_q1.get("period")) if previous_q1 else "",
+        "previous_q1_fiscal_year": previous_q1_meta.get("fiscal_year") if isinstance(previous_q1_meta.get("fiscal_year"), int) else None,
+        "period_coverage_status": period_coverage_status,
+        "missing_comparison_periods": missing_comparison_periods,
         "revenue": _round(revenue),
         "revenue_absolute": _round(revenue_absolute),
         "revenue_growth_pct": _round(revenue_growth),
@@ -556,10 +592,14 @@ def _financial_quality(manifest: Mapping[str, Any]) -> dict[str, Any]:
         "financial_sector_profile_required": bool(source_usage.get("financial_sector_profile_required")),
         "financial_sector_profile_status": str(source_usage.get("financial_sector_profile_status") or ""),
         "financial_sector_profile_fallback": source_usage.get("financial_sector_profile_fallback", {}) if isinstance(source_usage.get("financial_sector_profile_fallback"), Mapping) else {},
+        "structured_supplement_used": bool(source_usage.get("structured_supplement_used")),
+        "structured_supplement_source": str(source_usage.get("structured_supplement_source") or ""),
+        "structured_supplemented_periods": source_usage.get("structured_supplemented_periods", []) if isinstance(source_usage.get("structured_supplemented_periods"), list) else [],
         "q1_revenue_growth_pct": _round(q1_revenue_growth),
         "q1_net_income_growth_pct": _round(q1_net_income_growth),
         "q1_ocf_to_net_income_pct": _round(q1_ocf_to_ni),
-        "research_debt": "Reconcile core financial lines with L0/L1 annual and quarterly reports before A/S rating." if source_level.startswith("L3") else "",
+        "research_debt": "；".join(item["next_action"] for item in research_debt_items),
+        "research_debt_items": research_debt_items,
     }
 
 
@@ -1033,8 +1073,28 @@ def _research_debt_rows(
         rows.append({"symbol": symbol, "dataset": "capital_actions", "priority": "high", "next_action": str(item)})
     for item in capital_quantification.get("research_debt", []) if isinstance(capital_quantification.get("research_debt"), list) else []:
         rows.append({"symbol": symbol, "dataset": "capital_action_quantification", "priority": "high", "next_action": str(item)})
-    if financial.get("research_debt"):
+    financial_debt_items: Any = financial.get("research_debt_items")
+    if isinstance(financial_debt_items, list) and financial_debt_items:
+        for item in financial_debt_items:
+            if isinstance(item, Mapping):
+                rows.append({
+                    "symbol": symbol,
+                    "dataset": "financials",
+                    "priority": str(item.get("priority") or "high"),
+                    "next_action": str(item.get("next_action") or ""),
+                })
+    elif financial.get("research_debt"):
         rows.append({"symbol": symbol, "dataset": "financials", "priority": "critical", "next_action": str(financial.get("research_debt"))})
+    valuation_row: Mapping[str, Any] = _valuation_input_row(manifest)
+    if valuation_row.get("verification_needed"):
+        rows.append({
+            "symbol": symbol,
+            "dataset": "valuation_inputs",
+            "priority": "high",
+            "next_action": "用 L0/L1 股本变动、定期报告或交易所口径复核总股本、市值和每股估值基数。",
+            "valuation_stage": str(valuation_row.get("valuation_stage") or ""),
+            "source_basis": str(valuation_row.get("source_basis") or ""),
+        })
     if technical.get("status") == "DATA_GATED" or technical.get("chan_action") == "DATA_REQUIRED":
         rows.append({
             "symbol": symbol,
@@ -1885,7 +1945,7 @@ def build_comparison_report(
         currency_normalization: Any = _currency_normalization_row(manifest, financial, valuation)
         technical: Any = _technical_summary(manifest)
         capital: Any = _capital_summary(manifest)
-        capital_quantification: dict[str, Any] = quantify_capital_actions(symbol, capital)
+        capital_quantification: dict[str, Any] = quantify_capital_actions(symbol, capital, base_shares=_as_float(valuation.get("total_shares")))
         layer: Any = _serenity_layer(manifest, profile)
         growth: Any = _growth_hypothesis(manifest, financial, profile, currency_normalization)
         candidate_consumption: Any = [

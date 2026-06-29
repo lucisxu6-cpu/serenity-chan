@@ -590,6 +590,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_overlay_validation_with_context":
+            payload = case.get("payload", {})
+            evidence_context = case.get("evidence_context", {})
+            if not isinstance(payload, dict) or not isinstance(evidence_context, dict):
+                raise ValueError("ai_overlay_validation_with_context static eval requires payload and evidence_context objects")
+            try:
+                result_payload = validate_overlay(
+                    payload,
+                    evidence_context={str(key): str(value) for key, value in evidence_context.items()},
+                )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "ai_review_outcome_validation":
             payload = case.get("payload", {})
             if not isinstance(payload, dict):

@@ -12,12 +12,12 @@ from typing import Any, Mapping, Optional, Sequence
 
 try:
     from build_comparison_report import build_comparison_report, to_markdown
-    from validate_ai_overlay import validate_overlay
+    from validate_ai_overlay import evidence_context_from_manifest, validate_overlay
     from validate_ai_review_outcome import validate_review_outcome
     from validate_comparison_report import validate_file
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_comparison_report import build_comparison_report, to_markdown
-    from scripts.validate_ai_overlay import validate_overlay
+    from scripts.validate_ai_overlay import evidence_context_from_manifest, validate_overlay
     from scripts.validate_ai_review_outcome import validate_review_outcome
     from scripts.validate_comparison_report import validate_file
 
@@ -41,7 +41,7 @@ def _manifest_symbol(path: Path) -> str:
     return resolved
 
 
-def load_validated_overlays(values: Sequence[str]) -> dict[str, Mapping[str, Any]]:
+def load_validated_overlays(values: Sequence[str], evidence_contexts: Optional[Mapping[str, Mapping[str, str]]] = None) -> dict[str, Mapping[str, Any]]:
     overlays: dict[str, Mapping[str, Any]] = {}
     for value in values:
         if "=" not in value:
@@ -51,7 +51,8 @@ def load_validated_overlays(values: Sequence[str]) -> dict[str, Mapping[str, Any
         symbol, path_text = value.split("=", 1)
         if symbol in overlays:
             raise ValueError(f"duplicate overlay assignment for {symbol}")
-        validated: dict[str, Any] = validate_overlay(_load_json(Path(path_text)))
+        context: Optional[Mapping[str, str]] = evidence_contexts.get(symbol) if evidence_contexts is not None else None
+        validated: dict[str, Any] = validate_overlay(_load_json(Path(path_text)), evidence_context=context)
         overlay: Mapping[str, Any] = validated["normalized_overlay"]
         overlay_symbol: str = str(overlay.get("symbol") or "")
         if overlay_symbol != symbol:
@@ -84,12 +85,17 @@ def build_validated_merged_report(
     overlay_values: Sequence[str],
     outcome_values: Sequence[str],
 ) -> dict[str, Any]:
-    overlays: dict[str, Mapping[str, Any]] = load_validated_overlays(overlay_values)
+    manifest_by_symbol: dict[str, Path] = {_manifest_symbol(path): path for path in manifest_paths}
+    evidence_contexts: dict[str, Mapping[str, str]] = {
+        symbol: evidence_context_from_manifest(path)
+        for symbol, path in manifest_by_symbol.items()
+    }
+    overlays: dict[str, Mapping[str, Any]] = load_validated_overlays(overlay_values, evidence_contexts)
     outcomes: dict[str, Mapping[str, Any]] = load_validated_outcomes(outcome_values)
     overlap: set[str] = set(overlays) & set(outcomes)
     if overlap:
         raise ValueError(f"candidate(s) cannot have both --overlay and --ai-outcome: {', '.join(sorted(overlap))}")
-    candidate_symbols: set[str] = {_manifest_symbol(path) for path in manifest_paths}
+    candidate_symbols: set[str] = set(manifest_by_symbol)
     missing: set[str] = candidate_symbols - set(overlays) - set(outcomes)
     if missing:
         raise ValueError(f"missing AI result for candidate(s): {', '.join(sorted(missing))}")

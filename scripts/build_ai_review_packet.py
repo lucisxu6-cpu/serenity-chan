@@ -72,9 +72,14 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     financial = _financial_quality(manifest)
     technical = _technical_summary(manifest)
     capital = _capital_summary(manifest)
-    capital_quantification = quantify_capital_actions(_symbol(manifest), capital)
     layer_seed = _serenity_layer(manifest, {})
     valuation_inputs = dict(_valuation_payload(manifest))
+    total_shares: Optional[float]
+    try:
+        total_shares = float(str(valuation_inputs.get("total_shares")).replace(",", ""))
+    except Exception:
+        total_shares = None
+    capital_quantification = quantify_capital_actions(_symbol(manifest), capital, base_shares=total_shares)
     valuation_input_matrix_row = _valuation_input_row(manifest)
     currency_normalization = _currency_normalization_row(manifest, financial, valuation_input_matrix_row)
     growth = _growth_hypothesis(manifest, financial, {}, currency_normalization)

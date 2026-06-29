@@ -48,6 +48,10 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.dat
     from scripts.data_contracts import DataStatus, Dataset, Market, RatingCap, SourceLevel
 
 
+OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT: int = 4
+CNINFO_REPORT_SCAN_PAGE_LIMIT_DEFAULT: int = 16
+
+
 @dataclass(frozen=True)
 class SymbolInfo:
     input_value: str
@@ -2014,12 +2018,17 @@ class CninfoFinancialReportBase:
             seen_report_keys: set[str] = set()
             reports: List[Dict[str, Any]] = []
             issuer_name: Any = str(listing.get("zwjc") or "")
+            raw_scan_pages: str = os.getenv("SERENITY_CNINFO_REPORT_SCAN_PAGES", str(CNINFO_REPORT_SCAN_PAGE_LIMIT_DEFAULT))
+            try:
+                max_scan_pages: int = int(raw_scan_pages or CNINFO_REPORT_SCAN_PAGE_LIMIT_DEFAULT)
+            except ValueError:
+                max_scan_pages = CNINFO_REPORT_SCAN_PAGE_LIMIT_DEFAULT
             for scan_attempt in range(2):
                 announcements = []
                 queried_pages = 0
                 seen_report_keys = set()
                 reports = []
-                for page_num in range(1, 7):
+                for page_num in range(1, max(1, max_scan_pages) + 1):
                     payload: Any = cninfo._query_announcements(code, str(listing.get("orgId") or ""), suffix, page_num=page_num, page_size=30)
                     page_announcements: Any = payload.get("announcements") or []
                     if not isinstance(page_announcements, list) or not page_announcements:
@@ -2040,9 +2049,9 @@ class CninfoFinancialReportBase:
                             continue
                         seen_report_keys.add(report_key)
                         reports.append(record)
-                        if len(reports) >= 8:
+                        if len(reports) >= 16 and self._comparable_report_coverage_ready(reports):
                             break
-                    if len(reports) >= 8:
+                    if len(reports) >= 4 and self._comparable_report_coverage_ready(reports):
                         break
                 if reports or scan_attempt == 1:
                     break
@@ -2105,7 +2114,7 @@ class CninfoFinancialReportBase:
     def _is_periodic_report_title(title: str, *, issuer_name: str = "") -> bool:
         if not title or "摘要" in title:
             return False
-        excluded: Any = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会"]
+        excluded: Any = ["跟踪报告", "持续督导", "审计报告", "内控", "社会责任", "ESG", "保荐", "核查意见", "说明会", "提示性公告", "披露提示"]
         if any(token in title for token in excluded):
             return False
         if "关于披露" in title:
@@ -2176,19 +2185,33 @@ class CninfoFinancialReportBase:
             if not report.get("pdf_url") or kind not in preferred_order:
                 continue
             grouped.setdefault(kind, []).append(report)
-        for kind in preferred_order:
-            candidates: Any = sorted(grouped.get(kind, []), key=cls._rank_report_candidate, reverse=True)
+        sorted_by_kind: Dict[str, List[Mapping[str, Any]]] = {
+            kind: sorted(grouped.get(kind, []), key=cls._rank_report_candidate, reverse=True)
+            for kind in preferred_order
+        }
+
+        def add_next(kind: str) -> bool:
+            candidates: List[Mapping[str, Any]] = sorted_by_kind.get(kind, [])
             for report in candidates:
                 period_key: Any = (kind, cls._report_period_key(report))
                 if period_key in seen_periods:
                     continue
                 selected.append(report)
                 seen_periods.add(period_key)
-                break
+                return True
+            return False
+
+        for _ in range(2):
+            for kind in ("annual", "q1"):
+                add_next(kind)
+                if len(selected) >= limit:
+                    return selected
+        for kind in ("semiannual", "q3", "quarterly", "periodic"):
+            add_next(kind)
             if len(selected) >= limit:
                 return selected
         for kind in preferred_order:
-            candidates = sorted(grouped.get(kind, []), key=cls._rank_report_candidate, reverse=True)
+            candidates = sorted_by_kind.get(kind, [])
             for report in candidates:
                 period_key = (kind, cls._report_period_key(report))
                 if report in selected or period_key in seen_periods:
@@ -2205,6 +2228,19 @@ class CninfoFinancialReportBase:
                 if len(selected) >= limit:
                     return selected
         return selected
+
+    @classmethod
+    def _comparable_report_coverage_ready(cls, reports: Sequence[Mapping[str, Any]]) -> bool:
+        annual_periods: set[str] = set()
+        q1_periods: set[str] = set()
+        for report in reports:
+            kind: str = str(report.get("report_kind") or "")
+            period_key: str = cls._report_period_key(report)
+            if kind == "annual" and period_key:
+                annual_periods.add(period_key)
+            elif kind == "q1" and period_key:
+                q1_periods.add(period_key)
+        return len(annual_periods) >= 2 and len(q1_periods) >= 2
 
     @staticmethod
     def _financial_period_row_key(row: Mapping[str, Any]) -> Tuple[str, str]:
@@ -2326,7 +2362,7 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
         raw_dir: Any = kwargs.get("raw_dir")
         try:
-            download_limit: Any = int(kwargs.get("official_report_download_limit", 2) or 2)
+            download_limit: Any = int(kwargs.get("official_report_download_limit", OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT) or OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT)
             evidence: Any = self._locate_official_report_evidence(symbol, raw_dir=raw_dir, download_limit=download_limit)
             reports: Any = evidence.get("reports", []) if isinstance(evidence.get("reports"), list) else []
             if not reports:
@@ -2369,6 +2405,17 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                 extraction_warnings.append("Duplicate official report versions were collapsed into unique financial periods.")
 
             core_statement_fields: Any = ["revenue", "net_income", "operating_cash_flow", "assets", "liabilities", "equity"]
+            supplement_info: Dict[str, Any] = self._supplement_missing_periods_from_structured_preflight(
+                symbol,
+                reports=reports,
+                periods=extracted_periods,
+                raw_dir=raw_dir,
+                core_statement_fields=core_statement_fields,
+            )
+            if supplement_info.get("supplemented_periods"):
+                extraction_warnings.append(
+                    "Structured L3 financial preflight supplemented official PDF periods that were found but not machine-readable."
+                )
             extracted_periods.sort(key=lambda row: str(row.get("period") or ""))
             ok_periods: Any = [
                 row for row in extracted_periods
@@ -2494,6 +2541,10 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
                         "financial_sector_profile_required": financial_sector_profile_required,
                         "financial_sector_profile_status": financial_sector_profile_status,
                         "financial_sector_profile_fallback": financial_sector_profile_fallback,
+                        "structured_supplement_used": bool(supplement_info.get("supplemented_periods")),
+                        "structured_supplement_source": supplement_info.get("source", ""),
+                        "structured_supplemented_periods": supplement_info.get("supplemented_periods", []),
+                        "structured_supplement_errors": supplement_info.get("errors", []),
                         "source_role": "L0_OFFICIAL_REPORT_LINE_ITEMS",
                         "required_ai_action": "Review CNINFO PDF line evidence, reporting period basis, unit, industry reporting fit, and missing fields before assigning S/A.",
                     },
@@ -2512,6 +2563,109 @@ class CninfoFinancialReportsProvider(CninfoFinancialReportBase, PdfTextExtractio
             )
         except Exception as exc:
             return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"CNINFO financial report fetch failed: {type(exc).__name__}: {exc}")
+
+    def _supplement_missing_periods_from_structured_preflight(
+        self,
+        symbol: SymbolInfo,
+        *,
+        reports: Sequence[Mapping[str, Any]],
+        periods: List[Dict[str, Any]],
+        raw_dir: Any,
+        core_statement_fields: Sequence[str],
+    ) -> Dict[str, Any]:
+        desired_periods: Dict[str, str] = {}
+        complete_periods: set[str] = {
+            str(row.get("period") or "")
+            for row in periods
+            if row.get("period") and all(row.get(field) is not None for field in core_statement_fields)
+        }
+        for report in reports:
+            kind: str = str(report.get("report_kind") or "")
+            if kind not in {"annual", "q1"} or report.get("download_status") != "OK":
+                continue
+            period_key: str = self._report_period_key(report)
+            if period_key and period_key not in complete_periods:
+                desired_periods[period_key] = kind
+        if not desired_periods:
+            return {"source": "", "supplemented_periods": [], "errors": []}
+
+        errors: List[str] = []
+        raw_payloads: Dict[str, Any] = {}
+        try:
+            provider: Any = EastmoneyF10FinancialsProvider()
+            table_rows: Dict[str, List[Mapping[str, Any]]] = {}
+            for table_name, report_name in provider.table_specs.items():
+                payload: Any = provider._fetch_table(symbol.symbol, report_name, page_size=24)
+                raw_payloads[table_name] = payload
+                rows: List[Mapping[str, Any]] = provider._extract_rows(payload)
+                if rows:
+                    table_rows[table_name] = rows
+            structured_periods: List[Dict[str, Any]] = provider._merge_period_rows(table_rows)
+        except Exception as exc:
+            return {
+                "source": "Eastmoney_F10_Financials_L3",
+                "supplemented_periods": [],
+                "errors": [f"Eastmoney structured supplement failed: {type(exc).__name__}: {exc}"],
+            }
+
+        structured_by_period: Dict[str, Dict[str, Any]] = {
+            str(row.get("period") or ""): dict(row)
+            for row in structured_periods
+            if row.get("period")
+        }
+        existing_by_period: Dict[str, Dict[str, Any]] = {
+            str(row.get("period") or ""): row
+            for row in periods
+            if row.get("period")
+        }
+        supplemented_periods: List[Dict[str, Any]] = []
+        for period_key, kind in desired_periods.items():
+            supplement: Optional[Dict[str, Any]] = structured_by_period.get(period_key)
+            if not supplement:
+                errors.append(f"Eastmoney structured rows did not include required comparable period {period_key}")
+                continue
+            target: Optional[Dict[str, Any]] = existing_by_period.get(period_key)
+            fields_added: List[str] = []
+            if target is None:
+                target = dict(supplement)
+                target["source_report_kind"] = kind
+                target["source"] = "Eastmoney_F10_Financials_L3"
+                target["source_level"] = SourceLevel.L3.value
+                target["source_role"] = "L3_STRUCTURED_PREFLIGHT_SUPPLEMENT"
+                target["supplement_reason"] = "CNINFO official PDF was available, but core line extraction did not produce a complete comparable period."
+                periods.append(target)
+                fields_added = [field for field in core_statement_fields if target.get(field) is not None]
+            else:
+                for field, value in supplement.items():
+                    if field == "period" or value in (None, ""):
+                        continue
+                    if target.get(field) in (None, ""):
+                        target[field] = value
+                        fields_added.append(field)
+                target["supplemental_source"] = "Eastmoney_F10_Financials_L3"
+                target["supplemental_source_level"] = SourceLevel.L3.value
+                target["supplement_reason"] = "CNINFO official PDF period was partial; missing fields were supplemented from structured L3 preflight."
+            supplemented_periods.append({
+                "period": period_key,
+                "report_kind": kind,
+                "source": "Eastmoney_F10_Financials_L3",
+                "fields_added": fields_added,
+            })
+
+        if raw_dir and raw_payloads:
+            try:
+                save_raw_json(
+                    raw_payloads,
+                    raw_dir,
+                    f"{symbol.symbol}_eastmoney_f10_financials_supplement_raw.json",
+                )
+            except Exception as exc:
+                errors.append(f"failed to save Eastmoney supplemental raw payloads: {type(exc).__name__}: {exc}")
+        return {
+            "source": "Eastmoney_F10_Financials_L3",
+            "supplemented_periods": supplemented_periods,
+            "errors": errors,
+        }
 
     def _extract_cninfo_report_period(self, report: Mapping[str, Any], *, raw_dir: Optional[Path] = None) -> Dict[str, Any]:
         pdf_path: Any = str(report.get("pdf_path") or "")
@@ -3422,7 +3576,7 @@ class EastmoneyF10FinancialsProvider(CninfoFinancialReportBase):
         official_report_evidence: Any = self._locate_official_report_evidence(
             symbol,
             raw_dir=kwargs.get("raw_dir"),
-            download_limit=int(kwargs.get("official_report_download_limit", 2) or 2),
+            download_limit=int(kwargs.get("official_report_download_limit", OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT) or OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT),
         )
         page_size: Any = int(kwargs.get("page_size", 16) or 16)
         raw_payloads: Dict[str, Any] = {"official_report_evidence": official_report_evidence}
@@ -4193,22 +4347,31 @@ print(json.dumps({"parser": "pdfplumber", "page_count": total_pages, "pages": pa
     def _select_reports_for_download(cls, reports: Sequence[Mapping[str, Any]], limit: int) -> List[Mapping[str, Any]]:
         selected: List[Mapping[str, Any]] = []
         preferred_order: Any = ["annual", "interim", "monthly_return", "next_day_disclosure", "quarterly", "final_results", "quarterly_results", "results", "periodic"]
+        sorted_by_kind: Dict[str, List[Mapping[str, Any]]] = {}
         for kind in preferred_order:
-            candidates: Any = [
+            candidates: List[Mapping[str, Any]] = [
                 report for report in reports
                 if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
             ]
             candidates.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
-            if candidates and candidates[0] not in selected:
-                selected.append(candidates[0])
+            sorted_by_kind[kind] = candidates
+
+        def add_index(kind: str, index: int) -> None:
+            candidates: List[Mapping[str, Any]] = sorted_by_kind.get(kind, [])
+            if len(candidates) > index and candidates[index] not in selected:
+                selected.append(candidates[index])
+
+        for index in range(2):
+            for kind in ("annual", "interim"):
+                add_index(kind, index)
+                if len(selected) >= limit:
+                    return selected
+        for kind in preferred_order:
+            add_index(kind, 0)
             if len(selected) >= limit:
                 return selected
         for kind in preferred_order:
-            candidates = [
-                report for report in reports
-                if str(report.get("report_kind") or "") == kind and report.get("pdf_url")
-            ]
-            candidates.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
+            candidates = sorted_by_kind.get(kind, [])
             for report in candidates:
                 if report not in selected:
                     selected.append(report)
@@ -4432,7 +4595,7 @@ class HkexFinancialReportsProvider(HkexNewsBase):
                     errors.append(f"HKEX broad announcement report scan failed: {type(exc).__name__}: {exc}")
             reports.sort(key=lambda report: str(report.get("announcement_datetime") or ""), reverse=True)
             raw_dir: Any = kwargs.get("raw_dir")
-            download_limit: Any = int(kwargs.get("official_report_download_limit", 2) or 2)
+            download_limit: Any = int(kwargs.get("official_report_download_limit", OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT) or OFFICIAL_REPORT_DOWNLOAD_LIMIT_DEFAULT)
             if raw_dir and reports and download_limit > 0:
                 self._attach_report_downloads(
                     reports,

@@ -63,6 +63,7 @@ description: Use when performing data-first equity research for A-share, US, HK,
 优先使用：
 
 ```bash
+python scripts/run_research_analysis.py <symbol_a> <symbol_b> --out-dir <run_dir>
 python scripts/data_router.py fetch <symbol>
 python scripts/data_router.py plan <symbol>
 python scripts/data_router.py resolve <symbol>
@@ -144,19 +145,17 @@ AI 证据裁决必须介入：
 
 执行顺序：
 
-1. 对每个候选先运行 `python scripts/data_router.py fetch <symbol>`，保留各自 manifest。
-2. 用 `python scripts/build_comparison_report.py <manifest...> --format json > comparison_report.json` 生成候选对比 JSON。
-3. 用 `python scripts/validate_comparison_report.py comparison_report.json` 校验 `comparison_output_contract`。
-4. 用 `python scripts/build_ai_overlay_prompt.py <manifest> --out <prompt.json>` 生成 AI overlay prompt package。
-5. 用 `python scripts/build_ai_review_packet.py <manifest> --out <packet.json>` 生成 AI 审阅包。
-6. 用 `python scripts/build_ai_committee_packet.py <manifest> --out <committee.json>` 生成多角色 AI 研究委员会包；`consensus`、`dissent`、`upgrade_conditions`、`downgrade_conditions` 属于委员会研究记录。
-7. AI 读取 prompt、review packet、committee packet 和源文件后，为每个候选输出一个正式 AI 结果：证据足够时输出 `assets/ai_research_overlay.schema.json` 允许字段并运行 `python scripts/validate_ai_overlay.py <overlay.json>`；证据不足、数据冲突或快速审计时输出 `assets/ai_review_outcome.schema.json` 允许字段并运行 `python scripts/validate_ai_review_outcome.py <outcome.json>`。
-8. 用 `python scripts/validate_and_merge_ai_overlay.py <manifest...> --overlay SYMBOL=<overlay.json> --ai-outcome SYMBOL=<outcome.json> --report-out comparison_report.json --markdown-out comparison_report.md` 生成带 AI 结果的候选对比 JSON 和 Markdown；该脚本会校验 overlay/outcome 并再次校验 `comparison_output_contract`。
-9. 用 `python scripts/render_research_report.py --comparison-report comparison_report.json --mode candidate_comparison` 输出候选对比交付稿；需要逐候选研究工作台时使用 `--mode full_research`。
-10. 同一正式评级上限下，仍必须输出候选优先级差异、研究债务差异、资本动作量化差异、技术动作差异和候选池语义一致性；只有同层候选可进入正式 clear top candidate，同主题不同层、跨主题或无关诊断只能作为研究优先级或诊断集合。
-11. 若当前价和股本可用，先在 `valuation_input_matrix` 暴露价格、股本、市值、货币、日期、来源、口径和 `valuation_stage`，再由 `growth_hypothesis_matrix` 引用该估值输入并输出预检级 PE/PS 和 H 档；缺少估值输入时保持 `UNKNOWN`，并生成估值补证任务。
-12. 财报行若以 million、thousand、万元等单位披露，必须先归一到绝对金额，再计算 PE/PS 和市场隐含增长。
-13. 若 `data_consumption_audit` 出现 `MISMATCH`，不得输出正式 top candidate；先修复数据消费链路。
+1. 首选运行 `python scripts/run_research_analysis.py <symbol...> --out-dir <run_dir>`。它会真实取数、生成确定性 baseline，并为每个候选生成 `ai_review_packet.json`、`ai_committee_packet.json` 和 `ai_overlay_prompt.json`。
+2. 若输出 `AI_RESULT_REQUIRED`，AI 必须读取对应候选的 prompt、review packet、committee packet 和源文件后，为每个候选输出一个正式 AI 结果：证据足够时输出 `assets/ai_research_overlay.schema.json` 允许字段；证据不足、数据冲突或快速审计时输出 `assets/ai_review_outcome.schema.json` 允许字段。
+3. overlay 单独校验时运行 `python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>`；outcome 单独校验时运行 `python scripts/validate_ai_review_outcome.py <outcome.json>`。
+4. 每个候选都有 overlay/outcome 后，继续运行同一个 `run_research_analysis.py` 命令并传入 `--overlay SYMBOL=<overlay.json>` 或 `--ai-outcome SYMBOL=<outcome.json>`，生成最终 JSON/Markdown。
+5. 需要手工拆分时，才使用低层命令：`data_router.py fetch`、`build_comparison_report.py`、`build_ai_overlay_prompt.py`、`build_ai_review_packet.py`、`build_ai_committee_packet.py`、`validate_and_merge_ai_overlay.py`、`render_research_report.py`。
+6. `validate_and_merge_ai_overlay.py` 会强制要求每个候选都有一个正式 AI 结果，并会把 overlay 的 `source_ref` 解析到对应 manifest 的真实 source artifact 或 AI review packet；无法解析的引用、与证据不一致的数字 claim 会阻断合并。
+7. 用 `python scripts/render_research_report.py --comparison-report comparison_report.json --mode candidate_comparison` 输出候选对比交付稿；需要逐候选研究工作台时使用 `--mode full_research`。
+8. 同一正式评级上限下，仍必须输出候选优先级差异、研究债务差异、资本动作量化差异、技术动作差异和候选池语义一致性；只有同层候选可进入正式 clear top candidate，同主题不同层、跨主题或无关诊断只能作为研究优先级或诊断集合。
+9. 若当前价和股本可用，先在 `valuation_input_matrix` 暴露价格、股本、市值、货币、日期、来源、口径和 `valuation_stage`，再由 `growth_hypothesis_matrix` 引用该估值输入并输出预检级 PE/PS 和 H 档；缺少估值输入时保持 `UNKNOWN`，并生成估值补证任务。
+10. 财报行若以 million、thousand、万元等单位披露，必须先归一到绝对金额，再计算 PE/PS 和市场隐含增长。
+11. 若 `data_consumption_audit` 出现 `MISMATCH`，不得输出正式 top candidate；先修复数据消费链路。
 
 ### 1.4 Data Audit / 数据核验
 
@@ -414,6 +413,7 @@ python scripts/render_research_report.py --comparison-report <comparison_report.
 - `scripts/data_layer.py` — 市场路由和真实数据 provider 底层模块。
 - `scripts/market_source_policy.py` — Markdown/JSON 共享的市场源隔离规则。
 - `scripts/data_router.py` — 市场识别、真实数据预检、数据校验和质量报告脚手架。
+- `scripts/run_research_analysis.py` — 顶层正式研究流程，串联真实取数、baseline、AI 研究包、证据校验合并和最终报告。
 - `scripts/build_falsification_dashboard.py` — 证伪看板验证和渲染脚本。
 - `scripts/technical_health.py` — 从复权日线计算技术健康、短均线距离和缠论动作纪律。
 - `scripts/a_share_capital_actions.py` — 从 A 股公告元数据识别定增、减持、解禁、回购、股权激励等资本动作。
