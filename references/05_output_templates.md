@@ -273,7 +273,30 @@ A 股财报优先使用 `CNINFO_FinancialReports_L0` 官方报告 PDF 行级抽�
 
 ---
 
-## 4. Data Audit Template
+## 4. Research Brief Mode
+
+Use this mode when the workflow has useful research state but has not reached formal delivery, such as diagnostic baselines, internal baselines, and AI execution workspaces.
+
+Command:
+
+```bash
+python scripts/render_research_report.py --comparison-report <comparison_report.json> \
+  --mode research_brief --out <research_brief.md>
+```
+
+The brief must clearly show:
+
+- current report stage and formal delivery status;
+- research lead versus action candidate;
+- candidate pool coherence and ranking validity;
+- data cap, AI research status, and customer/order/capacity evidence per candidate;
+- next research action that moves the work toward formal delivery.
+
+`research_brief` is a research-progress output. It does not replace `validate_research_delivery.py`, and it must not be described as a formal action-ready report.
+
+---
+
+## 5. Data Audit Template
 
 ```markdown
 # 数据审计报告

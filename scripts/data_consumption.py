@@ -144,10 +144,33 @@ def valuation_consumption_audit(
 
     if raw_status in AVAILABLE_STATUSES and has_payload and market_cap is not None and growth == "UNKNOWN":
         consumption_status = "MISMATCH"
-        if normalization_status in {"FAILED", "DATA_GATED"} or normalization_reason in {"CURRENCY_MISMATCH", "FX_RATE_UNAVAILABLE", "CURRENCY_MISSING"}:
-            warnings.append("valuation inputs are available, but cross-currency normalization is required before growth_hypothesis_matrix can derive market-implied growth")
-            reason_code = "CURRENCY_MISMATCH"
-            required_transform = "FX_NORMALIZATION"
+        if normalization_status in {"FAILED", "DATA_GATED"} or normalization_reason in {
+            "CURRENCY_MISMATCH",
+            "FX_RATE_UNAVAILABLE",
+            "CURRENCY_MISSING",
+            "TARGET_FINANCIAL_CURRENCY_MISSING",
+            "VALUATION_CURRENCY_MISSING",
+        }:
+            if normalization_reason == "TARGET_FINANCIAL_CURRENCY_MISSING":
+                warnings.append("valuation inputs are available, but financial reporting currency is missing; fetch or consume financial statements before deriving market-implied growth")
+                reason_code = "FINANCIALS_REQUIRED_FOR_VALUATION_NORMALIZATION"
+                required_transform = "FETCH_FINANCIAL_REPORTING_CURRENCY"
+            elif normalization_reason == "VALUATION_CURRENCY_MISSING":
+                warnings.append("valuation inputs are available, but valuation currency is missing; fetch quote-derived or source-reported valuation currency before deriving market-implied growth")
+                reason_code = "VALUATION_CURRENCY_MISSING"
+                required_transform = "FETCH_VALUATION_CURRENCY"
+            elif normalization_reason == "FX_RATE_UNAVAILABLE":
+                warnings.append("valuation inputs are available, but FX rate is unavailable for valuation-to-financial currency normalization")
+                reason_code = "FX_RATE_UNAVAILABLE"
+                required_transform = "FX_NORMALIZATION"
+            elif normalization_reason == "CURRENCY_MISSING":
+                warnings.append("valuation inputs are available, but valuation or financial reporting currency is missing before growth_hypothesis_matrix can derive market-implied growth")
+                reason_code = "CURRENCY_MISSING"
+                required_transform = "FETCH_CURRENCY_FIELDS"
+            else:
+                warnings.append("valuation inputs are available, but cross-currency normalization is required before growth_hypothesis_matrix can derive market-implied growth")
+                reason_code = "CURRENCY_MISMATCH"
+                required_transform = "FX_NORMALIZATION"
             blocked_matrices = ["growth_hypothesis_matrix"]
             ranking_impact = "INVALID_UNTIL_NORMALIZED"
         else:

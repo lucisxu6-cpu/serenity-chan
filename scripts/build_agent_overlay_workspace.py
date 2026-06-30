@@ -48,6 +48,20 @@ def _source_ref_catalog(manifest_path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _safe_source_ref_catalog(manifest_path: Path) -> list[dict[str, Any]]:
+    if not manifest_path.is_file():
+        return []
+    try:
+        return _source_ref_catalog(manifest_path)
+    except Exception as exc:
+        return [{
+            "source_ref": "MANIFEST_ERROR",
+            "text_available": False,
+            "text_bytes": 0,
+            "text_excerpt": f"Manifest could not be read: {exc}",
+        }]
+
+
 def _customer_evidence_workspace(review_packet: Mapping[str, Any]) -> dict[str, Any]:
     row_value: Any = review_packet.get("customer_order_capacity_evidence", {})
     row: Mapping[str, Any] = row_value if isinstance(row_value, Mapping) else {}
@@ -112,7 +126,7 @@ def _workspace_item(work_item: Mapping[str, Any]) -> dict[str, Any]:
         "dossier_schema": str(work_item.get("dossier_schema") or ""),
         "allowed_results": list(work_item.get("allowed_results") or []),
         "validation_commands": list(work_item.get("validation_commands") or []),
-        "source_ref_catalog": _source_ref_catalog(manifest_path) if manifest_path.exists() else [],
+        "source_ref_catalog": _safe_source_ref_catalog(manifest_path),
         "priority_research_tasks": _priority_research_tasks(review_packet),
         "customer_order_capacity_evidence": _customer_evidence_workspace(review_packet),
         "deterministic_matrices": review_packet.get("deterministic_matrices", {}),

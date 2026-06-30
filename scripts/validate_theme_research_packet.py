@@ -52,8 +52,35 @@ def validate_theme_research_packet(payload: Mapping[str, Any]) -> list[str]:
         errors.append("candidate_count must match candidate_symbols length")
     if len({_non_empty(symbol) and str(symbol) for symbol in symbols}) != len(symbols):
         errors.append("candidate_symbols must be unique and non-empty")
+    expansion_status: str = str(payload.get("candidate_expansion_status") or "")
+    if expansion_status not in {"CURATED_FULL", "CURATED_INITIAL", "AI_EXPANSION_REQUIRED"}:
+        errors.append("candidate_expansion_status is unknown")
+    coverage: Mapping[str, Any] = _as_mapping(payload.get("layer_coverage"), "layer_coverage", errors)
+    if not coverage:
+        errors.append("layer_coverage must not be empty")
+    for layer, count in coverage.items():
+        if not _non_empty(layer) or not isinstance(count, int) or count < 0:
+            errors.append("layer_coverage must map non-empty layer names to non-negative integers")
     if len(_as_list(payload.get("value_chain_layers"), "value_chain_layers", errors)) < 3:
         errors.append("value_chain_layers must contain at least 3 layers")
+    per_candidate_tasks: list[Any] = _as_list(payload.get("per_candidate_research_tasks"), "per_candidate_research_tasks", errors)
+    if len(per_candidate_tasks) != len(symbols):
+        errors.append("per_candidate_research_tasks must contain one task row per candidate")
+    task_symbols: set[str] = set()
+    for index, item in enumerate(per_candidate_tasks):
+        row: Mapping[str, Any] = _as_mapping(item, f"per_candidate_research_tasks[{index}]", errors)
+        symbol: str = str(row.get("symbol") or "").strip()
+        if symbol:
+            task_symbols.add(symbol)
+        for key in ["symbol", "layer"]:
+            if not _non_empty(row.get(key)):
+                errors.append(f"per_candidate_research_tasks[{index}].{key} must not be empty")
+        if len([task for task in _as_list(row.get("evidence_tasks"), f"per_candidate_research_tasks[{index}].evidence_tasks", errors) if _non_empty(task)]) < 3:
+            errors.append(f"per_candidate_research_tasks[{index}].evidence_tasks must contain at least 3 non-empty tasks")
+        if len([trigger for trigger in _as_list(row.get("downgrade_triggers"), f"per_candidate_research_tasks[{index}].downgrade_triggers", errors) if _non_empty(trigger)]) < 2:
+            errors.append(f"per_candidate_research_tasks[{index}].downgrade_triggers must contain at least 2 non-empty triggers")
+    if task_symbols != {str(symbol) for symbol in symbols}:
+        errors.append("per_candidate_research_tasks symbols must match candidate_symbols")
     if len([item for item in _as_list(payload.get("direction_research_questions"), "direction_research_questions", errors) if _non_empty(item)]) < 5:
         errors.append("direction_research_questions must contain at least 5 non-empty questions")
     if len([item for item in _as_list(payload.get("macro_evidence_tasks"), "macro_evidence_tasks", errors) if _non_empty(item)]) < 3:

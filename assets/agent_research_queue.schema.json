@@ -16,6 +16,7 @@
     "ai_artifacts",
     "internal_baseline_report",
     "missing_ai_result_symbols",
+    "existing_ai_packages",
     "work_items",
     "execution_policy"
   ],
@@ -29,13 +30,20 @@
     "delivery_allowed": { "const": false },
     "next_phase": { "const": "execute_agent_research" },
     "out_dir": { "type": "string", "minLength": 1 },
-    "fetch_summaries": { "type": "array" },
+    "fetch_summaries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fetch_summary" }
+    },
     "ai_artifacts": { "type": "array" },
     "internal_baseline_report": { "type": "string", "minLength": 1 },
     "missing_ai_result_symbols": {
       "type": "array",
       "minItems": 1,
       "items": { "type": "string", "minLength": 1 }
+    },
+    "existing_ai_packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/existing_ai_package" }
     },
     "work_items": {
       "type": "array",
@@ -45,6 +53,26 @@
     "execution_policy": { "$ref": "#/$defs/execution_policy" }
   },
   "$defs": {
+    "fetch_summary": {
+      "type": "object",
+      "required": ["symbol", "manifest"],
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1 },
+        "manifest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "existing_ai_package": {
+      "type": "object",
+      "required": ["symbol", "dossier_path", "result_type", "result_path"],
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1 },
+        "dossier_path": { "type": "string", "minLength": 1 },
+        "result_type": { "type": "string", "enum": ["overlay", "ai_outcome"] },
+        "result_path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
     "work_item": {
       "type": "object",
       "required": [

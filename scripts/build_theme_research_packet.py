@@ -38,6 +38,14 @@ def _candidate_symbols(universe: Mapping[str, Any]) -> list[str]:
     return symbols
 
 
+def _candidate_rows(universe: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    rows: list[Mapping[str, Any]] = []
+    for row in _as_list(universe.get("candidate_universe")):
+        if isinstance(row, Mapping):
+            rows.append(row)
+    return rows
+
+
 def _layer_names(universe: Mapping[str, Any]) -> list[str]:
     names: list[str] = []
     for row in _as_list(universe.get("value_chain_layers")):
@@ -49,6 +57,53 @@ def _layer_names(universe: Mapping[str, Any]) -> list[str]:
     return names
 
 
+def _layer_coverage(universe: Mapping[str, Any]) -> dict[str, int]:
+    coverage: dict[str, int] = {}
+    for row in _as_list(universe.get("value_chain_layers")):
+        if not isinstance(row, Mapping):
+            continue
+        layer: str = str(row.get("layer") or "").strip()
+        symbols: list[Any] = _as_list(row.get("candidate_symbols"))
+        if layer:
+            coverage[layer] = len([symbol for symbol in symbols if str(symbol or "").strip()])
+    return coverage
+
+
+def _candidate_expansion_status(candidate_count: int, coverage: Mapping[str, int]) -> str:
+    if candidate_count >= 20 and coverage and all(count >= 3 for count in coverage.values()):
+        return "CURATED_FULL"
+    if candidate_count >= 9:
+        return "CURATED_INITIAL"
+    return "AI_EXPANSION_REQUIRED"
+
+
+def _per_candidate_tasks(universe: Mapping[str, Any]) -> list[dict[str, Any]]:
+    tasks: list[dict[str, Any]] = []
+    for row in _candidate_rows(universe):
+        symbol: str = str(row.get("symbol") or "").strip()
+        if not symbol:
+            continue
+        name: str = str(row.get("name") or "").strip()
+        layer: str = str(row.get("layer") or "").strip()
+        tasks.append({
+            "symbol": symbol,
+            "name": name,
+            "layer": layer,
+            "evidence_tasks": [
+                f"验证 {name or symbol} 在「{layer or '待映射层级'}」中的真实收入、产品和客户/订单/产能证据。",
+                "读取最新年报、季报和近 24 个月公告，区分 L0/L1 证据、线索和叙事。",
+                "检查估值输入、市场隐含增长和证据支持增长是否匹配。",
+                "写出至少一个支持假设和一个削弱假设，并给出下一步最便宜的验证证据。",
+            ],
+            "downgrade_triggers": [
+                "主题相关收入、客户、订单或产能无法从披露中确认。",
+                "市场隐含增长高于证据支持增长，且没有 L0/L1 证据补强。",
+                "现金流、应收、存货、资本动作或技术结构削弱行动条件。",
+            ],
+        })
+    return tasks
+
+
 def build_theme_research_packet(universe_path: Path) -> dict[str, Any]:
     universe: Mapping[str, Any] = _load_json(universe_path)
     errors: list[str] = validate_universe(universe)
@@ -57,6 +112,7 @@ def build_theme_research_packet(universe_path: Path) -> dict[str, Any]:
     theme: str = str(universe.get("theme") or "").strip()
     symbols: list[str] = _candidate_symbols(universe)
     layers: list[str] = _layer_names(universe)
+    coverage: dict[str, int] = _layer_coverage(universe)
     layer_text: str = "、".join(layers) if layers else "待映射层级"
     return {
         "contract_type": "serenity_theme_research_packet",
@@ -66,7 +122,10 @@ def build_theme_research_packet(universe_path: Path) -> dict[str, Any]:
         "universe_path": str(universe_path.resolve()),
         "candidate_count": len(symbols),
         "candidate_symbols": symbols,
+        "candidate_expansion_status": _candidate_expansion_status(len(symbols), coverage),
+        "layer_coverage": coverage,
         "value_chain_layers": list(_as_list(universe.get("value_chain_layers"))),
+        "per_candidate_research_tasks": _per_candidate_tasks(universe),
         "direction_research_questions": [
             f"{theme} 的一阶驱动是什么，当前驱动来自真实需求、政策资本开支、海外 capex，还是交易热度？",
             f"{theme} 的利润窄口位于哪些层级：{layer_text}？",

@@ -46,6 +46,7 @@ def validate_agent_research_queue(payload: Mapping[str, Any]) -> list[str]:
         "ai_artifacts",
         "internal_baseline_report",
         "missing_ai_result_symbols",
+        "existing_ai_packages",
         "work_items",
         "execution_policy",
     }
@@ -63,7 +64,22 @@ def validate_agent_research_queue(payload: Mapping[str, Any]) -> list[str]:
     for key in ["out_dir", "internal_baseline_report"]:
         if not _non_empty_string(payload.get(key)):
             errors.append(f"{key} must be a non-empty string")
-    _as_list(payload.get("fetch_summaries"), "fetch_summaries", errors, min_items=0)
+    fetch_summaries: list[Any] = _as_list(payload.get("fetch_summaries"), "fetch_summaries", errors, min_items=0)
+    fetch_symbol_set: set[str] = set()
+    for index, summary in enumerate(fetch_summaries):
+        if not isinstance(summary, Mapping):
+            errors.append(f"fetch_summaries[{index}] must be an object")
+            continue
+        symbol: str = str(summary.get("symbol") or "")
+        manifest: str = str(summary.get("manifest") or "")
+        if not symbol:
+            errors.append(f"fetch_summaries[{index}].symbol must be non-empty")
+        elif symbol in fetch_symbol_set:
+            errors.append(f"duplicate fetch_summaries symbol: {symbol}")
+        else:
+            fetch_symbol_set.add(symbol)
+        if not manifest:
+            errors.append(f"fetch_summaries[{index}].manifest must be non-empty")
     _as_list(payload.get("ai_artifacts"), "ai_artifacts", errors, min_items=0)
     missing_symbols: list[Any] = _as_list(payload.get("missing_ai_result_symbols"), "missing_ai_result_symbols", errors, min_items=0)
     if not missing_symbols:
@@ -72,6 +88,33 @@ def validate_agent_research_queue(payload: Mapping[str, Any]) -> list[str]:
     if not work_items:
         errors.append("work_items must contain at least one item")
     missing_symbol_set: set[str] = {str(symbol) for symbol in missing_symbols if str(symbol)}
+    existing_packages: list[Any] = _as_list(payload.get("existing_ai_packages"), "existing_ai_packages", errors, min_items=0)
+    existing_symbols: set[str] = set()
+    for index, item in enumerate(existing_packages):
+        if not isinstance(item, Mapping):
+            errors.append(f"existing_ai_packages[{index}] must be an object")
+            continue
+        required_package_fields: set[str] = {"symbol", "dossier_path", "result_type", "result_path"}
+        unsupported_package_fields: list[str] = sorted(set(item) - required_package_fields)
+        if unsupported_package_fields:
+            errors.append(f"existing_ai_packages[{index}] unsupported fields: {', '.join(unsupported_package_fields)}")
+        missing_package_fields: list[str] = sorted(required_package_fields - set(item))
+        if missing_package_fields:
+            errors.append(f"existing_ai_packages[{index}] missing fields: {', '.join(missing_package_fields)}")
+        symbol: str = str(item.get("symbol") or "")
+        if not symbol:
+            errors.append(f"existing_ai_packages[{index}].symbol must be non-empty")
+        if symbol in existing_symbols:
+            errors.append(f"duplicate existing_ai_packages symbol: {symbol}")
+        existing_symbols.add(symbol)
+        for key in ["dossier_path", "result_path"]:
+            if not _non_empty_string(item.get(key)):
+                errors.append(f"existing_ai_packages[{index}].{key} must be non-empty")
+        if item.get("result_type") not in {"overlay", "ai_outcome"}:
+            errors.append(f"existing_ai_packages[{index}].result_type is invalid")
+    overlap_existing_missing: set[str] = existing_symbols & missing_symbol_set
+    if overlap_existing_missing:
+        errors.append(f"existing_ai_packages must not include missing AI symbols: {', '.join(sorted(overlap_existing_missing))}")
     work_symbols: set[str] = set()
     required_item_fields: set[str] = {
         "symbol",
@@ -131,10 +174,27 @@ def validate_agent_research_queue(payload: Mapping[str, Any]) -> list[str]:
         command_text: str = "\n".join(str(command) for command in validation_commands)
         if "validate_ai_research_dossier.py" not in command_text:
             errors.append(f"work_items[{index}].validation_commands must include validate_ai_research_dossier.py")
-        if len(_as_list(item.get("guardrails"), f"work_items[{index}].guardrails", errors, min_items=0)) < 3:
+        guardrails: list[Any] = _as_list(item.get("guardrails"), f"work_items[{index}].guardrails", errors, min_items=0)
+        if len(guardrails) < 3:
             errors.append(f"work_items[{index}].guardrails must contain at least three items")
+        if "SKIPPED_QUICK_AUDIT" in "\n".join(str(rule) for rule in guardrails):
+            errors.append(f"work_items[{index}].guardrails must not mention SKIPPED_QUICK_AUDIT in formal mode")
     if missing_symbol_set and work_symbols != missing_symbol_set:
         errors.append("work_items symbols must exactly match missing_ai_result_symbols")
+    overlap_existing_work: set[str] = existing_symbols & work_symbols
+    if overlap_existing_work:
+        errors.append(f"existing_ai_packages must not overlap work_items: {', '.join(sorted(overlap_existing_work))}")
+    if fetch_symbol_set:
+        queue_symbol_set: set[str] = missing_symbol_set | existing_symbols
+        if queue_symbol_set != fetch_symbol_set:
+            missing_from_queue: set[str] = fetch_symbol_set - queue_symbol_set
+            unsupported_symbols: set[str] = queue_symbol_set - fetch_symbol_set
+            details: list[str] = []
+            if missing_from_queue:
+                details.append(f"missing queue coverage for: {', '.join(sorted(missing_from_queue))}")
+            if unsupported_symbols:
+                details.append(f"symbols absent from fetch_summaries: {', '.join(sorted(unsupported_symbols))}")
+            errors.append("queue symbols must exactly cover fetch_summaries symbols" + (f" ({'; '.join(details)})" if details else ""))
     policy: Any = payload.get("execution_policy")
     if not isinstance(policy, Mapping):
         errors.append("execution_policy must be an object")
@@ -149,8 +209,11 @@ def validate_agent_research_queue(payload: Mapping[str, Any]) -> list[str]:
             errors.append("execution_policy.internal_baseline_role must be data_diagnostics_only")
         if policy.get("quick_audit_allowed") is not False:
             errors.append("execution_policy.quick_audit_allowed must be false")
-        if len(_as_list(policy.get("forbidden"), "execution_policy.forbidden", errors, min_items=0)) < 3:
+        forbidden: list[Any] = _as_list(policy.get("forbidden"), "execution_policy.forbidden", errors, min_items=0)
+        if len(forbidden) < 3:
             errors.append("execution_policy.forbidden must contain at least three items")
+        if "SKIPPED_QUICK_AUDIT" in "\n".join(str(rule) for rule in forbidden):
+            errors.append("execution_policy.forbidden must not mention SKIPPED_QUICK_AUDIT in formal mode")
     return errors
 
 
