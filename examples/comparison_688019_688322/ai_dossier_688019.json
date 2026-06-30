@@ -1,0 +1,167 @@
+{
+  "contract_type": "serenity_ai_research_dossier",
+  "schema_version": "1.0",
+  "symbol": "688019.SH",
+  "as_of_date": "2026-06-23",
+  "research_status": "COMPLETED",
+  "source_reading_log": [
+    {
+      "source_ref": "filings_announcements:CNINFO_Announcements_L0",
+      "source_level": "L0",
+      "read_status": "READ",
+      "finding": "巨潮公告链路提供官方披露入口，可用于核验公司材料业务、产能、客户和后续财报更新。"
+    },
+    {
+      "source_ref": "financial quality matrix",
+      "source_level": "L3",
+      "read_status": "READ",
+      "finding": "财务质量矩阵提供收入、利润和利润率预检，但仍需要官方报告逐项复核后才能升级到更高证据等级。"
+    }
+  ],
+  "research_path": {
+    "core_question": "688019.SH 是否具备足够强的半导体材料瓶颈属性，值得从主题观察升级为可执行候选？",
+    "decision_use": "决定它在 688019.SH 与 688322.SH 对比中的研究优先级、行动门控和下一步补证路径。",
+    "base_rate_anchor": "A 股半导体材料公司常见的问题是国产替代叙事强于客户、品类和产能利用率的可验证兑现，因此必须把材料瓶颈和财务兑现拆开检验。",
+    "reflexivity_check": "如果市场已经按高成长材料瓶颈定价，而客户/产能证据仍停在预检层，行动结论需要保留估值和买点门控。",
+    "hypotheses": [
+      {
+        "hypothesis": "公司具备 CMP slurry 与湿法材料等上游耗材瓶颈属性。",
+        "current_view": "PARTIAL",
+        "why_it_matters": "上游耗材瓶颈更容易形成重复采购和收入韧性，是 Serenity 原味的重要来源。",
+        "evidence_needed": "官方报告中的产品线收入、核心客户导入、产能利用率和复购线索。"
+      },
+      {
+        "hypothesis": "现有证据足以支持强观察，但不足以直接解除行动门控。",
+        "current_view": "SUPPORTED",
+        "why_it_matters": "避免把 H3 研究价值误判为 S/A 级买入结论。",
+        "evidence_needed": "客户/订单/产能 L0/L1 证据、估值隐含增长和技术买点共同确认。"
+      }
+    ],
+    "evidence_tests": [
+      {
+        "test": "核验是否存在可直接引用的官方材料业务与客户/产能披露。",
+        "method": "读取巨潮公告链路和后续年报、季报、投资者关系记录。",
+        "current_result": "已有官方公告入口，但当前样例仍缺少逐项抽取的客户、品类和产能细节。",
+        "evidence_status": "LEAD",
+        "source_refs": ["filings_announcements:CNINFO_Announcements_L0"]
+      },
+      {
+        "test": "检查财务预检是否支持材料瓶颈向收入质量传导。",
+        "method": "用财务质量矩阵观察收入、利润、毛利率和现金流方向。",
+        "current_result": "财务预检支持继续研究，但需要官方财报逐项复核后才能提高置信度。",
+        "evidence_status": "INFERRED",
+        "source_refs": ["financial quality matrix"]
+      }
+    ],
+    "unresolved_questions": [
+      "核心客户贡献和材料品类收入拆分是否能从 L0/L1 来源确认？",
+      "产能利用率、毛利率和经营现金流是否与材料瓶颈叙事同向？"
+    ]
+  },
+  "observed": [
+    "候选已取得公告元数据和财务预检数据，能够进入正式 AI 研究，但客户和产能细项仍是关键追索点。",
+    "现有 overlay 将公司映射到 CMP slurry 与湿法材料瓶颈，并把证据支持增长控制在 H3。"
+  ],
+  "inferred": [
+    "如果后续官方报告确认客户导入、产品结构和产能利用率，材料耗材属性会提高收入传导可信度。",
+    "当前证据支持研究优先级，并要求继续保留客户/订单和买点门控。"
+  ],
+  "judgment": [
+    "688019.SH 是本组中更接近 Serenity 原味的材料瓶颈候选，当前动作应保持强观察和研究优先。",
+    "AI 增量应提高 thesis quality，同时保留客户集中度、毛利率和产能利用率的风险折扣。"
+  ],
+  "claim_graph": [
+    {
+      "claim": "公司具备被映射到半导体材料瓶颈的研究价值。",
+      "supporting_refs": ["filings_announcements:CNINFO_Announcements_L0", "financial quality matrix"],
+      "opposing_refs": [],
+      "status": "SUPPORTED",
+      "decision_impact": "提升研究优先级，但不自动解除客户/订单与行动门控。"
+    },
+    {
+      "claim": "客户、订单、产能和产品线拆分足以支持 S/A 级别行动结论。",
+      "supporting_refs": [],
+      "opposing_refs": ["financial quality matrix"],
+      "status": "PARTIAL",
+      "decision_impact": "需要继续补证，限制行动升级。"
+    }
+  ],
+  "causal_chain": [
+    {
+      "step": "晶圆厂扩产和国产替代需求",
+      "mechanism": "提高 CMP slurry 与湿法材料的验证和耗材需求。",
+      "evidence_status": "INFERRED"
+    },
+    {
+      "step": "客户导入和重复采购",
+      "mechanism": "把材料瓶颈转化为订单延续和收入增长。",
+      "evidence_status": "LEAD"
+    },
+    {
+      "step": "产品结构与产能利用率",
+      "mechanism": "决定收入质量、毛利率韧性和现金流兑现。",
+      "evidence_status": "MISSING"
+    }
+  ],
+  "same_layer_comparison": [
+    {
+      "peer": "688322.SH",
+      "comparison_axis": "产业链层级",
+      "relative_position": "688019.SH 更偏上游材料耗材瓶颈，688322.SH 更偏视觉模组和应用渗透。",
+      "evidence_needed": "需要同口径客户、订单、产能和分部收入证据后才能做正式同层比较。"
+    }
+  ],
+  "bear_case": [
+    "如果客户导入进度、产能利用率或材料品类收入拆分无法验证，瓶颈叙事会退化为普通材料公司跟踪。",
+    "如果毛利率和现金流不能支撑增长，H3 证据支持增长需要下修。"
+  ],
+  "scenario_view": {
+    "base": {
+      "summary": "保持研究优先，等待客户、产能和产品线证据补齐。",
+      "probability": 0.55,
+      "conditions": ["公告和财报继续支持收入增长，但关键客户/产能细项仍需验证。"]
+    },
+    "upside": {
+      "summary": "官方报告确认核心客户、产品结构和产能释放，候选升级为强观察到行动候选。",
+      "probability": 0.25,
+      "conditions": ["L0/L1 披露出现客户、订单、产能或分部收入证据。"]
+    },
+    "downside": {
+      "summary": "收入增长无法转化为利润和现金流，材料瓶颈可信度下降。",
+      "probability": 0.2,
+      "conditions": ["毛利率、现金流或客户线索出现反向变化。"]
+    }
+  },
+  "trigger_table": {
+    "30d": ["读取最新公告和投资者关系披露，核验客户/产能线索。"],
+    "90d": ["复核季报收入、毛利率、经营现金流和费用率。"],
+    "180d": ["比较产品线收入占比、产能利用率和客户导入节奏。"]
+  },
+  "action_conditions": {
+    "upgrade_to_action": ["官方披露确认客户/订单/产能证据，并且技术结构解除买点门控。"],
+    "add_or_size_up": ["H3 证据继续强化，估值隐含增长没有明显领先证据支持增长。"],
+    "trim_or_exit": ["客户或产能验证失败，毛利率和现金流同步恶化。"],
+    "stay_research_only": ["客户、产能和产品结构仍只停留在线索层。"]
+  },
+  "confidence_dampers": [
+    "财务预检源强度低于官方逐项抽取。",
+    "客户集中度和产能利用率缺少可机读直接证据。"
+  ],
+  "overlay_projection": {
+    "layer": "CMP slurry and wet-process materials bottleneck",
+    "bottleneck_reason": "官方披露链路支持把公司放入半导体材料瓶颈候选，但客户和产能细节仍需继续补证。",
+    "revenue_transmission": "收入通过客户验证、材料份额提升、晶圆厂稼动率和耗材复购传导。",
+    "serenity_fit": 0.74,
+    "layer_score": 74,
+    "company_fit": 74,
+    "evidence_supported_growth": "H3",
+    "h4_h5_evidence_bar_met": false,
+    "required_next_evidence": "核验客户贡献、产能利用率和产品线收入拆分。",
+    "posterior_basis": "AI 深研支持提高研究优先级，但不解除客户/订单/产能和买点门控。",
+    "ai_confidence": "HIGH",
+    "thesis_quality_delta": 3,
+    "evidence_confidence_delta": 1.5,
+    "risk_adjustment": 1,
+    "action_condition_summary": "先保持强观察；只有客户/产能/产品线证据和买点同时改善才升级行动。"
+  }
+}

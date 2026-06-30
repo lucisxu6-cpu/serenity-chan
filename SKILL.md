@@ -3,399 +3,126 @@ name: serenity-chan-stock-skill
 description: Use when performing data-first equity research for A-share, US, HK, or cross-market stock screening, single-company thesis challenges, theme scans, candidate comparisons, evidence/falsification dashboards, valuation work, Chan/GF-DMA buy-point discipline, or strategy/forecast follow-through. Always route market data and filings through market-specific sources before making current price, financial, rating, entry, allocation, or forecast claims.
 ---
 
-# Serenity + 缠论长线高胜率选股鉴股 Skill
+# Serenity Chan Stock Skill
 
-## 0. Core Promise
+## Core Contract
 
-把一个投资主题、股票代码或候选池，转化为一份**可核验、可证伪、可执行跟踪**的研究结论：
+Turn a stock, theme, candidate pool, or strategy question into research that is grounded in real data, AI investigation, evidence constraints, action conditions, and reviewable follow-up.
 
-```text
-市场/政策/技术叙事
-→ 已发生需求变化
-→ 产业链/供应链分层
-→ 真正扩产瓶颈
-→ 映射公司
-→ 证据等级
-→ 财务兑现
-→ 内在增长与市场隐含预期
-→ 技术位置与缠论买点
-→ 仓位条件与证伪点
-→ 情景预测、行动触发器与复盘账本
-```
+Use this operating sequence for every research task:
 
-本 Skill 的默认输出分类：核心长线候选、强观察对象、高弹性主题、已拥挤/高估对象、剔除或证伪对象。
+1. Parse the request into one route.
+2. Acquire real data before making current price, valuation, financial, rating, entry, allocation, or forecast claims.
+3. Keep market-specific source routing: A-share, US, and HK must use their own disclosure and market context.
+4. Separate observed facts, inference, and judgment.
+5. Generate AI research work before formal delivery when the task asks for analysis, comparison, recommendations, strategy, or action.
+6. Validate every structured artifact before using it in a user-facing answer.
+7. Deliver in Chinese by default while preserving machine enum fields in English.
 
-**最高原则：No Data, No Guess, Exhaust Retrieval First。关键数据先按市场专属取数阶梯、取数账本和补数任务穷尽追索；自动链路仍不可得时，进入研究债务、行动门控和评级上限，不编造也不跳过。**
+The skill supports research assistance, evidence organization, candidate comparison, action framing, and forecast review. Users remain responsible for investment decisions.
 
-本 Skill 只提供研究框架、证据链、评级约束和风险边界，不提供个性化投资建议，不承诺收益，不执行交易。
+## Route Selection
 
----
+Choose exactly one primary route. Read only the references needed for that route.
 
-## 1. Request Router
+| User Intent | Route | Read First | Primary Commands |
+|---|---|---|---|
+| Current price, market, data availability, source check | Data audit | `references/01_data_first_market_router.md` | `python scripts/data_router.py resolve <symbol>` then `python scripts/data_router.py fetch <symbol>` |
+| Single stock analysis, thesis challenge, valuation, buy point | Single company | `references/01_data_first_market_router.md`, `references/02_serenity_bottleneck_workflow.md`, `references/03_fundamental_valuation_framework.md`, `references/04_chan_technical_framework.md`, `references/06_risk_compliance_no_guess.md` | `python scripts/data_router.py fetch <symbol>` then build/validate the relevant output contract |
+| Theme scan, industry chain, candidate discovery | Theme scan | `references/17_industry_domain_packs.md`, `references/01_data_first_market_router.md` | `python scripts/build_theme_candidate_universe.py <theme> --out <universe.json>` then `python scripts/run_theme_research_analysis.py <theme> --out-dir <run_dir> --research-mode formal` |
+| Multiple candidate comparison | Candidate comparison | `references/01_data_first_market_router.md`, `references/02_serenity_bottleneck_workflow.md`, `references/03_fundamental_valuation_framework.md`, `references/04_chan_technical_framework.md`, `references/15_ai_overlay_execution_protocol.md` | `python scripts/run_research_analysis.py <symbol...> --out-dir <run_dir> --research-mode formal` |
+| Recommendation, allocation, action plan, trend forecast | Strategy forecast | `references/16_laplace_strategy_bridge.md`, `companion-skills/laplace-forecast/SKILL.md` | Build `laplace_strategy_input.json`, `laplace_strategy_prompt.json`, `laplace_strategy_judgment.json`, then render strategy report |
+| Report rendering or delivery validation | Delivery | `references/05_output_templates.md`, `references/06_risk_compliance_no_guess.md` | `python scripts/validate_research_delivery.py <comparison_final.json>` and `python scripts/render_research_report.py --comparison-report <comparison_final.json>` |
 
-先识别用户请求类型，再选择工作流。
+When a task crosses routes, complete the earlier evidence route first. For example, a strategy recommendation built from stocks must complete candidate comparison before entering strategy forecast.
 
-### 1.0 Mandatory Real Data Acquisition
+## Data-First Rules
 
-任何涉及当前股价、财报、估值、市值、客户/订单、评级或买点的任务，必须先尝试真实取数，再输出可审计的数据包，最后才进入分析。
+Before analysis, obtain or explicitly fail the relevant data package:
 
-数据包至少包含：
+- Market identity, normalized symbol, exchange, and currency.
+- Current quote and adjusted price history when price, entry, or technical timing is requested.
+- Financials, filings/announcements, valuation inputs, total shares, total market cap, and source level.
+- Customer, order, bid-win, capacity, and revenue-transmission evidence when the thesis depends on commercial adoption.
+- Attempt ledger, data gaps, manual retrieval tasks, research debt, and data consumption audit.
 
-- 解析后的市场、标准代码、交易所和货币。
-- 每类关键数据的主源、结构化源、辅助源和 forbidden source。
-- `data_acquisition.attempt_ledger`：每个数据集的逐源尝试记录。
-- `data_acquisition.data_gaps`：数据缺口类型、决策影响、评级影响和下一步动作。
-- `data_acquisition.research_debt`：影响评级或行动状态的待补证据。
-- `data_acquisition.manual_retrieval_tasks`：自动取数无法完成时的补数任务。
-- `valuation_inputs`：当前价格、总股本、总市值、货币、日期、股本口径和市值口径；流通股和流通市值在源可得时一并记录。
-- `currency_normalization_matrix`：候选对比中必须显式处理估值市值币种与财报币种；币种不一致时先做 FX 归一，失败则保持估值门控。
-- `financial_statement_unit` / `financial_unit_multiplier`：候选对比中必须显式处理财报金额单位；PE/PS 和市场隐含增长只使用绝对收入、绝对净利润和同币种市值。
-- `customer_order_capacity_evidence`：客户、订单、招投标、产能和收入传导证据 lane；从 A 股 CNINFO、港股 HKEXnews、美股 SEC/IR 披露元数据进入证据队列。
-- `customer_evidence_matrix`：候选对比中的客户/订单/产能证据矩阵；必须暴露 direct evidence、lead evidence、review queue、证据分数和下一证据。
-- `data_consumption_audit`：进入对比报告后，审计已取数据是否被财务、估值、增长和排序矩阵正确消费。
-- `readiness_matrix`：进入对比报告后，拆分 Fetch Status、Research Readiness、Action Readiness 和 Data Evidence Cap。
-- `data_quality`：当前请求和完整研究所允许的评级上限。
-- `ai_review`：需要 AI 介入判断的源强度、行业口径、warning 和升级条件。
-- `ai_review_status_matrix`：候选对比中每个候选的 AI 研究执行状态；正式研究必须落到 `COMPLETED`、`FAILED_INSUFFICIENT_EVIDENCE` 或 `CONFLICT_WITH_DATA`。`NOT_RUN` 只允许出现在 formal 交付前的阻断任务包或 diagnostic 基线；`SKIPPED_QUICK_AUDIT` 只允许用户明确要求快速审计或数据诊断时使用。
-- `candidate_pool_semantic_coherence`：候选池是否同层、同主题不同层、跨主题诊断或无关诊断；只有同层候选且行动门控解除后，才能产生正式决策对象。
-- `capital_action_quantification`：A 股定增、H 股上市、减持、回购、解禁、股权激励等资本动作的字段级量化结果。
-- `research_debt_runbook`：开放研究债务的可执行补证清单，包含轴线、阻塞等级、首选来源、验证目标和预期决策影响。
-- `laplace_strategy_input` / `laplace_strategy_prompt` / `laplace_strategy_judgment`：当用户需要趋势判断、可操作方向、组合/仓位、30/90/180 天触发器或复盘时，将候选对比报告转换为 companion Laplace 策略输入、AI 策略工作包和可校验策略 judgment。
+Never invent current price, market cap, customers, orders, financial rows, source strength, or buy points. A failed or unrequested critical dataset constrains rating and action state until the data path is repaired or explicitly scoped out by the user.
 
-同一分析任务在 A 股、美股和港股必须经过相同判断层级，但使用各自市场的主源路径。A 股不得用 SEC 替代巨潮/交易所公告，美股不得用 A 股 F10/摘要替代 SEC/IR，港股必须单独处理 HKEX、货币、股本和配售口径。
+Market routing is mandatory:
 
-优先使用：
+- A-share uses CNINFO/SSE/SZSE/BSE disclosure context, A-share quote and valuation sources, and A-share capital-action parsing.
+- US uses SEC/IR disclosure context and US quote/filing conventions.
+- HK uses HKEXnews, HK quote conventions, HKD valuation, share-count disclosures, placement, monthly return, and next-day disclosure context.
 
-```bash
-python scripts/run_research_analysis.py <symbol_a> <symbol_b> --out-dir <run_dir> --research-mode formal
-python scripts/data_router.py fetch <symbol>
-python scripts/data_router.py plan <symbol>
-python scripts/data_router.py resolve <symbol>
-```
+Use `references/01_data_first_market_router.md` for source ladders, forbidden source substitutions, adapter boundaries, and data-gap semantics.
 
-美股 SEC 官方接口建议显式提供身份，避免被 SEC 拒绝：
+## Formal AI Research Loop
+
+Formal analysis and comparison must include AI research execution. Use `references/15_ai_overlay_execution_protocol.md` for details.
+
+Required loop:
+
+1. Run the formal research command.
+2. If it returns `AGENT_RESEARCH_QUEUE_READY`, validate the queue:
 
 ```bash
-python scripts/data_router.py fetch NVDA --sec-user-agent "Your Name your.email@example.com"
+python scripts/validate_agent_research_queue.py <run_dir>/agent_research_queue.json
+python scripts/build_agent_overlay_workspace.py <run_dir>/agent_research_queue.json --out <run_dir>/agent_overlay_workspace.json
 ```
 
-`fetch` 能自动抓取可用的 L2 行情/复权历史、美股 SEC L0 filing 与 US-GAAP / IFRS XBRL 财务事实、A 股 Eastmoney/Tencent L2 行情/前复权 K 线、A 股 Tencent 股本/市值估值输入、A 股 CNINFO L0 公告元数据、A 股 CNINFO L0 官方报告 PDF 核心财务行抽取（中文和英文合并报表）、A 股金融行业专门 profile、A 股 Eastmoney F10 L3 结构化财务预检、港股 HKEX 年报/中报/月报/翌日披露报表股本抽取 + Yahoo HK 行情估值输入、港股 HKEXnews 公告和官方年报/中报 PDF 核心财务行抽取、A/US/HK 客户订单产能证据 lane，并生成带 `raw_hash` / `pdf_hash` 的本地数据包。美股 CIK 解析先使用稳定 bootstrap，再尝试 SEC ticker 目录；财务从 SEC companyfacts 读取 10-K、10-Q、20-F、40-F 核心 facts，必要时继续取 SEC companyconcepts。若网络、证书、SEC 身份、源限流或市场不支持导致 fetch 失败，必须把相应字段标记为 `FAILED` / `PENDING` 并写入 `attempt_ledger`；若 scoped fetch 未请求某数据，标记 `NOT_REQUESTED` 并写入 `data_gaps`。这些状态都不能支持高评级；不得改用猜测值。数据 provider 受有界执行预算保护；官方 PDF 下载和解析必须在预算内完成或留下可审计失败原因。
+3. For every work item, read the workspace, manifest, review packet, committee packet, source catalog, customer/order/capacity evidence, deterministic matrices, and prompt package.
+4. Write one `ai_research_dossier.json` per candidate using `assets/ai_research_dossier.schema.json`.
+5. Project the dossier into exactly one result:
 
-内置真实取数边界：
+- `ai_research_overlay.json` when evidence is sufficient.
+- `ai_review_outcome.json` when evidence is insufficient or conflicts with deterministic data.
 
-- `Eastmoney_Quote_Kline_L2`：A 股 SH/SZ/BJ 当前行情、不复权/前复权 K 线，属于 L2 辅助行情源。
-- `CNINFO_Tencent_Adjusted_Kline_L0L2`：A 股复权历史修复源；当免费行情只返回未确认日线时，必须读取 CNINFO 权益分派实施公告，解析除权除息日、现金分红和送转比例，并生成可审计前复权序列。
-- `Tencent_Quote_Kline_L2`：A 股 SH/SZ/BJ 当前行情、股本/市值估值输入和日线历史补充源；不能把未确认日线直接当作前复权数据。
-- `Yahoo_Chart_L2` / `Yahoo_Chart_Query2_L2`：US / HK 行情和历史，以及 A 股辅助交叉行情源。
-- `SEC_Companyfacts_L0`：美股 SEC companyfacts 和 submissions，覆盖 US-GAAP / IFRS 核心财务 facts，属于 L0 官方源。
-- `SEC_CompanyConcepts_L0`：美股 SEC companyconcepts 细粒度财务事实，覆盖 US-GAAP / IFRS 核心财务 facts，属于 L0 官方源。
-- `CNINFO_Announcements_L0`：A 股巨潮公告元数据和 PDF 链接，属于 L0 官方公告源。
-- `CNINFO_FinancialReports_L0`：A 股官方年报、季报 PDF 下载、文本解析和核心财务行抽取，属于 L0 官方报告源；普通经营企业必须抽取收入、净利润、经营现金流、资产、负债和权益，中文和英文版合并报表都要走同一字段合同；银行必须抽取净利息收入、净息差、存贷款、资产质量和资本充足率；证券公司必须抽取净资本、风险覆盖率、资本杠杆率、流动性覆盖率和净稳定资金率；保险公司必须抽取保险服务收入、保险合同负债、核心偿付能力和综合偿付能力。
-- `Eastmoney_F10_Financials_L3`：A 股三表 L3 结构化财务预检，输出收入、归母净利、经营现金流、资产、负债、权益等核心字段；仅 F10 可用时必须保留财报验证债务，不能放开 S/A 研究评级。
-- `HKEXnews_Announcements_L0`：港股 HKEXnews 公告元数据和 PDF 链接，属于 L0 官方公告源。
-- `HKEXnews_FinancialReports_L0`：港股 HKEX 年报/中报官方 PDF 下载、文本解析和核心财务行抽取，属于 L0 官方报告源；若 PDF 文本不可解析或核心字段缺失，必须生成字段级缺口并限制评级。
-- `HKEX_Yahoo_Valuation_L0L2`：港股估值输入源，从 HKEX 年报、中报、月报或翌日披露报表文本抽取已发行股本，并结合 Yahoo HK 当前价生成 HKD 总市值；股本证据来自 L0 官方披露，价格属于 L2 行情预检。
-- `Disclosure_Customer_Order_Capacity_Evidence_L0`：A/US/HK 客户、订单、招投标和产能证据 lane；优先复用已抓取 filings/announcements，输出 direct evidence、lead evidence、review queue、证据分数和下一证据，不能把线索自动升级为收入传导结论。
-- Wind/Choice/Tushare 等授权结构化源未配置时，不能用错源替代；缺口类型必须精确限定为“授权结构化行项目/数据库缺口”。
-
-AI 证据裁决必须介入：
-
-1. `financials=OK` 表示最新期收入、净利润、经营现金流、资产、负债和权益均已抽取并通过校验；研究级证据强度由 source level、`source_integrity`、`data_gaps`、`research_debt`、`ai_review` 和 L0/L1 复核共同决定。
-2. 读取 manifest 的 `attempt_ledger`、`data_gaps`、`research_debt`、`ai_review`、`source_level`、`warnings`、`validation.warnings` 和 `raw_path`，逐项解释是否可支撑评级升级。
-3. A 股财务优先使用 `CNINFO_FinancialReports_L0` 官方报告 PDF 行级抽取；若只来自 `Eastmoney_F10_Financials_L3`，必须生成 `NOT_MACHINE_READABLE` 财报验证债务，最终研究评级上限为 B。
-4. 银行、保险、券商等金融企业不得套普通经营企业三表逻辑；必须按行业报表口径单独判断，缺专门 profile 时最高 B。
-5. 当 validation 把评级上限压低，即使数据状态为 `OK`，也必须生成机器可读的 `data_gaps` / `research_debt`：K 线窗口不足使用 `EVIDENCE_DEPTH_LIMIT`，复权口径未验证使用 `ADJUSTMENT_BASIS_UNVERIFIED`。
-6. 现金流/净利 warning 不能机械扣分或忽略；AI 必须判断是中期累计/季节性、行业模式，还是利润质量问题。
-7. 产业链层级、公司卡点、收入传导和反证判断通过 `ai_research_overlay` 进入对比报告；overlay 必须先通过 `scripts/validate_ai_overlay.py`。
-8. AI 研究证据不足、与确定性数据冲突或用户明确要求快速审计时，输出 `ai_review_outcome` 并通过 `scripts/validate_ai_review_outcome.py`；该 outcome 必须合并进对比报告，不能退化成未执行。
-9. AI overlay 可以更新产业层级、证据支持增长、反证和研究问题；`market_implied_growth` 由 `valuation_input_matrix`、PE/PS 和同币种财务口径生成。
-10. 客户、订单、招投标、产能和收入传导必须先读取 `customer_order_capacity_evidence` 与源文件；direct evidence 支持进入 overlay，lead evidence 只能形成研究问题和下一证据。
-11. 用户可读分析结果默认使用中文；机器字段可保留英文枚举，但必须用中文解释状态、限制和下一步。
-
-### 1.1 Theme Scan / 主题扫描
-
-触发词：产业链、机器人、国产算力、DeepSeek、AI 半导体、CPO、长鑫、昇腾、HBM、电力、美国 AI infrastructure、which stocks、最值得研究。
-
-必须：
-
-1. 读取 `references/17_industry_domain_packs.md`。
-2. 对内置主题先运行 `python scripts/build_theme_candidate_universe.py <theme> --out <universe.json>`，再运行 `python scripts/validate_theme_candidate_universe.py <universe.json>`。
-3. 运行 `python scripts/build_theme_research_packet.py <universe.json> --out <theme_research_packet.json>`，再运行 `python scripts/validate_theme_research_packet.py <theme_research_packet.json>`。
-4. 需要从主题直接进入正式研究时，首选 `python scripts/run_theme_research_analysis.py <theme> --out-dir <run_dir> --research-mode formal`。
-5. 非内置主题由 AI 先按 `assets/theme_candidate_universe.schema.json` 写出价值链层级、候选宇宙、热门降级方向和扩展任务，再运行 `validate_theme_candidate_universe.py`；不得用占位候选替代真实候选。
-6. 先排产业链层级，再排公司。
-7. 至少覆盖 3 个价值链层级；深度扫描尽量建立 20+ 候选公司。
-8. 每个研究队列首位必须说明“卡住什么环节”。
-9. 至少给出一个热门但降级的方向，并说明为什么。
-10. 当前结论必须用最新数据源；没有数据时标记为 initial pass。
-11. 如果直接列股票而不输出产业链地图、瓶颈层级排序和候选池，视为不合格输出。
-
-### 1.2 Single-Company Challenge / 单股鉴股
-
-触发词：分析某公司、是否核心供应商、长线高胜率、估值、买点、证伪。
-
-必须：
-
-1. 解析市场和代码，防止 A 股/美股/HK 取错源。
-2. 获取当前价格、复权历史价格、最新财报、公告/filing、股本/市值。
-3. 输出基本面 thesis、反方 thesis、证伪条件。
-4. 用缠论/多级别技术框架判断“好公司是否有好位置”。
-
-### 1.3 Candidate Comparison / 候选对比
-
-比较多个公司时，不能只按涨幅或 PE 排序。必须分开：
-
-```text
-产业链卡点排序
-→ 公司证据排序
-→ 财务质量排序
-→ 估值赔率排序
-→ 技术位置排序
-→ 综合优先级
-```
-
-执行顺序：
-
-1. 首选运行 `python scripts/run_research_analysis.py <symbol...> --out-dir <run_dir> --research-mode formal`。主题研究应传入 `--theme-universe <universe.json>` 与 `--theme-research-packet <packet.json>`，或直接使用 `run_theme_research_analysis.py`。流程会真实取数、生成内部数据基线，并为每个候选生成 `ai_review_packet.json`、`ai_committee_packet.json` 和 `ai_overlay_prompt.json`。
-2. 若输出 `AGENT_RESEARCH_QUEUE_READY`，先运行 `python scripts/validate_agent_research_queue.py <run_dir>/agent_research_queue.json`，再运行 `python scripts/build_agent_overlay_workspace.py <run_dir>/agent_research_queue.json --out <run_dir>/agent_overlay_workspace.json`。当前 AI 必须读取全部 `work_items`、workspace、prompt、review packet、committee packet 和源文件，为每个候选输出一个正式 AI 结果：证据足够时输出 `assets/ai_research_overlay.schema.json` 允许字段；证据不足或数据冲突时输出 `assets/ai_review_outcome.schema.json` 允许字段。formal 模式不得把缺失 AI 研究转成 `SKIPPED_QUICK_AUDIT`。
-3. overlay 单独校验时运行 `python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>`；outcome 单独校验时运行 `python scripts/validate_ai_review_outcome.py <outcome.json>`。
-4. 每个候选都有 overlay/outcome 后，继续运行同一个 `run_research_analysis.py` 命令并传入 `--overlay SYMBOL=<overlay.json>` 或 `--ai-outcome SYMBOL=<outcome.json>`，生成 `comparison_final.json` 和 `comparison_final.md`。
-5. 交付前运行 `python scripts/validate_research_delivery.py <run_dir>/comparison_final.json`；校验通过后再向用户输出正式报告。
-6. 顶层流程在最终报告生成后自动写出 `laplace_strategy_input.json` 和 `laplace_strategy_prompt.json`；用户询问趋势、推荐、组合、仓位、行动触发器或后续怎么做时，继续进入 companion Laplace 策略层。
-7. 只有用户明确要求数据审计、快速排查或工程诊断时，才能运行 `--research-mode diagnostic`。diagnostic 输出只能用于数据质量、缺口和任务分派，不能产生正式决策对象，也不能输出行动建议。
-8. 需要手工拆分时，才使用低层命令：`data_router.py fetch`、`build_comparison_report.py`、`build_ai_overlay_prompt.py`、`build_ai_review_packet.py`、`build_ai_committee_packet.py`、`build_agent_overlay_workspace.py`、`validate_and_merge_ai_overlay.py`、`render_research_report.py`、`build_laplace_strategy_input.py`、`build_laplace_strategy_prompt.py`、`validate_laplace_strategy_judgment.py`、`render_strategy_report.py`。
-9. `validate_and_merge_ai_overlay.py` 会强制要求每个候选都有一个正式 AI 结果，并会把 overlay 的 `source_ref` 解析到对应 manifest 的真实 source artifact 或 AI review packet；无法解析的引用、与证据不一致的数字 claim 会阻断合并。
-10. 用 `python scripts/render_research_report.py --comparison-report comparison_final.json --mode candidate_comparison` 输出候选对比交付稿；需要逐候选研究工作台时使用 `--mode full_research`。
-11. 同一正式评级上限下，仍必须输出研究队列差异、行动候选差异、研究债务差异、资本动作量化差异、技术动作差异和候选池语义一致性；只有同层候选且行动门控解除后，才能产生正式决策对象。同主题不同层、跨主题或无关诊断只能作为研究优先级或诊断集合。
-12. 若当前价和股本可用，先在 `valuation_input_matrix` 暴露价格、股本、市值、货币、日期、来源、口径和 `valuation_stage`，再由 `growth_hypothesis_matrix` 引用该估值输入并输出预检级 PE/PS 和 H 档；缺少估值输入时保持 `UNKNOWN`，并生成估值补证任务。
-13. 财报行若以 million、thousand、万元等单位披露，必须先归一到绝对金额，再计算 PE/PS 和市场隐含增长。
-14. 若 `data_consumption_audit` 出现 `MISMATCH`，不得输出正式决策对象；先修复数据消费链路。
-
-### 1.4 Strategy Forecast / 策略预测
-
-触发词：怎么搞、推荐、可操作、配置、仓位、组合、当前大趋势、未来半年、概率、情景、触发器、失效条件、复盘。
-
-必须：
-
-1. 先用 formal 模式完成 Serenity 数据和 AI 研究闭环，得到 `report_readiness.stage=FINAL_REPORT_READY` 的 `comparison_final.json`；内部基线、agent queue 和 diagnostic 输出不得进入策略建议。若用户只要宏观趋势或行业判断，也必须明确 observed / inferred / judgment 边界。
-2. 运行 `python scripts/build_laplace_strategy_input.py <comparison_final.json> --out <laplace_strategy_input.json>`。
-3. 运行 `python scripts/validate_laplace_strategy_input.py <laplace_strategy_input.json>`。
-4. 运行 `python scripts/build_laplace_strategy_prompt.py <laplace_strategy_input.json> --out <laplace_strategy_prompt.json>`。
-5. 读取 `references/16_laplace_strategy_bridge.md`。
-6. 读取 `companion-skills/laplace-forecast/SKILL.md`；行业、市场或组合问题同时读取 `first-order-lenses.md`，证据不足或需要代理指标时读取 `evidence-loop.md`，需要复盘时读取 `ledger-schema.md`。
-7. 当前 AI 按 `assets/laplace_strategy_judgment.schema.json` 输出 `laplace_strategy_judgment.json`，用户可读字段使用中文，显式拆分 `Observed`、`Inferred`、`Judgment`，并包含 Forecast、Decision、Decision model、Dominant variables、Scenarios、Triggers、Invalidation、Next evidence 和 Action plan。
-8. 运行 `python scripts/validate_laplace_strategy_judgment.py <laplace_strategy_judgment.json> --strategy-input <laplace_strategy_input.json>`，再运行 `python scripts/render_strategy_report.py <laplace_strategy_judgment.json> --strategy-input <laplace_strategy_input.json> --out <strategy_report.md>`。
-9. 重要主题、候选池或中期策略判断必须生成可写入 forecast ledger 的结构化 claim；无法定义 claim 时说明证据天花板和下一观察点。
-10. Serenity 的硬门控不能被策略层覆盖；研究债务只能转成下一证据、触发器或失效条件。
-
-### 1.5 Data Audit / 数据核验
-
-当用户要求“确认数据”“别猜”“自动分析”时，直接启用 Data-First 模式。使用 `references/01_data_first_market_router.md` 和 `scripts/data_router.py`。
-候选对比、完整研究和正式报告的 AI 阶段使用 `references/15_ai_overlay_execution_protocol.md`。
-
----
-
-## 2. Mandatory Data-First Preflight
-
-任何涉及当前股价、历史走势、估值、财报、订单、客户关系、公告、买点、评级的任务，必须先做数据预检。
-
-输出中必须包含：
-
-```markdown
-## 数据质量与限制
-- 市场与代码解析：OK / PARTIAL / FAILED
-- 当前价格：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
-- 历史复权行情：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
-- 股本/市值/估值输入：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
-- 财报数据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
-- 公告/filing：OK / PARTIAL / STALE / FAILED / PENDING / NOT_APPLICABLE / NOT_REQUESTED
-- 客户/订单/产能证据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
-- 供应链证据：OK / PARTIAL / STALE / FAILED / PENDING / NOT_REQUESTED
-- 取数账本：attempt_ledger 路径或摘要
-- 数据缺口：data_gaps 摘要
-- 研究债务：research_debt 摘要
-- 补数任务：manual_retrieval_tasks 摘要
-- 无法验证字段：____
-- 因数据限制，本报告评级上限：S/A/B/C/D/OBSERVE_ONLY
-```
-
-硬规则：
-
-- 当前价格失败：不能给“当前买点”；评级最高 B。
-- 复权历史行情失败：不能输出缠论买点；技术评级最高 C。
-- 估值输入缺少当前价格、总股本、总市值、货币、日期或来源口径：不能输出市场隐含增长、估值赔率或核心行动；行动门控为 `VALUATION_GATED`，`primary_gate_class=DATA_ACQUISITION`。
-- 估值市值币种与财报币种不一致：必须进入 `currency_normalization_matrix`；FX 归一成功后才允许计算预检 PE/PS 和市场隐含增长，失败时保持 `VALUATION_GATED`。
-- 财报金额单位为 million、thousand、万元等非绝对金额：必须记录 `financial_statement_unit` 和 `financial_unit_multiplier`；增长矩阵必须使用绝对收入、绝对净利润和同币种市值计算 PE/PS。
-- 财报、公告或 filing 已取得但 source level、机器可读性、口径复核不足：行动门控为 `EVIDENCE_GATED`，`primary_gate_class=EVIDENCE_VALIDATION`。
-- 市场隐含增长达到 H4/H5 且证据支持不足：保留市场隐含增长判断，行动门控为 `VALUATION_GATED`，`primary_gate_class=RESEARCH_VALIDATION`。
-- PE/PS 默认是 `preflight` 估值；只有经过同币种、口径、财务和股本复核后，才能升级为 `verified_l0` / `verified_l1` / `deep_valuation`。
-- 最新财报失败：不能给 S/A 长线结论。
-- 原始公告/filing 失败：客户、订单、产能只能算线索，不能算强证据。
-- `NOT_APPLICABLE` / `NOT_REQUESTED` 不能绕过关键数据门禁；正式评级任务中视为不可用并触发评级封顶。
-- 多源价格差异 > 0.5%：必须说明；> 2%：暂停估值和技术结论。
-- A 股数据不得默认用美股源；美股财报不得用 A 股 F10 代替；HK 与 A/H 双重上市必须区分代码、货币、股本。
-
----
-
-## 3. Core Lenses
-
-### 3.1 Serenity Lens: 瓶颈与小市值弹性
-
-核心问题：
-
-```text
-谁在花大钱？
-钱会流到哪一层？
-哪一层最窄？
-谁控制窄口？
-当前市场把它错当成什么？
-这个错分会不会在 1-4 个季度内被财报或公告验证？
-```
-
-判断重点：已发生需求变化、收入/利润传导路径、供应商稀缺度、认证周期、产能扩张难度、单位经济和毛利率、市值相对需求冲击的弹性、明确证伪点。
-
-参考 `references/02_serenity_bottleneck_workflow.md`。
-
-### 3.2 Fundamental + Valuation Lens: 财务兑现与内在增长
-
-Serenity 找到的是候选，基本面决定能否长线。
-
-必须检查：收入增速和核心业务占比、毛利率与定价权、净利率与经营杠杆、经营现金流/应收/存货/合同负债、capex/在建工程/折旧/融资稀释、客户集中与议价权、市场隐含增长 vs 真实内在增长、Bull/Base/Bear 三情景估值。
-
-H4/H5 高增长只能由原始披露、客户/订单、产能、财报兑现或多源强交叉验证支持。主题热度、FOMO、KOL、概念梳理只能提高“市场预期/估值风险”的判断，不能直接提高内在增长假设。
-
-参考 `references/03_fundamental_valuation_framework.md`。
-
-### 3.3 Chan Lens: 缠论与多级别买点纪律
-
-缠论只负责位置，不负责证明公司好坏。
-
-必须区分：
-
-```text
-好赛道 ≠ 好公司
-好公司 ≠ 好股票
-好股票 ≠ 当前好买点
-```
-
-优先买点：
-
-- 强基本面 + 情绪回撤 + 日线/30 分钟底背驰 + 二买确认；
-- 强趋势突破中枢 + 回踩不回中枢 + 三买确认。
-
-禁止：利好当天无结构追高、周线顶背驰后当作长线买点、下跌趋势里把每次反弹都当反转、用技术买点拯救已证伪的基本面。
-
-参考 `references/04_chan_technical_framework.md`。
-
----
-
-## 4. Market-Specific Data Routing
-
-在任何数据抓取前，先解析市场：
-
-| 市场 | 代码例子 | 披露主源 | 行情/财务优先级 | 关键风险 |
-|---|---|---|---|---|
-| A 股 | 688019.SH / 300750.SZ / 920593.BJ | 巨潮、上交所、深交所、北交所 | CNINFO 官方报告 PDF 行级财务抽取 → 银行等金融行业 profile → Wind/Choice/CSMAR/Tushare → Eastmoney/Tencent/AKShare/BaoStock 行情与估值输入 → Eastmoney F10 L3 结构化财务预检 | 复权口径、F10 错误、互动平台弱证据、金融企业口径错配 |
-| 美股 | AAPL / NVDA / MU | SEC EDGAR、公司 IR | Polygon/FactSet/Bloomberg/Tiingo/Yahoo/Stooq；SEC XBRL 财报 | split、ADR、非 GAAP、SBC、ATM/S-3 |
-| 港股 | 0700.HK / 9988.HK | HKEXnews、公司公告 | HKEXnews 年报/中报 PDF → HKEX 年报/中报/月报/翌日披露报表股本抽取 + Yahoo HK 行情估值输入 → Wind/Choice/港交所/财经数据商 | 港币、流动性、配售、A/H 差异 |
-
-详细规则见 `references/01_data_first_market_router.md`。
-
----
-
-## 5. Scoring And Rating
-
-使用候选决策矩阵，判断标的是核心候选、强观察、候选池、数据门控、线索跟踪，还是应该剔除。高分必须同时满足数据可用、主源证据、AI 证据裁决、估值赔率、技术位置和证伪路径，并受研究债务约束。
-
-| 维度 | 作用 |
-|---|---|
-| Thesis Quality | 产业链层级、公司瓶颈、财务兑现、风险控制 |
-| Evidence Confidence | 主源覆盖、财报验证、声明可追溯性、交叉验证、时效 |
-| Market Payoff | 估值折价、隐含增长与证据匹配、上下行赔率 |
-| Technical Timing | 月/周/日结构、Chan 买点、GF-DMA、回撤位置 |
-| Action Readiness | 当前价、复权历史、技术结构、数据债务、风险控制 |
-| Candidate Priority | 候选优先级分数和 watchlist bucket |
-
-若财务只来自 L3/F10 结构化预检、金融企业缺专门 profile、关键数据不可用、弱证据或 H4/H5 估值缺口存在，必须进入 `data_gaps` / `research_debt` / `blockers`。关键债务会压低证据评级、候选优先级和行动状态；高模块分数不能覆盖这些门控。
-
-评级：S=核心长线候选，A=强观察对象，B=有潜力但有缺口，C=主题型或交易型，D=剔除或反面样本。
-
-使用 `scripts/serenity_chan_scorecard.py` 可对 JSON scorecard 计算研究评级、证据评级、行动状态和候选优先级。使用 `scripts/candidate_ranker.py` 可对多个候选做相对排序。
-
-候选对比报告还必须区分：
-
-- 正式评级上限：由证据强度、数据缺口、研究债务和市场源完整度控制。
-- 候选优先级：用于决定先研究谁，允许在相同评级上限下表达财务质量、资本动作、技术健康和 AI 层级判断的差距。
-- 行动状态：关键研究债务未清时保持 `DATA_GATED` / `RESEARCH_GATED` / `WAIT_FOR_BUY_POINT` / `LEAD_TRACKING`。
-- 行动门控：`action_gate.primary_gate` 必须精确写明 `DATA_GATED`、`EVIDENCE_GATED`、`VALUATION_GATED`、`AI_REVIEW_GATED`、`BUY_POINT_GATED` 或 `CAPITAL_ACTION_GATED`；`primary_gate_class` 必须区分 `DATA_ACQUISITION`、`EVIDENCE_VALIDATION`、`RESEARCH_VALIDATION`、`ACTION_TIMING`。
-
----
-
-## 6. Output Contract
-
-标准输出必须包含：
-
-1. 结论先行：最值得优先研究 / 不适合追 / 仅观察。
-2. 数据质量、取数账本、数据缺口和研究债务。
-3. 决策矩阵：thesis quality、evidence confidence、market payoff、action readiness、candidate priority。
-4. 一句话 thesis。
-5. 产业链位置和卡点。
-6. 证据等级：事实、推断、待验证。
-7. 财务兑现与估值。
-8. 缠论/技术位置。
-9. 催化剂和 1-4 季度验证路径。
-10. 证伪条件。
-11. 行动框架：观察 / 等买点 / 小仓试错 / 核心候选 / 剔除。
-
-模板见 `references/05_output_templates.md`。
-
-候选对比必须包含 `comparison_output_contract` 的顶层结构块：
-
-1. comparison_scope。
-2. candidates。
-3. data_acquisition_summary。
-4. candidate_pool_semantic_coherence。
-5. serenity_layer_matrix。
-6. ai_review_status_matrix。
-7. financial_quality_matrix。
-8. valuation_input_matrix。
-9. currency_normalization_matrix。
-10. growth_hypothesis_matrix。
-11. technical_timing_matrix。
-12. capital_actions。
-13. capital_action_quantification。
-14. data_consumption_audit。
-15. readiness_matrix。
-16. research_debt。
-17. research_debt_runbook。
-18. customer_evidence_matrix。
-19. candidate_priority_ranking；ranking 行必须包含 `research_priority_score`、`action_priority_score`、`decision_grade` 和带 `primary_gate_class` 的 `action_gate`。
-20. final_decision；必须包含 `leading_research_candidate`、`leading_action_candidate`、`decision_candidate`、`decision_mode`、`score_gap_to_runner_up`、`ranking_validity`、`candidate_pool_semantic_coherence` 和候选池数量提示。
-21. 用户要求趋势、推荐、组合或行动方案时，必须基于 `laplace_strategy_input` 进入 strategy forecast 输出。
-
-`ranking_validity=INVALID` 时，只能输出工程诊断和补数/修复任务；用户可读报告必须显示“工程诊断排序｜非投资候选排序”，不得产生正式决策对象，ranking 行的 `decision_grade=false`。`ranking_validity=PARTIAL` 时，可以输出研究优先级，但 `final_decision.decision_mode` 不能设为 `clear_decision_candidate`。
-`data_consumption_audit` 中 `MISMATCH` 触发 `INVALID`；`PARTIAL` / `DATA_GATED` 数据消费或 high/critical `research_debt` 触发 `PARTIAL`。
-
-标准单股、主题扫描和数据审计使用 `output_contract` 门禁：
+6. Validate every dossier and projected result:
 
 ```bash
-python scripts/validate_output_contract.py <report.md>
-python scripts/validate_output_contract_json.py <contract.json>
+python scripts/validate_ai_research_dossier.py <dossier.json> --manifest <manifest.json>
+python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>
+python scripts/validate_ai_review_outcome.py <outcome.json>
 ```
 
-候选对比使用 `comparison_output_contract` 门禁：
+7. Merge and validate:
 
 ```bash
-python scripts/validate_comparison_report.py <comparison_final.json>
+python scripts/validate_and_merge_ai_overlay.py <manifest...> \
+  --dossier SYMBOL=<dossier.json> \
+  --overlay SYMBOL=<overlay.json> \
+  --ai-outcome SYMBOL=<outcome.json> \
+  --report-out <comparison_final.json> \
+  --markdown-out <comparison_final.md>
 python scripts/validate_research_delivery.py <comparison_final.json>
-python scripts/render_research_report.py --comparison-report <comparison_final.json> --mode full_research
 ```
 
-门禁失败时必须修正报告；在无法取得外部数据时，报告必须降级到门禁允许的评级和动作后再交付。
+Formal delivery requires every candidate to have a validated dossier plus one validated projected result. Internal baselines, queues, diagnostic artifacts, and unexecuted AI work stay inside the execution workspace.
 
-长期跟踪、候选池或高估值争议对象必须把证伪条件落到 falsification dashboard，优先使用 `scripts/build_falsification_dashboard.py` 验证。
+## Candidate Comparison Logic
 
-策略预测使用 `laplace_strategy_input` 门禁：
+Compare candidates in layers:
+
+```text
+candidate pool coherence
+→ value-chain layer and bottleneck fit
+→ evidence confidence
+→ financial quality
+→ valuation payoff
+→ technical timing
+→ research priority
+→ action readiness
+```
+
+Only same-layer candidates with sufficient evidence and open action conditions may produce a formal decision candidate. Mixed-layer, cross-theme, or data-diagnostic pools produce research priority, next evidence, and scope boundaries.
+
+Use `assets/comparison_output_contract.schema.json` and `scripts/validate_comparison_report.py` as the final report contract. Final reports must include AI review status, AI dossier consumption, data acquisition summary, customer evidence matrix, valuation matrix, currency normalization, growth hypothesis, technical timing, capital actions, data consumption audit, readiness matrix, research debt, runbook, ranking, report readiness, and final decision.
+
+## Strategy Forecast Loop
+
+Use this route when the user asks what to do, how to allocate, which direction is actionable, what can change the thesis, or how the next 30/90/180 days may evolve.
+
+Required loop:
 
 ```bash
 python scripts/build_laplace_strategy_input.py <comparison_final.json> --out <laplace_strategy_input.json>
@@ -405,109 +132,50 @@ python scripts/validate_laplace_strategy_judgment.py <laplace_strategy_judgment.
 python scripts/render_strategy_report.py <laplace_strategy_judgment.json> --strategy-input <laplace_strategy_input.json> --out <strategy_report.md>
 ```
 
----
+Read `references/16_laplace_strategy_bridge.md` and the companion Laplace skill before writing strategy judgment. Strategy output must preserve Serenity evidence constraints, open research debt, triggers, invalidation, scenarios, action plan, and review cadence.
 
-## 7. Anti-Hallucination Rules
+## Output Requirements
 
-- 不编当前价。
-- 不编市值。
-- 不编客户。
-- 不编订单。
-- 不把互动平台/社媒当强证据。
-- 不把美股 SEC 数据误用于 A 股。
-- 不把 A 股 F10 摘要当公告原文。
-- 不把未复权走势用于长期技术判断。
-- 不把后复权价格当实际成交价格。
-- 不在关键数据失败时输出高评级。
+Every user-facing report should make these answers clear:
 
-风险与合规见 `references/06_risk_compliance_no_guess.md`。
+- What is known from real data.
+- What is inferred by AI research.
+- What judgment follows from the evidence.
+- Which candidate or layer deserves research first.
+- Whether action conditions are present.
+- Which evidence blocks rating or action.
+- What would upgrade, delay, reduce, or invalidate the thesis.
+- What to check in 30, 90, and 180 days.
 
----
+Use `references/05_output_templates.md` for report modes and `references/06_risk_compliance_no_guess.md` for evidence, rating, and compliance boundaries.
 
-## 8. Bundled Resources
+## Validation Gates
 
-- `references/01_data_first_market_router.md` — 市场识别、数据源路由、A/US/HK 数据隔离。
-- `references/02_serenity_bottleneck_workflow.md` — 产业链瓶颈、新闻到财报、小市值弹性。
-- `references/03_fundamental_valuation_framework.md` — 财务、贝叶斯增长、TAM-Adj-PEG、三情景估值。
-- `references/04_chan_technical_framework.md` — 缠论买点、多级别、DMA/ATR 辅助健康度。
-- `references/05_output_templates.md` — 单股、主题、对比、数据审计模板。
-- `references/06_risk_compliance_no_guess.md` — 证据等级、评级上限、合规边界。
-- `references/15_ai_overlay_execution_protocol.md` — AI 研究 overlay/outcome 执行闭环。
-- `references/16_laplace_strategy_bridge.md` — Serenity 报告进入 Laplace 策略预测、触发器、失效条件和复盘账本的桥接协议。
-- `references/17_industry_domain_packs.md` — 机器人、AI 算力/高速互联、创新药、电网电力设备的行业层级、证据和降级方向。
-- `assets/scorecard_template.json` — 综合评分模板。
-- `assets/scorecard.schema.json` — 评分输入 schema。
-- `assets/data_acquisition_policy.json` — 取数阶梯、数据集重要性和缺口类型。
-- `assets/fetch_attempt_ledger.schema.json` — 取数账本 schema。
-- `assets/data_gaps.schema.json` — 数据缺口 schema。
-- `assets/manual_retrieval_tasks.schema.json` — 补数任务 schema。
-- `assets/valuation_inputs.schema.json` — 当前价格、total shares、total market cap 和估值口径 schema。
-- `assets/customer_order_capacity_evidence.schema.json` — 客户、订单、招投标、产能和收入传导证据 lane schema。
-- `assets/ai_research_overlay.schema.json` — AI 研究覆盖层 schema。
-- `assets/ai_review_outcome.schema.json` — AI 研究失败、冲突或快速审计 outcome schema。
-- `assets/agent_research_queue.schema.json` — formal 模式的内部 AI 研究任务队列 schema。
-- `assets/research_workflow_state.schema.json` — 顶层 workflow 状态合同 schema。
-- `assets/capital_action_quantification.schema.json` — 资本动作字段级量化 schema。
-- `assets/data_consumption_audit.schema.json` — 已取数据在对比矩阵中的消费审计 schema。
-- `assets/research_debt_runbook.schema.json` — 可执行研究债务 runbook schema。
-- `assets/report_mode.schema.json` — 正式报告输出模式 schema。
-- `assets/evidence_ledger.schema.json` — 证据台账 schema。
-- `assets/falsification_dashboard.schema.json` — 证伪看板 schema。
-- `assets/technical_health.schema.json` — 技术健康矩阵 schema。
-- `assets/capital_actions.schema.json` — A 股资本动作 schema。
-- `assets/comparison_output_contract.schema.json` — 候选对比输出合同 schema。
-- `assets/laplace_strategy_input.schema.json` — Serenity-to-Laplace 策略输入合同 schema。
-- `assets/laplace_strategy_judgment.schema.json` — Serenity-to-Laplace 策略 judgment 输出合同 schema。
-- `assets/theme_candidate_universe.schema.json` — 主题扫描候选宇宙和价值链层级合同 schema。
-- `assets/analysis_request.schema.json` — 分析请求 schema。
-- `assets/output_contract.schema.json` — 标准输出合同 schema。
-- `assets/prompt_pack.md` — 可复制提示词。
-- `scripts/data_contracts.py` — 统一市场、数据状态、缺口类型、评级上限和取数记录合同。
-- `scripts/data_layer.py` — 市场路由和真实数据 provider 底层模块。
-- `scripts/market_source_policy.py` — Markdown/JSON 共享的市场源隔离规则。
-- `scripts/data_router.py` — 市场识别、真实数据预检、数据校验和质量报告脚手架。
-- `scripts/run_research_analysis.py` — 顶层正式研究流程，串联真实取数、内部基线、agent research queue、证据校验合并和最终报告。
-- `scripts/build_theme_candidate_universe.py` — 从行业 domain pack 生成层级优先的候选宇宙。
-- `scripts/validate_theme_candidate_universe.py` — 校验主题候选宇宙合同。
-- `scripts/build_theme_research_packet.py` — 从主题候选宇宙生成方向级 AI 研究任务包。
-- `scripts/validate_theme_research_packet.py` — 校验方向级 AI 研究任务包。
-- `scripts/run_theme_research_analysis.py` — 串联主题候选宇宙、方向级研究包、真实取数和 agent research queue。
-- `scripts/build_falsification_dashboard.py` — 证伪看板验证和渲染脚本。
-- `scripts/technical_health.py` — 从复权日线计算技术健康、短均线距离和缠论动作纪律。
-- `scripts/a_share_capital_actions.py` — 从 A 股公告元数据识别定增、减持、解禁、回购、股权激励等资本动作。
-- `scripts/a_share_capital_action_quantifier.py` — 将资本动作拆成新增股份、发行价、锁定期、回购金额、减持比例等量化字段和补证任务。
-- `scripts/build_comparison_report.py` — 从多个 manifest 汇总对比决策报告。
-- `scripts/build_ai_review_packet.py` — 从 manifest 生成 AI 审阅包。
-- `scripts/build_ai_committee_packet.py` — 从 manifest 生成多角色 AI 研究委员会包。
-- `scripts/build_ai_overlay_prompt.py` — 从 manifest 生成 AI overlay/outcome 的可执行 prompt package。
-- `scripts/build_agent_overlay_workspace.py` — 从 formal agent queue 生成逐候选 AI 研究工作台。
-- `scripts/build_research_debt_runbook.py` — 将开放研究债务转成可执行 runbook。
-- `scripts/data_consumption.py` — 审计取数结果是否被研究矩阵正确消费。
-- `scripts/financial_periods.py` — 标准化不同市场和财年口径的财报周期。
-- `scripts/render_research_report.py` — 将 comparison JSON 或 manifests 渲染为完整 Markdown 报告。
-- `scripts/build_laplace_strategy_input.py` — 将候选对比报告转换为 companion Laplace 策略输入。
-- `scripts/build_laplace_strategy_prompt.py` — 从策略输入生成 AI 策略 judgment 工作包。
-- `scripts/validate_laplace_strategy_input.py` — 校验 Serenity-to-Laplace 策略输入合同。
-- `scripts/validate_laplace_strategy_judgment.py` — 校验 AI 策略 judgment。
-- `scripts/render_strategy_report.py` — 将策略 judgment 渲染为中文 Markdown 报告。
-- `scripts/validate_comparison_report.py` — 校验候选对比 JSON 输出合同。
-- `scripts/validate_ai_overlay.py` — 校验 AI 研究覆盖层。
-- `scripts/validate_ai_review_outcome.py` — 校验 AI 研究失败、冲突或快速审计 outcome。
-- `scripts/validate_agent_research_queue.py` — 校验 formal AI 研究任务队列。
-- `scripts/validate_research_delivery.py` — 校验正式交付产物。
-- `scripts/validate_and_merge_ai_overlay.py` — 校验 overlay/outcome、合并候选对比并复验输出合同。
-- `scripts/merge_ai_research_overlay.py` — 带 overlay/outcome 校验的安全合并 CLI。
-- `scripts/serenity_chan_scorecard.py` — 候选决策矩阵评分器。
-- `scripts/candidate_ranker.py` — 多候选优先级排序器。
-- `scripts/validate_output_contract.py` — 标准 Markdown 输出门禁，检查数据质量、评级上限、证据、证伪和禁用措辞。
-- `scripts/validate_output_contract_json.py` — 标准结构化 JSON 输出合同门禁。
-- `scripts/run_static_evals.py` — 本地静态 eval runner。
-- `scripts/run_real_data_smoke.py` — 可选联网真实数据 smoke runner，覆盖 NVDA、本体上游链路、A 股行情/财务/公告和港股当前数据。
-- `scripts/validate_skill.py` — Skill 结构校验。
-- `companion-skills/laplace-forecast/` — 内置策略预测 companion skill，负责情景推演、底层变量、行动触发器、失效条件和 forecast ledger。
-- `examples/` — A 股、美股、主题扫描输出样例。
-- `evals/test_cases.md` — 行为测试。
-- `evals/static_cases.json` — 可运行静态 eval 用例。
+Run the narrowest applicable gate before delivery:
 
+```bash
+python scripts/validate_output_contract.py <report.md>
+python scripts/validate_output_contract_json.py <contract.json>
+python scripts/validate_comparison_report.py <comparison_final.json>
+python scripts/validate_research_delivery.py <comparison_final.json>
+python scripts/validate_laplace_strategy_input.py <laplace_strategy_input.json>
+python scripts/validate_laplace_strategy_judgment.py <laplace_strategy_judgment.json> --strategy-input <laplace_strategy_input.json>
+python scripts/validate_skill.py .
+python scripts/run_static_evals.py
+```
+
+When a gate fails, repair the artifact or lower the claim to the validated evidence boundary.
+
+## Reference Map
+
+- `references/01_data_first_market_router.md`: market routing, source ladders, forbidden substitutions, data gaps.
+- `references/02_serenity_bottleneck_workflow.md`: value-chain bottleneck logic and Serenity thesis formation.
+- `references/03_fundamental_valuation_framework.md`: financial realization, valuation, growth tiers, scenario reasoning.
+- `references/04_chan_technical_framework.md`: Chan/GF-DMA technical timing and buy-point discipline.
+- `references/05_output_templates.md`: user-facing report modes.
+- `references/06_risk_compliance_no_guess.md`: evidence levels, rating caps, compliance boundaries.
+- `references/15_ai_overlay_execution_protocol.md`: dossier, overlay, outcome, merge, delivery loop.
+- `references/16_laplace_strategy_bridge.md`: Serenity-to-Laplace strategy handoff.
+- `references/17_industry_domain_packs.md`: built-in industry routes and candidate universe construction.
 
 <!-- validator keywords: A 股 评级封顶 No Data, No Guess Market-Specific Data Routing -->

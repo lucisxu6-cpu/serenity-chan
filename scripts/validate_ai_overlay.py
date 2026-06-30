@@ -24,17 +24,32 @@ REQUIRED_FIELDS = {
     "ai_confidence",
 }
 ALLOWED_FIELDS = REQUIRED_FIELDS | {
+    "dossier_ref",
     "layer_score",
     "company_fit",
     "evidence_supported_growth",
     "h4_h5_evidence_bar_met",
     "required_next_evidence",
     "posterior_basis",
+    "thesis_quality_delta",
+    "evidence_confidence_delta",
+    "risk_adjustment",
+    "action_condition_summary",
 }
 SOURCE_LEVELS = {"L0", "L1", "L2", "L3", "L4"}
 AI_CONFIDENCE = {"LOW", "MEDIUM", "HIGH"}
 GROWTH = {"H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"}
 EVIDENCE_TEXT_LIMIT_BYTES: int = 2_000_000
+EVIDENCE_REF_FIELDS: set[str] = {"claim", "source_ref", "source_level", "confidence"}
+# Generic context aliases are useful for exact refs but too broad for substring matching.
+GENERIC_CONTEXT_KEYS: set[str] = {
+    "manifest",
+    "aireviewpacket",
+    "deterministicmatrices",
+    "financialqualitymatrix",
+    "valuationinputmatrix",
+    "growthhypothesismatrix",
+}
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -70,6 +85,16 @@ def _optional_score(payload: Mapping[str, Any], key: str, errors: list[str]) -> 
     score = _as_float(payload.get(key))
     if score is None or score < 0 or score > 100:
         errors.append(f"{key} must be a number between 0 and 100")
+        return None
+    return round(float(score), 2)
+
+
+def _optional_delta(payload: Mapping[str, Any], key: str, errors: list[str]) -> Optional[float]:
+    if key not in payload or payload.get(key) is None:
+        return None
+    score = _as_float(payload.get(key))
+    if score is None or score < -8 or score > 8:
+        errors.append(f"{key} must be a number between -8 and 8")
         return None
     return round(float(score), 2)
 
@@ -177,7 +202,13 @@ def _resolve_source_text(source_ref: str, evidence_context: Mapping[str, str]) -
         return ""
     for key, text in evidence_context.items():
         context_key: str = _compact_key(str(key))
-        if ref_key == context_key or ref_key in context_key or context_key in ref_key:
+        # Keep exact aliases such as "manifest" valid while blocking invented refs
+        # that merely contain a generic alias as a word.
+        if ref_key == context_key:
+            return str(text)
+        if len(ref_key) >= 12 and ref_key in context_key:
+            return str(text)
+        if len(context_key) >= 12 and context_key not in GENERIC_CONTEXT_KEYS and context_key in ref_key:
             return str(text)
     ref_terms: set[str] = {term for term in re.split(r"[^a-z0-9一-龥]+", source_ref.lower()) if len(term) >= 3}
     if not ref_terms:
@@ -280,10 +311,10 @@ def _validate_evidence_support(
 def validate_overlay(payload: Mapping[str, Any], evidence_context: Optional[Mapping[str, str]] = None) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
-    missing = sorted(REQUIRED_FIELDS - set(payload))
+    missing: list[str] = sorted(REQUIRED_FIELDS - set(payload))
     if missing:
         errors.append(f"overlay missing required keys: {', '.join(missing)}")
-    unsupported = sorted(set(payload) - ALLOWED_FIELDS)
+    unsupported: list[str] = sorted(set(payload) - ALLOWED_FIELDS)
     if unsupported:
         errors.append(f"overlay contains unsupported keys: {', '.join(unsupported)}")
 
@@ -293,39 +324,42 @@ def validate_overlay(payload: Mapping[str, Any], evidence_context: Optional[Mapp
     layer_value: str = str(payload.get("layer") or "").strip().upper()
     if layer_value in {"VALUE_CHAIN_UNMAPPED", "AI_REVIEW_REQUIRED"}:
         errors.append("layer must be a concrete value-chain layer for a completed overlay")
-    for key in ["required_next_evidence", "posterior_basis"]:
-        if key in payload and payload.get(key) is not None and not _is_non_empty_string(payload.get(key)):
+    for key in ["dossier_ref", "required_next_evidence", "posterior_basis", "action_condition_summary"]:
+        if key in payload and not _is_non_empty_string(payload.get(key)):
             errors.append(f"{key} must be a non-empty string when supplied")
 
-    serenity_fit = _as_float(payload.get("serenity_fit"))
+    serenity_fit: Optional[float] = _as_float(payload.get("serenity_fit"))
     if serenity_fit is None or serenity_fit < 0 or serenity_fit > 1:
         errors.append("serenity_fit must be a number between 0 and 1")
         serenity_fit = 0.0
 
-    ai_confidence = str(payload.get("ai_confidence") or "")
+    ai_confidence: str = str(payload.get("ai_confidence") or "")
     if ai_confidence not in AI_CONFIDENCE:
         errors.append(f"ai_confidence must be one of {sorted(AI_CONFIDENCE)}")
 
-    evidence_refs = payload.get("key_evidence_refs", [])
+    evidence_refs: Any = payload.get("key_evidence_refs", [])
     if not isinstance(evidence_refs, list):
         errors.append("key_evidence_refs must be an array")
         evidence_refs = []
     if not evidence_refs:
         errors.append("key_evidence_refs must include at least one evidence reference")
 
-    strong_primary_refs = 0
+    strong_primary_refs: int = 0
     for idx, item in enumerate(evidence_refs):
-        label = f"key_evidence_refs[{idx}]"
+        label: str = f"key_evidence_refs[{idx}]"
         if not isinstance(item, Mapping):
             errors.append(f"{label} must be an object")
             continue
+        unsupported_ref_fields: list[str] = sorted(set(item) - EVIDENCE_REF_FIELDS)
+        if unsupported_ref_fields:
+            errors.append(f"{label} contains unsupported keys: {', '.join(unsupported_ref_fields)}")
         for key in ["claim", "source_ref"]:
             if not _is_non_empty_string(item.get(key)):
                 errors.append(f"{label}.{key} must be a non-empty string")
-        level = str(item.get("source_level") or "")
+        level: str = str(item.get("source_level") or "")
         if level not in SOURCE_LEVELS:
             errors.append(f"{label}.source_level must be one of {sorted(SOURCE_LEVELS)}")
-        confidence = _as_float(item.get("confidence"))
+        confidence: Optional[float] = _as_float(item.get("confidence"))
         if confidence is None or confidence < 0 or confidence > 1:
             errors.append(f"{label}.confidence must be a number between 0 and 1")
             confidence = 0.0
@@ -344,7 +378,7 @@ def validate_overlay(payload: Mapping[str, Any], evidence_context: Optional[Mapp
     if (serenity_fit >= 0.72 or ai_confidence == "HIGH") and strong_primary_refs == 0:
         errors.append("high-fit or high-confidence overlay requires at least one L0/L1 evidence reference with confidence >= 0.65")
 
-    supported = payload.get("evidence_supported_growth")
+    supported: Any = payload.get("evidence_supported_growth")
     if supported is not None and str(supported) not in GROWTH:
         errors.append(f"evidence_supported_growth must be one of {sorted(GROWTH)}")
     if str(supported) in {"H4", "H5"}:
@@ -356,8 +390,11 @@ def validate_overlay(payload: Mapping[str, Any], evidence_context: Optional[Mapp
         errors.append("h4_h5_evidence_bar_met must be boolean when supplied")
     layer_score = _optional_score(payload, "layer_score", errors)
     company_fit = _optional_score(payload, "company_fit", errors)
+    thesis_delta = _optional_delta(payload, "thesis_quality_delta", errors)
+    evidence_delta = _optional_delta(payload, "evidence_confidence_delta", errors)
+    risk_adjustment = _optional_delta(payload, "risk_adjustment", errors)
 
-    normalized = dict(payload)
+    normalized: dict[str, Any] = dict(payload)
     normalized["serenity_fit"] = round(float(serenity_fit or 0.0), 4)
     if layer_score is not None:
         normalized["layer_score"] = layer_score
@@ -367,6 +404,12 @@ def validate_overlay(payload: Mapping[str, Any], evidence_context: Optional[Mapp
         normalized["company_fit"] = company_fit
     elif normalized.get("company_fit") is None:
         normalized["company_fit"] = round(normalized["serenity_fit"] * 100.0, 2)
+    if thesis_delta is not None:
+        normalized["thesis_quality_delta"] = thesis_delta
+    if evidence_delta is not None:
+        normalized["evidence_confidence_delta"] = evidence_delta
+    if risk_adjustment is not None:
+        normalized["risk_adjustment"] = risk_adjustment
 
     if errors:
         raise ValueError("; ".join(errors))

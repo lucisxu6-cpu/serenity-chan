@@ -43,6 +43,7 @@ def _source_ref_catalog(manifest_path: Path) -> list[dict[str, Any]]:
             "source_ref": key_text,
             "text_available": bool(text.strip()),
             "text_bytes": len(text.encode("utf-8")),
+            "text_excerpt": text.strip().replace("\n", " ")[:1200],
         })
     return rows
 
@@ -65,6 +66,33 @@ def _customer_evidence_workspace(review_packet: Mapping[str, Any]) -> dict[str, 
     }
 
 
+def _priority_research_tasks(review_packet: Mapping[str, Any]) -> list[str]:
+    tasks: list[str] = []
+    for row in review_packet.get("open_research_debt", []) if isinstance(review_packet.get("open_research_debt"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        action: str = str(row.get("next_action") or row.get("objective") or "").strip()
+        if action and action not in tasks:
+            tasks.append(action)
+    customer_value: Any = review_packet.get("customer_order_capacity_evidence")
+    customer: Mapping[str, Any] = customer_value if isinstance(customer_value, Mapping) else {}
+    next_evidence: str = str(customer.get("required_next_evidence") or "").strip()
+    if next_evidence and next_evidence not in tasks:
+        tasks.append(next_evidence)
+    return tasks
+
+
+def _research_expansion_protocol(work_item: Mapping[str, Any], overlay_prompt: Mapping[str, Any]) -> list[str]:
+    protocol: list[str] = []
+    for source in [work_item.get("research_expansion_protocol", []), overlay_prompt.get("research_expansion_protocol", [])]:
+        rows: list[Any] = list(source) if isinstance(source, list) else []
+        for item in rows:
+            text: str = str(item or "").strip()
+            if text and text not in protocol:
+                protocol.append(text)
+    return protocol
+
+
 def _workspace_item(work_item: Mapping[str, Any]) -> dict[str, Any]:
     symbol: str = str(work_item.get("symbol") or "")
     manifest_path: Path = Path(str(work_item.get("manifest_path") or ""))
@@ -73,21 +101,32 @@ def _workspace_item(work_item: Mapping[str, Any]) -> dict[str, Any]:
     overlay_prompt: Mapping[str, Any] = _maybe_load_json(work_item.get("overlay_prompt"))
     return {
         "symbol": symbol,
-        "required_action": str(work_item.get("required_action") or "produce_validated_ai_overlay_or_outcome"),
+        "required_action": str(work_item.get("required_action") or "produce_validated_ai_research_package"),
         "manifest_path": str(manifest_path),
         "review_packet_path": str(work_item.get("review_packet") or ""),
         "committee_packet_path": str(work_item.get("committee_packet") or ""),
         "overlay_prompt_path": str(work_item.get("overlay_prompt") or ""),
+        "dossier_output_path": str(work_item.get("dossier_output_path") or ""),
         "overlay_output_path": str(work_item.get("overlay_output_path") or ""),
         "outcome_output_path": str(work_item.get("outcome_output_path") or ""),
+        "dossier_schema": str(work_item.get("dossier_schema") or ""),
         "allowed_results": list(work_item.get("allowed_results") or []),
         "validation_commands": list(work_item.get("validation_commands") or []),
         "source_ref_catalog": _source_ref_catalog(manifest_path) if manifest_path.exists() else [],
+        "priority_research_tasks": _priority_research_tasks(review_packet),
         "customer_order_capacity_evidence": _customer_evidence_workspace(review_packet),
         "deterministic_matrices": review_packet.get("deterministic_matrices", {}),
         "committee_roles": committee_packet.get("committee_roles", []),
         "overlay_contract": overlay_prompt.get("expected_output", {}),
+        "research_expansion_protocol": _research_expansion_protocol(work_item, overlay_prompt),
         "hard_constraints": overlay_prompt.get("hard_constraints", []),
+        "execution_sequence": [
+            "Read source_ref_catalog and deterministic_matrices.",
+            "Frame research_path with core question, hypotheses, evidence tests, and unresolved questions.",
+            "Write and validate ai_research_dossier.json.",
+            "Project the dossier into either ai_research_overlay.json or ai_review_outcome.json.",
+            "Run all validation_commands before considering the work item complete.",
+        ],
     }
 
 
@@ -108,7 +147,7 @@ def build_workspace(agent_queue_path: Path) -> dict[str, Any]:
             for item in work_items
             if isinstance(item, Mapping)
         ],
-        "execution_rule": "The AI reviewer writes one validated overlay or one validated review outcome per workspace; this file only organizes evidence and never creates research judgment.",
+        "execution_rule": "The AI reviewer writes one validated research dossier and then one validated overlay or review outcome per workspace; this file organizes evidence and does not replace research judgment.",
     }
 
 

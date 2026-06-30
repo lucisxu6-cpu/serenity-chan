@@ -33,6 +33,7 @@ try:
     from serenity_chan_scorecard import score
     from technical_health import analyze_price_rows
     from validate_ai_overlay import validate_overlay
+    from validate_ai_research_dossier import validate_dossier
     from validate_ai_review_outcome import validate_review_outcome
     from validate_laplace_strategy_judgment import validate_strategy_judgment
     from validate_agent_research_queue import validate_agent_research_queue
@@ -64,6 +65,7 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.serenity_chan_scorecard import score
     from scripts.technical_health import analyze_price_rows
     from scripts.validate_ai_overlay import validate_overlay
+    from scripts.validate_ai_research_dossier import validate_dossier
     from scripts.validate_ai_review_outcome import validate_review_outcome
     from scripts.validate_laplace_strategy_judgment import validate_strategy_judgment
     from scripts.validate_agent_research_queue import validate_agent_research_queue
@@ -562,10 +564,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             mode: str = str(case.get("mode") or "candidate_comparison")
             overlays: Any = case.get("overlay_values", [])
             outcomes: Any = case.get("outcome_values", [])
+            dossiers: Any = case.get("dossier_values", [])
             if not isinstance(manifests, list) or len(manifests) < 2:
                 raise ValueError("render_report_mode static eval requires at least two manifests")
-            if not isinstance(overlays, list) or not isinstance(outcomes, list):
-                raise ValueError("render_report_mode static eval requires overlay_values and outcome_values arrays when supplied")
+            if not isinstance(overlays, list) or not isinstance(outcomes, list) or not isinstance(dossiers, list):
+                raise ValueError("render_report_mode static eval requires overlay_values, outcome_values, and dossier_values arrays when supplied")
             try:
                 manifest_paths: list[Path] = [root / str(path) for path in manifests]
                 if overlays or outcomes:
@@ -573,6 +576,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         manifest_paths,
                         [str(item) for item in overlays],
                         [str(item) for item in outcomes],
+                        [str(item) for item in dossiers],
                     )
                     with tempfile.TemporaryDirectory(prefix="serenity-static-render-") as temp_dir:
                         report_path: Path = Path(temp_dir) / "comparison_final.json"
@@ -666,24 +670,34 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             manifests = case.get("manifests", [])
             overlays: Any = case.get("overlay_values", [])
             outcomes: Any = case.get("outcome_values", [])
+            dossiers: Any = case.get("dossier_values", [])
             if not isinstance(manifests, list) or len(manifests) < 2:
                 raise ValueError("validated_ai_merge static eval requires at least two manifests")
-            if not isinstance(overlays, list) or not isinstance(outcomes, list):
-                raise ValueError("validated_ai_merge static eval requires overlay_values and outcome_values arrays")
+            if not isinstance(overlays, list) or not isinstance(outcomes, list) or not isinstance(dossiers, list):
+                raise ValueError("validated_ai_merge static eval requires overlay_values, outcome_values, and dossier_values arrays")
             try:
                 result_payload = build_validated_merged_report(
                     [root / str(path) for path in manifests],
                     [str(item) for item in overlays],
                     [str(item) for item in outcomes],
+                    [str(item) for item in dossiers],
                 )
                 actual_pass = True
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
         elif kind == "ai_overlay_validation":
-            payload = case.get("payload", {})
+            payload_file: Any = case.get("payload_file")
+            payload = json.loads((root / str(payload_file)).read_text(encoding="utf-8")) if payload_file else case.get("payload", {})
+            mutations: Any = case.get("mutations", [])
             if not isinstance(payload, dict):
                 raise ValueError("ai_overlay_validation static eval requires payload object")
+            if not isinstance(mutations, list):
+                raise ValueError("ai_overlay_validation mutations must be an array when supplied")
+            for mutation in mutations:
+                if not isinstance(mutation, dict) or "path" not in mutation:
+                    raise ValueError("ai_overlay_validation mutation requires path")
+                _set_path(payload, str(mutation["path"]), mutation.get("value"))
             try:
                 result_payload = validate_overlay(payload)
                 actual_pass = True
@@ -699,6 +713,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 result_payload = validate_overlay(
                     payload,
                     evidence_context={str(key): str(value) for key, value in evidence_context.items()},
+                )
+                actual_pass = True
+            except Exception as exc:
+                actual_pass = False
+                findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "ai_research_dossier_validation":
+            payload_file: Any = case.get("payload_file")
+            payload = json.loads((root / str(payload_file)).read_text(encoding="utf-8")) if payload_file else case.get("payload", {})
+            evidence_context: Any = case.get("evidence_context")
+            mutations: Any = case.get("mutations", [])
+            if not isinstance(payload, dict):
+                raise ValueError("ai_research_dossier_validation static eval requires payload object")
+            if evidence_context is not None and not isinstance(evidence_context, dict):
+                raise ValueError("ai_research_dossier_validation evidence_context must be an object when supplied")
+            if not isinstance(mutations, list):
+                raise ValueError("ai_research_dossier_validation mutations must be an array when supplied")
+            for mutation in mutations:
+                if not isinstance(mutation, dict) or "path" not in mutation:
+                    raise ValueError("ai_research_dossier_validation mutation requires path")
+                _set_path(payload, str(mutation["path"]), mutation.get("value"))
+            try:
+                result_payload = validate_dossier(
+                    payload,
+                    evidence_context={str(key): str(value) for key, value in evidence_context.items()} if isinstance(evidence_context, dict) else None,
                 )
                 actual_pass = True
             except Exception as exc:
@@ -736,15 +774,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             manifests = case.get("manifests", [])
             overlays: Any = case.get("overlay_values", [])
             outcomes: Any = case.get("outcome_values", [])
+            dossiers: Any = case.get("dossier_values", [])
             if manifests:
                 if not isinstance(manifests, list) or len(manifests) < 2:
                     raise ValueError("research_delivery_validation manifests must contain at least two items")
-                if not isinstance(overlays, list) or not isinstance(outcomes, list):
-                    raise ValueError("research_delivery_validation requires overlay_values and outcome_values arrays with manifests")
+                if not isinstance(overlays, list) or not isinstance(outcomes, list) or not isinstance(dossiers, list):
+                    raise ValueError("research_delivery_validation requires overlay_values, outcome_values, and dossier_values arrays with manifests")
                 payload = build_validated_merged_report(
                     [root / str(path) for path in manifests],
                     [str(item) for item in overlays],
                     [str(item) for item in outcomes],
+                    [str(item) for item in dossiers],
                 )
             if not isinstance(payload, dict):
                 raise ValueError("research_delivery_validation static eval requires payload object or manifests")

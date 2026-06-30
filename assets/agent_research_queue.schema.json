@@ -56,25 +56,30 @@
         "overlay_prompt",
         "theme_universe",
         "theme_research_packet",
+        "dossier_schema",
         "overlay_schema",
         "outcome_schema",
+        "dossier_output_path",
         "overlay_output_path",
         "outcome_output_path",
         "allowed_results",
+        "research_expansion_protocol",
         "validation_commands",
         "guardrails"
       ],
       "properties": {
         "symbol": { "type": "string", "minLength": 1 },
-        "required_action": { "const": "produce_validated_ai_overlay_or_outcome" },
+        "required_action": { "const": "produce_validated_ai_research_package" },
         "manifest_path": { "type": "string", "minLength": 1 },
         "review_packet": { "type": "string", "minLength": 1 },
         "committee_packet": { "type": "string", "minLength": 1 },
         "overlay_prompt": { "type": "string", "minLength": 1 },
         "theme_universe": { "type": "string" },
         "theme_research_packet": { "type": "string" },
+        "dossier_schema": { "const": "assets/ai_research_dossier.schema.json" },
         "overlay_schema": { "const": "assets/ai_research_overlay.schema.json" },
         "outcome_schema": { "const": "assets/ai_review_outcome.schema.json" },
+        "dossier_output_path": { "type": "string", "minLength": 1 },
         "overlay_output_path": { "type": "string", "minLength": 1 },
         "outcome_output_path": { "type": "string", "minLength": 1 },
         "allowed_results": {
@@ -82,9 +87,14 @@
           "minItems": 3,
           "items": { "type": "string", "minLength": 1 }
         },
+        "research_expansion_protocol": {
+          "type": "array",
+          "minItems": 5,
+          "items": { "type": "string", "minLength": 1 }
+        },
         "validation_commands": {
           "type": "array",
-          "minItems": 2,
+          "minItems": 3,
           "items": { "type": "string", "minLength": 1 }
         },
         "guardrails": {

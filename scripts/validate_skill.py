@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,7 @@ REQUIRED_FILES: Any = [
     "assets/data_gaps.schema.json",
     "assets/manual_retrieval_tasks.schema.json",
     "assets/valuation_inputs.schema.json",
+    "assets/ai_research_dossier.schema.json",
     "assets/ai_research_overlay.schema.json",
     "assets/ai_review_outcome.schema.json",
     "assets/agent_research_queue.schema.json",
@@ -72,6 +75,7 @@ REQUIRED_FILES: Any = [
     "scripts/validate_laplace_strategy_input.py",
     "scripts/validate_laplace_strategy_judgment.py",
     "scripts/render_strategy_report.py",
+    "scripts/validate_ai_research_dossier.py",
     "scripts/validate_ai_overlay.py",
     "scripts/validate_ai_review_outcome.py",
     "scripts/validate_agent_research_queue.py",
@@ -92,6 +96,23 @@ REQUIRED_FILES: Any = [
     "companion-skills/laplace-forecast/references/ledger-schema.md",
     "companion-skills/laplace-forecast/scripts/forecast_ledger.py",
 ]
+BLOCKED_DISTRIBUTION_PATHS: Any = [".idea", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"]
+MAX_SKILL_LINES: int = 500
+
+
+def tracked_files(root: Path) -> set[str]:
+    try:
+        result: subprocess.CompletedProcess[str] = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return set()
+    if result.returncode != 0:
+        return set()
+    return {item for item in result.stdout.split("\0") if item}
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
@@ -139,14 +160,39 @@ def main() -> None:
         unexpected_keys: Any = sorted(set(fm) - ALLOWED_FRONTMATTER_KEYS)
         if unexpected_keys:
             errors.append(f"unexpected frontmatter keys: {', '.join(unexpected_keys)}")
-        if len(text.splitlines()) < 80:
+        line_count: int = len(text.splitlines())
+        if line_count < 80:
             errors.append("SKILL.md has too few lines; upload may have collapsed newlines")
+        if line_count > MAX_SKILL_LINES:
+            errors.append(f"SKILL.md too long for progressive disclosure: {line_count} lines > {MAX_SKILL_LINES}")
     for sub in REQUIRED_DIRS:
         if not (root / sub).exists():
             errors.append(f"missing directory: {sub}")
     for file_name in REQUIRED_FILES:
         if not (root / file_name).exists():
             errors.append(f"missing file: {file_name}")
+        elif file_name.endswith(".schema.json"):
+            try:
+                schema_payload: Any = json.loads((root / file_name).read_text(encoding="utf-8"))
+            except Exception as exc:
+                errors.append(f"invalid JSON schema file {file_name}: {exc}")
+            else:
+                if not isinstance(schema_payload, dict):
+                    errors.append(f"schema file {file_name} must contain a JSON object")
+                if isinstance(schema_payload, dict) and schema_payload.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+                    errors.append(f"schema file {file_name} must declare JSON Schema draft 2020-12")
+                if isinstance(schema_payload, dict) and "type" not in schema_payload:
+                    errors.append(f"schema file {file_name} must declare a root type")
+        elif file_name.endswith(".json"):
+            try:
+                json.loads((root / file_name).read_text(encoding="utf-8"))
+            except Exception as exc:
+                errors.append(f"invalid JSON in {file_name}: {exc}")
+    tracked: set[str] = tracked_files(root)
+    for file_name in tracked:
+        parts: set[str] = set(Path(file_name).parts)
+        if any(blocked in parts for blocked in BLOCKED_DISTRIBUTION_PATHS):
+            errors.append(f"distribution artifact is tracked and should be removed: {file_name}")
     script_dirs: list[Any] = [root / "scripts"]
     companion_root: Any = root / "companion-skills"
     if companion_root.exists():

@@ -89,11 +89,12 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     research_debt = _research_debt_rows(manifest, capital, capital_quantification, customer_evidence, financial, technical, layer_seed, growth)
     acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
     ai_questions = [
+        "Write a full AI research dossier before projecting any overlay or outcome.",
         "Identify the value-chain layer and the concrete bottleneck this company may control.",
         "Map product, customer, order, capacity, and segment disclosures to revenue transmission.",
         "Judge whether evidence-supported growth reaches the market-implied growth tier.",
         "Name contrary evidence and falsification triggers that would downgrade the thesis.",
-        "Return an overlay matching assets/ai_research_overlay.schema.json.",
+        "Return a dossier plus either an overlay matching assets/ai_research_overlay.schema.json or an outcome matching assets/ai_review_outcome.schema.json.",
     ]
     return {
         "symbol": _symbol(manifest),
@@ -127,6 +128,8 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
         "required_ai_questions": ai_questions,
         "ai_research_questions": ai_questions,
         "expected_overlay_contract": {
+            "dossier_schema": "assets/ai_research_dossier.schema.json",
+            "dossier_research_path": "Frame core_question, decision_use, hypotheses, evidence_tests, and unresolved_questions before projecting an overlay or outcome.",
             "required": [
                 "symbol",
                 "as_of_date",

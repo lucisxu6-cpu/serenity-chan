@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge validated AI research overlays into the candidate comparison report."""
+"""Merge validated AI research dossiers and projections into the candidate comparison report."""
 
 from __future__ import annotations
 
@@ -18,8 +18,9 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Merge AI research overlays into a Serenity + Chan comparison report")
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Merge AI research dossiers and projections into a Serenity + Chan comparison report")
     parser.add_argument("manifests", nargs="+", help="fetch manifest JSON paths")
+    parser.add_argument("--dossier", action="append", default=[], help="SYMBOL=ai_research_dossier.json")
     parser.add_argument("--overlay", action="append", default=[], help="SYMBOL=overlay.json")
     parser.add_argument("--ai-outcome", action="append", default=[], help="SYMBOL=ai_review_outcome.json")
     parser.add_argument("--format", choices=["json", "md", "both"], default="json")
@@ -29,6 +30,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             [Path(path) for path in args.manifests],
             args.overlay,
             args.ai_outcome,
+            args.dossier,
         )
         if args.format == "json":
             print(json.dumps(report, ensure_ascii=False, indent=2))

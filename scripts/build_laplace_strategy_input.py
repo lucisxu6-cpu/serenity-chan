@@ -129,6 +129,7 @@ def _candidate_row(
     data_rows: Mapping[str, Mapping[str, Any]],
     layer_rows: Mapping[str, Mapping[str, Any]],
     ai_rows: Mapping[str, Mapping[str, Any]],
+    dossier_rows: Mapping[str, Mapping[str, Any]],
     financial_rows: Mapping[str, Mapping[str, Any]],
     customer_rows: Mapping[str, Mapping[str, Any]],
     valuation_rows: Mapping[str, Mapping[str, Any]],
@@ -142,6 +143,7 @@ def _candidate_row(
     data: Mapping[str, Any] = data_rows.get(symbol, {})
     layer: Mapping[str, Any] = layer_rows.get(symbol, {})
     ai: Mapping[str, Any] = ai_rows.get(symbol, {})
+    dossier: Mapping[str, Any] = dossier_rows.get(symbol, {})
     financial: Mapping[str, Any] = financial_rows.get(symbol, {})
     customer: Mapping[str, Any] = customer_rows.get(symbol, {})
     valuation: Mapping[str, Any] = valuation_rows.get(symbol, {})
@@ -166,6 +168,7 @@ def _candidate_row(
         "fetch_status": _text(readiness.get("fetch_status")),
         "research_readiness": _text(readiness.get("research_readiness")),
         "ai_review_status": _text(ai.get("ai_review_status")),
+        "ai_research_dossier": dict(dossier),
         "layer": _text(layer.get("layer")),
         "bottleneck_reason": _text(layer.get("bottleneck_reason")),
         "revenue_transmission": _text(layer.get("revenue_transmission")),
@@ -296,6 +299,7 @@ def build_strategy_input(
     data_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("data_acquisition_summary"))
     layer_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("serenity_layer_matrix"))
     ai_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("ai_review_status_matrix"))
+    dossier_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("ai_research_dossier_matrix"))
     financial_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("financial_quality_matrix"))
     customer_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("customer_evidence_matrix"))
     valuation_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("valuation_input_matrix"))
@@ -312,6 +316,7 @@ def build_strategy_input(
             data_rows=data_rows,
             layer_rows=layer_rows,
             ai_rows=ai_rows,
+            dossier_rows=dossier_rows,
             financial_rows=financial_rows,
             customer_rows=customer_rows,
             valuation_rows=valuation_rows,
@@ -358,6 +363,7 @@ def build_strategy_input(
             "research_debt_runbook": _as_list(report.get("research_debt_runbook")),
             "data_consumption_audit": _as_list(report.get("data_consumption_audit")),
             "customer_evidence_matrix": _as_list(report.get("customer_evidence_matrix")),
+            "ai_research_dossier_matrix": _as_list(report.get("ai_research_dossier_matrix")),
         },
         "forecast_variables": _forecast_variables(report),
         "strategy_questions": _strategy_questions(object_name),
@@ -396,7 +402,7 @@ def build_strategy_input(
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Build Laplace strategy input from a Serenity comparison report")
-    parser.add_argument("comparison_report", help="completed comparison_final.json with AI overlay/outcome merged")
+    parser.add_argument("comparison_report", help="completed comparison_final.json with AI research package merged")
     parser.add_argument("--theme", default="", help="theme or strategy object")
     parser.add_argument("--horizon", default="3-6个月")
     parser.add_argument("--geography", default="", help="geography; defaults to inferred markets from comparison report")

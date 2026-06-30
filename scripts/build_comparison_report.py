@@ -25,7 +25,8 @@ try:
     from fx_provider import currency_code_from_unit, normalize_currency_code
     from report_labels import display_bool, display_label, display_list, display_mapping_pairs
     from technical_health import analyze_price_csv
-    from validate_ai_overlay import validate_overlay
+    from validate_ai_research_dossier import validate_dossier
+    from validate_ai_overlay import evidence_context_from_manifest, validate_overlay
     from validate_ai_review_outcome import validate_review_outcome
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.build_comparison_report
     from scripts.a_share_capital_actions import analyze_announcements
@@ -41,7 +42,8 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.bui
     from scripts.fx_provider import currency_code_from_unit, normalize_currency_code
     from scripts.report_labels import display_bool, display_label, display_list, display_mapping_pairs
     from scripts.technical_health import analyze_price_csv
-    from scripts.validate_ai_overlay import validate_overlay
+    from scripts.validate_ai_research_dossier import validate_dossier
+    from scripts.validate_ai_overlay import evidence_context_from_manifest, validate_overlay
     from scripts.validate_ai_review_outcome import validate_review_outcome
 
 
@@ -73,6 +75,71 @@ AI_REVIEW_STATUSES: set[str] = {"NOT_RUN", "COMPLETED", "FAILED_INSUFFICIENT_EVI
 FORMAL_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
 REPORT_READINESS_STAGES: set[str] = {"INTERNAL_BASELINE", "FINAL_REPORT_READY", "DIAGNOSTIC_ONLY"}
 CANDIDATE_POOL_COHERENCE: set[str] = {"UNREVIEWED", "SAME_LAYER", "SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"}
+CANDIDATE_POOL_COHERENCE_FIELDS: set[str] = {"status", "reason", "market_count", "layer_families", "decision_constraint"}
+COMPARISON_SCOPE_FIELDS: set[str] = {"candidate_count", "as_of", "basis"}
+CANDIDATE_FIELDS: set[str] = {"symbol", "name", "market", "currency", "rating_cap", "data_package_path"}
+SERENITY_LAYER_ROW_FIELDS: set[str] = {
+    "symbol",
+    "layer",
+    "bottleneck_reason",
+    "layer_score",
+    "company_fit",
+    "revenue_transmission",
+    "evidence_gap",
+    "ai_confidence",
+    "ai_review_status",
+    "key_evidence_refs",
+    "contrary_evidence",
+    "research_questions",
+    "dossier_ref",
+    "thesis_quality_delta",
+    "evidence_confidence_delta",
+    "risk_adjustment",
+    "action_condition_summary",
+}
+AI_REVIEW_STATUS_ROW_FIELDS: set[str] = {"symbol", "ai_review_status", "overlay_merged", "layer_mapped", "evidence_ref_count", "research_question_count", "blocking_reason"}
+AI_DOSSIER_ROW_FIELDS: set[str] = {
+    "symbol",
+    "dossier_status",
+    "dossier_merged",
+    "source_read_count",
+    "observed_count",
+    "inferred_count",
+    "judgment_count",
+    "hypothesis_count",
+    "evidence_test_count",
+    "unresolved_question_count",
+    "claim_count",
+    "supported_claim_count",
+    "causal_step_count",
+    "scenario_count",
+    "trigger_count",
+    "action_condition_count",
+    "thesis_quality_delta",
+    "evidence_confidence_delta",
+    "risk_adjustment",
+    "confidence_dampers",
+    "action_condition_summary",
+    "dossier_ref",
+}
+READINESS_ROW_FIELDS: set[str] = {"symbol", "fetch_status", "research_readiness", "action_readiness", "primary_gate", "primary_gate_class", "gate_classes", "data_evidence_cap", "decision_grade", "reason_codes"}
+RANKING_ROW_FIELDS: set[str] = {"rank", "symbol", "priority_score", "research_priority_score", "action_priority_score", "rating_cap", "decision_grade", "action_readiness", "action_gate", "key_reason"}
+ACTION_GATE_FIELDS: set[str] = {"state", "primary_gate", "primary_gate_class", "gate_classes", "secondary_gates", "blocking_datasets", "blocking_reasons"}
+ACTION_GATE_STATES: set[str] = {"ACTIONABLE_WATCH", "NOT_ACTIONABLE"}
+FINAL_DECISION_FIELDS: set[str] = {
+    "leading_research_candidate",
+    "leading_action_candidate",
+    "decision_candidate",
+    "decision_mode",
+    "score_gap_to_runner_up",
+    "candidate_count_warning",
+    "candidate_pool_semantic_coherence",
+    "ranking_validity",
+    "decision",
+    "next_research_actions",
+}
+RANKING_VALIDITY_FIELDS: set[str] = {"status", "reason", "blocked_by", "partial_axes"}
+REPORT_READINESS_FIELDS: set[str] = {"stage", "delivery_allowed", "blocking_statuses", "next_phase", "reason"}
 CONSUMPTION_AUDIT_DATASETS: set[str] = {"financials", "valuation_inputs"}
 ACTION_BLOCKING_DEBT_DATASETS: set[str] = {
     "current_quote",
@@ -179,6 +246,18 @@ def _non_empty_strings(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if item is not None and str(item).strip()]
+
+
+def _reject_unsupported_keys(value: Mapping[str, Any], allowed: set[str], label: str, errors: list[str]) -> None:
+    unsupported: list[str] = sorted(set(value) - allowed)
+    if unsupported:
+        errors.append(f"{label} contains unsupported keys: {', '.join(unsupported)}")
+
+
+def _require_object_keys(value: Mapping[str, Any], required: set[str], label: str, errors: list[str]) -> None:
+    missing: list[str] = sorted(required - set(value))
+    if missing:
+        errors.append(f"{label} missing keys: {', '.join(missing)}")
 
 
 def _display_cell(value: Any, default: str = "无") -> str:
@@ -772,13 +851,19 @@ def _customer_evidence_summary(manifest: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _profile_from_overlay(symbol: str, overlay: Mapping[str, Any]) -> dict[str, Any]:
+def _profile_from_overlay(
+    symbol: str,
+    overlay: Mapping[str, Any],
+    evidence_context: Optional[Mapping[str, str]] = None,
+) -> dict[str, Any]:
     if not isinstance(overlay, Mapping):
         raise ValueError(f"{symbol} overlay must be a JSON object")
-    validated: Any = validate_overlay(overlay)["normalized_overlay"]
+    validated: Any = validate_overlay(overlay, evidence_context=evidence_context)["normalized_overlay"]
     overlay_symbol: Any = str(validated.get("symbol") or "")
     if overlay_symbol != symbol:
         raise ValueError(f"overlay assignment {symbol} does not match overlay.symbol {overlay_symbol}")
+    # Only validated overlay fields enter the scoring profile; deterministic
+    # valuation, source status, and market-implied growth remain report-owned.
     profile: Any = {
         "layer": validated["layer"],
         "bottleneck_reason": validated["bottleneck_reason"],
@@ -793,7 +878,16 @@ def _profile_from_overlay(symbol: str, overlay: Mapping[str, Any]) -> dict[str, 
         "contrary_evidence": validated.get("contrary_evidence", []),
         "research_questions": validated.get("research_questions", []),
     }
-    for key in ["evidence_supported_growth", "required_next_evidence", "posterior_basis"]:
+    for key in [
+        "dossier_ref",
+        "evidence_supported_growth",
+        "required_next_evidence",
+        "posterior_basis",
+        "thesis_quality_delta",
+        "evidence_confidence_delta",
+        "risk_adjustment",
+        "action_condition_summary",
+    ]:
         if key in validated:
             profile[key] = validated[key]
     return profile
@@ -840,7 +934,11 @@ def _profile_from_review_outcome(symbol: str, outcome: Mapping[str, Any]) -> dic
     }
 
 
-def _overlay_profiles(manifests: Sequence[Mapping[str, Any]], overlays: Optional[Mapping[str, Mapping[str, Any]]]) -> dict[str, dict[str, Any]]:
+def _overlay_profiles(
+    manifests: Sequence[Mapping[str, Any]],
+    overlays: Optional[Mapping[str, Mapping[str, Any]]],
+    evidence_contexts: Optional[Mapping[str, Mapping[str, str]]] = None,
+) -> dict[str, dict[str, Any]]:
     if overlays is None:
         return {}
     if not isinstance(overlays, Mapping):
@@ -852,7 +950,11 @@ def _overlay_profiles(manifests: Sequence[Mapping[str, Any]], overlays: Optional
     if unknown:
         raise ValueError(f"overlay supplied for non-candidate symbol(s): {', '.join(unknown)}")
     return {
-        symbol: _profile_from_overlay(symbol, normalized_overlays[symbol])
+        symbol: _profile_from_overlay(
+            symbol,
+            normalized_overlays[symbol],
+            evidence_contexts.get(symbol) if evidence_contexts is not None else None,
+        )
         for symbol in sorted(overlay_symbols)
     }
 
@@ -881,13 +983,123 @@ def _ai_review_profiles(
     manifests: Sequence[Mapping[str, Any]],
     overlays: Optional[Mapping[str, Mapping[str, Any]]],
     outcomes: Optional[Mapping[str, Mapping[str, Any]]],
+    evidence_contexts: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> dict[str, dict[str, Any]]:
-    overlay_profiles: dict[str, dict[str, Any]] = _overlay_profiles(manifests, overlays)
+    overlay_profiles: dict[str, dict[str, Any]] = _overlay_profiles(manifests, overlays, evidence_contexts)
     outcome_profiles: dict[str, dict[str, Any]] = _review_outcome_profiles(manifests, outcomes)
     overlap: list[str] = sorted(set(overlay_profiles) & set(outcome_profiles))
     if overlap:
         raise ValueError(f"candidate(s) cannot have both AI overlay and AI review outcome: {', '.join(overlap)}")
     return {**overlay_profiles, **outcome_profiles}
+
+
+def _ai_research_dossier_profiles(
+    manifests: Sequence[Mapping[str, Any]],
+    dossiers: Optional[Mapping[str, Mapping[str, Any]]],
+    evidence_contexts: Optional[Mapping[str, Mapping[str, str]]] = None,
+) -> dict[str, dict[str, Any]]:
+    if dossiers is None:
+        return {}
+    if not isinstance(dossiers, Mapping):
+        raise ValueError("ai_research_dossiers must be a mapping from candidate symbol to dossier JSON object")
+    candidate_symbols: set[str] = {_symbol(manifest) for manifest in manifests}
+    normalized_dossiers: dict[str, Mapping[str, Any]] = {str(symbol): dossier for symbol, dossier in dossiers.items()}
+    dossier_symbols: set[str] = set(normalized_dossiers)
+    unknown: list[str] = sorted(dossier_symbols - candidate_symbols)
+    if unknown:
+        raise ValueError(f"AI research dossier supplied for non-candidate symbol(s): {', '.join(unknown)}")
+    result: dict[str, dict[str, Any]] = {}
+    for symbol in sorted(dossier_symbols):
+        validated: Mapping[str, Any] = validate_dossier(
+            normalized_dossiers[symbol],
+            evidence_context=evidence_contexts.get(symbol) if evidence_contexts is not None else None,
+        )["normalized_dossier"]
+        dossier_symbol: str = str(validated.get("symbol") or "")
+        if dossier_symbol != symbol:
+            raise ValueError(f"AI research dossier assignment {symbol} does not match dossier.symbol {dossier_symbol}")
+        result[symbol] = dict(validated)
+    return result
+
+
+def _enrich_profile_from_dossier(profile: Mapping[str, Any], dossier: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    enriched: dict[str, Any] = dict(profile)
+    if not isinstance(dossier, Mapping):
+        return enriched
+    projection: Mapping[str, Any] = dossier.get("overlay_projection") if isinstance(dossier.get("overlay_projection"), Mapping) else {}
+    for key in [
+        "thesis_quality_delta",
+        "evidence_confidence_delta",
+        "risk_adjustment",
+        "action_condition_summary",
+    ]:
+        current_value: Any = enriched.get(key)
+        if (key not in enriched or current_value is None or current_value == "") and key in projection:
+            enriched[key] = projection[key]
+    if "dossier_ref" not in enriched:
+        enriched["dossier_ref"] = f"ai_research_dossier:{dossier.get('symbol', '')}"
+    return enriched
+
+
+def _ai_research_dossier_row(symbol: str, dossier: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    if not isinstance(dossier, Mapping):
+        return {
+            "symbol": symbol,
+            "dossier_status": "NOT_PROVIDED",
+            "dossier_merged": False,
+            "source_read_count": 0,
+            "observed_count": 0,
+            "inferred_count": 0,
+            "judgment_count": 0,
+            "hypothesis_count": 0,
+            "evidence_test_count": 0,
+            "unresolved_question_count": 0,
+            "claim_count": 0,
+            "supported_claim_count": 0,
+            "causal_step_count": 0,
+            "scenario_count": 0,
+            "trigger_count": 0,
+            "action_condition_count": 0,
+            "thesis_quality_delta": None,
+            "evidence_confidence_delta": None,
+            "risk_adjustment": None,
+            "confidence_dampers": [],
+            "action_condition_summary": "",
+            "dossier_ref": "",
+        }
+    claims: list[Any] = dossier.get("claim_graph", []) if isinstance(dossier.get("claim_graph"), list) else []
+    supported_claims: int = sum(
+        1
+        for item in claims
+        if isinstance(item, Mapping) and str(item.get("status") or "") in {"SUPPORTED", "PARTIAL"}
+    )
+    projection: Mapping[str, Any] = dossier.get("overlay_projection") if isinstance(dossier.get("overlay_projection"), Mapping) else {}
+    action_conditions: Mapping[str, Any] = dossier.get("action_conditions") if isinstance(dossier.get("action_conditions"), Mapping) else {}
+    trigger_table: Mapping[str, Any] = dossier.get("trigger_table") if isinstance(dossier.get("trigger_table"), Mapping) else {}
+    research_path: Mapping[str, Any] = dossier.get("research_path") if isinstance(dossier.get("research_path"), Mapping) else {}
+    return {
+        "symbol": symbol,
+        "dossier_status": str(dossier.get("research_status") or ""),
+        "dossier_merged": True,
+        "source_read_count": len(dossier.get("source_reading_log", [])) if isinstance(dossier.get("source_reading_log"), list) else 0,
+        "observed_count": len(dossier.get("observed", [])) if isinstance(dossier.get("observed"), list) else 0,
+        "inferred_count": len(dossier.get("inferred", [])) if isinstance(dossier.get("inferred"), list) else 0,
+        "judgment_count": len(dossier.get("judgment", [])) if isinstance(dossier.get("judgment"), list) else 0,
+        "hypothesis_count": len(research_path.get("hypotheses", [])) if isinstance(research_path.get("hypotheses"), list) else 0,
+        "evidence_test_count": len(research_path.get("evidence_tests", [])) if isinstance(research_path.get("evidence_tests"), list) else 0,
+        "unresolved_question_count": len(research_path.get("unresolved_questions", [])) if isinstance(research_path.get("unresolved_questions"), list) else 0,
+        "claim_count": len(claims),
+        "supported_claim_count": supported_claims,
+        "causal_step_count": len(dossier.get("causal_chain", [])) if isinstance(dossier.get("causal_chain"), list) else 0,
+        "scenario_count": len(dossier.get("scenario_view", {})) if isinstance(dossier.get("scenario_view"), Mapping) else 0,
+        "trigger_count": sum(len(value) for value in trigger_table.values() if isinstance(value, list)),
+        "action_condition_count": sum(len(value) for value in action_conditions.values() if isinstance(value, list)),
+        "thesis_quality_delta": _round(_as_float(projection.get("thesis_quality_delta"))),
+        "evidence_confidence_delta": _round(_as_float(projection.get("evidence_confidence_delta"))),
+        "risk_adjustment": _round(_as_float(projection.get("risk_adjustment"))),
+        "confidence_dampers": dossier.get("confidence_dampers", []) if isinstance(dossier.get("confidence_dampers"), list) else [],
+        "action_condition_summary": str(projection.get("action_condition_summary") or ""),
+        "dossier_ref": f"ai_research_dossier:{symbol}",
+    }
 
 
 def _serenity_layer(manifest: Mapping[str, Any], profile: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
@@ -914,6 +1126,11 @@ def _serenity_layer(manifest: Mapping[str, Any], profile: Optional[Mapping[str, 
         "key_evidence_refs": profile.get("key_evidence_refs", []) if isinstance(profile.get("key_evidence_refs", []), list) else [],
         "contrary_evidence": profile.get("contrary_evidence", []) if isinstance(profile.get("contrary_evidence", []), list) else [],
         "research_questions": profile.get("research_questions", []) if isinstance(profile.get("research_questions", []), list) else [],
+        "dossier_ref": str(profile.get("dossier_ref") or ""),
+        "thesis_quality_delta": _round(_as_float(profile.get("thesis_quality_delta"))),
+        "evidence_confidence_delta": _round(_as_float(profile.get("evidence_confidence_delta"))),
+        "risk_adjustment": _round(_as_float(profile.get("risk_adjustment"))),
+        "action_condition_summary": str(profile.get("action_condition_summary") or ""),
     }
 
 
@@ -1592,9 +1809,14 @@ def _priority_score(
     capital_drag: Any = CAPITAL_RISK_SCORE.get(risk_level, 0.0)
     debt_profile: Any = _debt_gate_profile(research_debt)
     debt_drag: Any = _as_float(debt_profile.get("debt_drag")) or 0.0
+    thesis_delta: float = _as_float(layer.get("thesis_quality_delta")) or 0.0
+    evidence_delta: float = _as_float(layer.get("evidence_confidence_delta")) or 0.0
+    risk_adjustment: float = _as_float(layer.get("risk_adjustment")) or 0.0
     research_score: Any = thesis_proxy * 0.50 + data_score * 0.14 + financial_score * 0.22 + customer_score * 0.08 + 6.0
+    research_score += thesis_delta + evidence_delta * 0.50 - max(risk_adjustment, 0.0) * 0.30
     research_score -= min(8.0, debt_drag * 0.45)
     action_score: Any = technical_score * 0.34 + data_score * 0.18 + financial_score * 0.12 + research_score * 0.16 + 18.0
+    action_score += thesis_delta * 0.35 + evidence_delta * 0.25 - risk_adjustment
     action_score -= capital_drag
     action_score -= debt_drag
     cap: Any = str(data_summary.get("rating_cap") or "OBSERVE_ONLY")
@@ -1622,6 +1844,7 @@ def _priority_score(
     reason: Any = (
         f"研究={research_score:.1f}，行动={action_score:.1f}，财务={financial_score:.1f}，客户/订单证据={customer_score:.1f}，"
         f"数据={data_score:.1f}，技术={technical_score:.1f}，资本风险={display_label(risk_level)}，"
+        f"AI增量=thesis {thesis_delta:+.1f}/evidence {evidence_delta:+.1f}/risk {risk_adjustment:+.1f}，"
         f"主门控={display_label(primary_gate)}，研究债务={debt_label}，证据上限={cap}"
     )
     return round(combined_score, 2), round(research_score, 2), round(action_score, 2), action, reason, gate
@@ -1777,13 +2000,16 @@ def _readiness_matrix(
 
 def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
-    required: Any = {
+    # Keep the final report root closed so diagnostic fields cannot silently
+    # become part of the delivery contract.
+    required: set[str] = {
         "comparison_scope",
         "candidate_pool_semantic_coherence",
         "candidates",
         "data_acquisition_summary",
         "serenity_layer_matrix",
         "ai_review_status_matrix",
+        "ai_research_dossier_matrix",
         "financial_quality_matrix",
         "customer_evidence_matrix",
         "valuation_input_matrix",
@@ -1803,24 +2029,21 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     missing: Any = sorted(required - set(report))
     if missing:
         errors.append(f"comparison report missing keys: {', '.join(missing)}")
+    unsupported_root: list[str] = sorted(set(report) - required)
+    if unsupported_root:
+        errors.append(f"comparison report contains unsupported root keys: {', '.join(unsupported_root)}")
+    comparison_scope: Any = report.get("comparison_scope")
+    if isinstance(comparison_scope, Mapping):
+        _require_object_keys(comparison_scope, COMPARISON_SCOPE_FIELDS, "comparison_scope", errors)
+        _reject_unsupported_keys(comparison_scope, COMPARISON_SCOPE_FIELDS, "comparison_scope", errors)
+    else:
+        errors.append("comparison_scope must be an object")
     final_decision: Any = report.get("final_decision")
     if not isinstance(final_decision, Mapping):
         errors.append("final_decision must be an object")
     else:
-        for field in [
-            "leading_research_candidate",
-            "leading_action_candidate",
-            "decision_candidate",
-            "decision_mode",
-            "score_gap_to_runner_up",
-            "candidate_count_warning",
-            "candidate_pool_semantic_coherence",
-            "ranking_validity",
-            "decision",
-            "next_research_actions",
-        ]:
-            if field not in final_decision:
-                errors.append(f"final_decision missing {field}")
+        _require_object_keys(final_decision, FINAL_DECISION_FIELDS, "final_decision", errors)
+        _reject_unsupported_keys(final_decision, FINAL_DECISION_FIELDS, "final_decision", errors)
         if str(final_decision.get("decision_mode") or "") not in DECISION_MODES:
             errors.append("final_decision.decision_mode is unknown")
         gap: Any = final_decision.get("score_gap_to_runner_up")
@@ -1832,6 +2055,8 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
         if not isinstance(ranking_validity, Mapping):
             errors.append("final_decision.ranking_validity must be an object")
         else:
+            _require_object_keys(ranking_validity, RANKING_VALIDITY_FIELDS, "final_decision.ranking_validity", errors)
+            _reject_unsupported_keys(ranking_validity, RANKING_VALIDITY_FIELDS, "final_decision.ranking_validity", errors)
             validity_status: str = str(ranking_validity.get("status") or "")
             blocked_by: Any = ranking_validity.get("blocked_by")
             partial_axes: Any = ranking_validity.get("partial_axes")
@@ -1859,19 +2084,31 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
                 errors.append("VALID ranking_validity cannot carry blocked_by or partial_axes")
             final_coherence: Any = final_decision.get("candidate_pool_semantic_coherence")
             if isinstance(final_coherence, Mapping):
+                _require_object_keys(final_coherence, CANDIDATE_POOL_COHERENCE_FIELDS, "final_decision.candidate_pool_semantic_coherence", errors)
+                _reject_unsupported_keys(final_coherence, CANDIDATE_POOL_COHERENCE_FIELDS, "final_decision.candidate_pool_semantic_coherence", errors)
                 final_coherence_status: str = str(final_coherence.get("status") or "")
                 if final_coherence_status in {"SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"} and final_decision.get("decision_mode") == "clear_decision_candidate":
                     errors.append("candidate pools without same-layer coherence cannot use clear_decision_candidate")
+            else:
+                errors.append("final_decision.candidate_pool_semantic_coherence must be an object")
     candidates: Any = report.get("candidates", [])
     if not isinstance(candidates, list) or len(candidates) < 2:
         errors.append("comparison report requires at least two candidates")
+    for row in candidates if isinstance(candidates, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        _require_object_keys(row, {"symbol", "market", "currency", "rating_cap", "data_package_path"}, "candidates[]", errors)
+        _reject_unsupported_keys(row, CANDIDATE_FIELDS, f"{row.get('symbol')} candidate", errors)
     symbols: set[str] = {str(item.get("symbol")) for item in candidates if isinstance(item, Mapping)}
     coherence: Any = report.get("candidate_pool_semantic_coherence")
     if not isinstance(coherence, Mapping):
         errors.append("candidate_pool_semantic_coherence must be an object")
-    elif str(coherence.get("status") or "") not in CANDIDATE_POOL_COHERENCE:
-        errors.append("candidate_pool_semantic_coherence.status is unknown")
-    for key in ["data_acquisition_summary", "serenity_layer_matrix", "ai_review_status_matrix", "financial_quality_matrix", "customer_evidence_matrix", "valuation_input_matrix", "currency_normalization_matrix", "growth_hypothesis_matrix", "technical_timing_matrix", "capital_actions", "capital_action_quantification", "readiness_matrix"]:
+    else:
+        _require_object_keys(coherence, CANDIDATE_POOL_COHERENCE_FIELDS, "candidate_pool_semantic_coherence", errors)
+        _reject_unsupported_keys(coherence, CANDIDATE_POOL_COHERENCE_FIELDS, "candidate_pool_semantic_coherence", errors)
+        if str(coherence.get("status") or "") not in CANDIDATE_POOL_COHERENCE:
+            errors.append("candidate_pool_semantic_coherence.status is unknown")
+    for key in ["data_acquisition_summary", "serenity_layer_matrix", "ai_review_status_matrix", "ai_research_dossier_matrix", "financial_quality_matrix", "customer_evidence_matrix", "valuation_input_matrix", "currency_normalization_matrix", "growth_hypothesis_matrix", "technical_timing_matrix", "capital_actions", "capital_action_quantification", "readiness_matrix"]:
         rows: Any = report.get(key, [])
         if not isinstance(rows, list) or {str(item.get("symbol")) for item in rows if isinstance(item, Mapping)} != symbols:
             errors.append(f"{key} must contain one row per candidate")
@@ -1881,12 +2118,22 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
         for item in ranked_items_for_readiness:
             if not isinstance(item, Mapping):
                 continue
+            _require_object_keys(item, RANKING_ROW_FIELDS, f"{item.get('symbol')} candidate_priority_ranking", errors)
+            _reject_unsupported_keys(item, RANKING_ROW_FIELDS, f"{item.get('symbol')} candidate_priority_ranking", errors)
             gate: Any = item.get("action_gate")
             if isinstance(gate, Mapping):
+                _require_object_keys(gate, ACTION_GATE_FIELDS, f"{item.get('symbol')} action_gate", errors)
+                _reject_unsupported_keys(gate, ACTION_GATE_FIELDS, f"{item.get('symbol')} action_gate", errors)
+                if str(gate.get("state") or "") not in ACTION_GATE_STATES:
+                    errors.append(f"{item.get('symbol')} action_gate.state is unknown")
                 ranked_gate_by_symbol[str(item.get("symbol") or "")] = gate
+            else:
+                errors.append(f"{item.get('symbol')} candidate_priority_ranking.action_gate must be an object")
     for row in report.get("readiness_matrix", []) if isinstance(report.get("readiness_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
+        _require_object_keys(row, READINESS_ROW_FIELDS, f"{row.get('symbol')} readiness_matrix", errors)
+        _reject_unsupported_keys(row, READINESS_ROW_FIELDS, f"{row.get('symbol')} readiness_matrix", errors)
         primary_gate: str = str(row.get("primary_gate") or "")
         primary_gate_class: str = str(row.get("primary_gate_class") or "")
         gate_classes: Any = row.get("gate_classes")
@@ -1911,15 +2158,49 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     for row in report.get("ai_review_status_matrix", []) if isinstance(report.get("ai_review_status_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
+        _require_object_keys(row, AI_REVIEW_STATUS_ROW_FIELDS, f"{row.get('symbol')} ai_review_status_matrix", errors)
+        _reject_unsupported_keys(row, AI_REVIEW_STATUS_ROW_FIELDS, f"{row.get('symbol')} ai_review_status_matrix", errors)
         status = str(row.get("ai_review_status") or "")
         if status not in AI_REVIEW_STATUSES:
             errors.append(f"{row.get('symbol')} ai_review_status_matrix.ai_review_status is unknown")
         if status == "COMPLETED" and not row.get("overlay_merged"):
             errors.append(f"{row.get('symbol')} completed AI review must have overlay_merged=true")
+    ai_status_by_symbol: dict[str, str] = {
+        str(row.get("symbol") or ""): str(row.get("ai_review_status") or "")
+        for row in report.get("ai_review_status_matrix", [])
+        if isinstance(row, Mapping)
+    } if isinstance(report.get("ai_review_status_matrix"), list) else {}
+    for row in report.get("ai_research_dossier_matrix", []) if isinstance(report.get("ai_research_dossier_matrix"), list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        _require_object_keys(row, AI_DOSSIER_ROW_FIELDS, f"{row.get('symbol')} ai_research_dossier_matrix", errors)
+        _reject_unsupported_keys(row, AI_DOSSIER_ROW_FIELDS, f"{row.get('symbol')} ai_research_dossier_matrix", errors)
+        status = str(row.get("dossier_status") or "")
+        if status not in {"NOT_PROVIDED", *FORMAL_AI_STATUSES}:
+            errors.append(f"{row.get('symbol')} ai_research_dossier_matrix.dossier_status is unknown")
+        if status != "NOT_PROVIDED" and row.get("dossier_merged") is not True:
+            errors.append(f"{row.get('symbol')} ai_research_dossier_matrix dossier_merged must be true when provided")
+        ai_status: str = ai_status_by_symbol.get(str(row.get("symbol") or ""), "")
+        if status != "NOT_PROVIDED" and ai_status in FORMAL_AI_STATUSES and status != ai_status:
+            errors.append(f"{row.get('symbol')} ai_research_dossier_matrix.dossier_status must match formal AI status")
+        if status != "NOT_PROVIDED":
+            for field, minimum in [("hypothesis_count", 2), ("evidence_test_count", 2), ("unresolved_question_count", 1)]:
+                value: Any = row.get(field)
+                if not isinstance(value, int) or value < minimum:
+                    errors.append(f"{row.get('symbol')} ai_research_dossier_matrix.{field} must be >= {minimum} when dossier is provided")
+        for field in ["thesis_quality_delta", "evidence_confidence_delta", "risk_adjustment"]:
+            value: Any = row.get(field)
+            if value is None:
+                continue
+            number: Any = _as_float(value)
+            if number is None or number < -8 or number > 8:
+                errors.append(f"{row.get('symbol')} ai_research_dossier_matrix.{field} must be between -8 and 8 or null")
     readiness: Any = report.get("report_readiness")
     if not isinstance(readiness, Mapping):
         errors.append("report_readiness must be an object")
     else:
+        _require_object_keys(readiness, REPORT_READINESS_FIELDS, "report_readiness", errors)
+        _reject_unsupported_keys(readiness, REPORT_READINESS_FIELDS, "report_readiness", errors)
         stage: str = str(readiness.get("stage") or "")
         if stage not in REPORT_READINESS_STAGES:
             errors.append("report_readiness.stage is unknown")
@@ -2025,6 +2306,8 @@ def validate_comparison_report(report: Mapping[str, Any]) -> list[str]:
     for row in report.get("serenity_layer_matrix", []) if isinstance(report.get("serenity_layer_matrix"), list) else []:
         if not isinstance(row, Mapping):
             continue
+        _require_object_keys(row, {"symbol", "layer", "bottleneck_reason", "layer_score", "company_fit", "revenue_transmission", "evidence_gap"}, f"{row.get('symbol')} serenity_layer_matrix", errors)
+        _reject_unsupported_keys(row, SERENITY_LAYER_ROW_FIELDS, f"{row.get('symbol')} serenity_layer_matrix", errors)
         if row.get("layer") == "AI_REVIEW_REQUIRED":
             errors.append(f"{row.get('symbol')} serenity_layer_matrix.layer must not use ambiguous AI_REVIEW_REQUIRED")
         if row.get("ai_review_status") == "COMPLETED" and str(row.get("layer") or "") == "VALUE_CHAIN_UNMAPPED":
@@ -2262,16 +2545,27 @@ def build_comparison_report(
     manifest_paths: Sequence[Path],
     overlays: Optional[Mapping[str, Mapping[str, Any]]] = None,
     ai_review_outcomes: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    ai_research_dossiers: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> dict[str, Any]:
     manifests: Any = [_load_manifest(path) for path in manifest_paths]
     if len(manifests) < 2:
         raise ValueError("comparison requires at least two manifest paths")
-    profiles: Any = _ai_review_profiles(manifests, overlays, ai_review_outcomes)
+    evidence_contexts: Optional[dict[str, Mapping[str, str]]] = None
+    if overlays is not None or ai_research_dossiers is not None:
+        # Build source context at the core entrypoint so direct API callers get
+        # the same source-ref enforcement as the validated merge CLI.
+        evidence_contexts = {
+            _symbol(manifest): evidence_context_from_manifest(Path(path))
+            for manifest, path in zip(manifests, manifest_paths)
+        }
+    profiles: Any = _ai_review_profiles(manifests, overlays, ai_review_outcomes, evidence_contexts)
+    dossier_profiles: dict[str, dict[str, Any]] = _ai_research_dossier_profiles(manifests, ai_research_dossiers, evidence_contexts)
 
     candidates: Any = []
     data_rows: Any = []
     layer_rows: Any = []
     ai_review_rows: list[dict[str, Any]] = []
+    ai_dossier_rows: list[dict[str, Any]] = []
     financial_rows: Any = []
     customer_rows: list[dict[str, Any]] = []
     valuation_rows: Any = []
@@ -2286,7 +2580,7 @@ def build_comparison_report(
 
     for manifest, path in zip(manifests, manifest_paths):
         symbol: Any = _symbol(manifest)
-        profile: Any = profiles.get(symbol, {})
+        profile: Any = _enrich_profile_from_dossier(profiles.get(symbol, {}), dossier_profiles.get(symbol))
         data_summary: Any = _data_summary(manifest)
         financial: Any = _financial_quality(manifest)
         valuation: Any = _valuation_input_row(manifest)
@@ -2334,6 +2628,7 @@ def build_comparison_report(
         data_rows.append(data_summary)
         layer_rows.append(layer)
         ai_review_rows.append(_ai_review_status_row(layer))
+        ai_dossier_rows.append(_ai_research_dossier_row(symbol, dossier_profiles.get(symbol)))
         financial_rows.append(financial)
         customer_rows.append(customer_evidence)
         valuation_rows.append(valuation)
@@ -2390,6 +2685,7 @@ def build_comparison_report(
         "data_acquisition_summary": data_rows,
         "serenity_layer_matrix": layer_rows,
         "ai_review_status_matrix": ai_review_rows,
+        "ai_research_dossier_matrix": ai_dossier_rows,
         "financial_quality_matrix": financial_rows,
         "customer_evidence_matrix": customer_rows,
         "valuation_input_matrix": valuation_rows,
@@ -2469,7 +2765,12 @@ def to_markdown(report: Mapping[str, Any]) -> str:
     for row in report.get("ai_review_status_matrix", []):
         if isinstance(row, Mapping):
             lines.append(f"| {row.get('symbol')} | {display_label(row.get('ai_review_status'))} | {display_bool(row.get('overlay_merged'))} | {display_bool(row.get('layer_mapped'))} | {row.get('evidence_ref_count')} | {row.get('research_question_count')} | {row.get('blocking_reason', '')} |")
-    lines.extend(["", "## 1.4 客户/订单/产能证据", "| 标的 | 数据状态 | 证据状态 | 分数 | 直接证据 | 线索证据 | 待阅读记录 | 来源 | 下一步证据 |", "|---|---|---|---:|---:|---:|---:|---|---|"])
+    lines.extend(["", "## 1.4 AI 深研 Dossier", "| 标的 | Dossier 状态 | 已合并 | 已读源 | 观察 | 推断 | 判断 | 假设 | 证据测试 | 未决问题 | Claim | 支持 Claim | 因果步骤 | AI 增量 | 行动条件 |", "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"])
+    for row in report.get("ai_research_dossier_matrix", []):
+        if isinstance(row, Mapping):
+            deltas: str = f"thesis {row.get('thesis_quality_delta')} / evidence {row.get('evidence_confidence_delta')} / risk {row.get('risk_adjustment')}"
+            lines.append(f"| {row.get('symbol')} | {display_label(row.get('dossier_status'))} | {display_bool(row.get('dossier_merged'))} | {row.get('source_read_count')} | {row.get('observed_count')} | {row.get('inferred_count')} | {row.get('judgment_count')} | {row.get('hypothesis_count')} | {row.get('evidence_test_count')} | {row.get('unresolved_question_count')} | {row.get('claim_count')} | {row.get('supported_claim_count')} | {row.get('causal_step_count')} | {deltas} | {row.get('action_condition_summary', '')} |")
+    lines.extend(["", "## 1.5 客户/订单/产能证据", "| 标的 | 数据状态 | 证据状态 | 分数 | 直接证据 | 线索证据 | 待阅读记录 | 来源 | 下一步证据 |", "|---|---|---|---:|---:|---:|---:|---|---|"])
     for row in report.get("customer_evidence_matrix", []):
         if isinstance(row, Mapping):
             lines.append(f"| {row.get('symbol')} | {display_label(row.get('status'))} | {display_label(row.get('evidence_status'))} | {row.get('score')} | {row.get('direct_evidence_count')} | {row.get('lead_evidence_count')} | {row.get('review_queue_count')} | {row.get('source_name')} | {row.get('required_next_evidence')} |")

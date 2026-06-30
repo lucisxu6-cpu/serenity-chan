@@ -17,6 +17,7 @@
   "properties": {
     "symbol": { "type": "string", "minLength": 1 },
     "as_of_date": { "type": "string", "minLength": 1 },
+    "dossier_ref": { "type": "string", "minLength": 1 },
     "layer": { "type": "string", "minLength": 1 },
     "bottleneck_reason": { "type": "string", "minLength": 1 },
     "revenue_transmission": { "type": "string", "minLength": 1 },
@@ -25,9 +26,13 @@
     "company_fit": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
     "evidence_supported_growth": { "type": "string", "enum": ["H0", "H1", "H2", "H3", "H4", "H5", "UNKNOWN"] },
     "h4_h5_evidence_bar_met": { "type": "boolean" },
-    "required_next_evidence": { "type": "string" },
-    "posterior_basis": { "type": "string" },
+    "required_next_evidence": { "type": "string", "minLength": 1 },
+    "posterior_basis": { "type": "string", "minLength": 1 },
     "ai_confidence": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+    "thesis_quality_delta": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+    "evidence_confidence_delta": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+    "risk_adjustment": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+    "action_condition_summary": { "type": "string", "minLength": 1 },
     "key_evidence_refs": {
       "type": "array",
       "minItems": 1,
@@ -36,12 +41,12 @@
     "contrary_evidence": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string" }
+      "items": { "type": "string", "minLength": 1 }
     },
     "research_questions": {
       "type": "array",
       "minItems": 2,
-      "items": { "type": "string" }
+      "items": { "type": "string", "minLength": 1 }
     }
   },
   "$defs": {
@@ -54,7 +59,7 @@
         "source_level": { "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"] },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

@@ -90,7 +90,7 @@ def build_theme_research_packet(universe_path: Path) -> dict[str, Any]:
             "required_layer_coverage": "每个核心价值链层级至少保留 3 个真实候选；不足时必须说明缺口和扩展任务。",
             "exclusion_rule": "只有概念标签、缺少收入/订单/客户/产能/财报证据的公司只能进入 downgraded_hot_directions 或线索跟踪。",
         },
-        "next_step": "Use this packet as theme context for AI overlay/outcome generation before comparing candidates or producing strategy output.",
+        "next_step": "Use this packet as theme context for AI dossier and overlay/outcome generation before comparing candidates or producing strategy output.",
     }
 
 

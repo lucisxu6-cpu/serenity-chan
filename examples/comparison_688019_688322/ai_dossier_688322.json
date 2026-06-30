@@ -1,0 +1,167 @@
+{
+  "contract_type": "serenity_ai_research_dossier",
+  "schema_version": "1.0",
+  "symbol": "688322.SH",
+  "as_of_date": "2026-06-23",
+  "research_status": "COMPLETED",
+  "source_reading_log": [
+    {
+      "source_ref": "filings_announcements:CNINFO_Announcements_L0",
+      "source_level": "L0",
+      "read_status": "READ",
+      "finding": "巨潮公告链路提供官方披露入口，可用于核验公司 3D 视觉、机器人客户、订单和资本动作。"
+    },
+    {
+      "source_ref": "financial quality matrix",
+      "source_level": "L3",
+      "read_status": "READ",
+      "finding": "财务质量矩阵显示恢复线索，但现金流、稀释影响和分部收入证据仍需继续验证。"
+    }
+  ],
+  "research_path": {
+    "core_question": "688322.SH 的机器人/3D 视觉叙事是否已经具备可兑现的公司级证据？",
+    "decision_use": "决定它在机器人主题里的位置是高弹性观察、同层替代，还是需要继续停留在证据补全阶段。",
+    "base_rate_anchor": "视觉模组和机器人主题常见风险是应用叙事领先于客户订单和分部收入，必须区分主题 Beta 与公司 Alpha。",
+    "reflexivity_check": "若股价已提前反映机器人渗透预期，而收入拆分、客户订单和现金流尚未验证，风险折扣应高于材料耗材型候选。",
+    "hypotheses": [
+      {
+        "hypothesis": "公司具备机器人/3D 视觉主题研究价值，但当前证据更多是主题线索。",
+        "current_view": "PARTIAL",
+        "why_it_matters": "主题线索可以提高跟踪优先级，但不能直接等同于高兑现瓶颈。",
+        "evidence_needed": "机器人客户、订单、模组出货、分部收入和毛利率的 L0/L1 证据。"
+      },
+      {
+        "hypothesis": "现金流和资本动作会显著影响主题弹性向股东回报的传导。",
+        "current_view": "PARTIAL",
+        "why_it_matters": "如果融资、稀释或现金流压力抵消成长，行动优先级需要下修。",
+        "evidence_needed": "最新财报现金流、股本变化、融资用途和资本开支披露。"
+      }
+    ],
+    "evidence_tests": [
+      {
+        "test": "核验机器人客户、订单和 3D 视觉收入拆分是否存在直接披露。",
+        "method": "读取巨潮公告、年报、互动易或投资者关系记录中的业务线描述。",
+        "current_result": "已有官方公告入口，但当前样例没有足够直接的收入拆分和订单证据。",
+        "evidence_status": "MISSING",
+        "source_refs": ["filings_announcements:CNINFO_Announcements_L0"]
+      },
+      {
+        "test": "检查财务恢复是否能覆盖现金流和资本动作风险。",
+        "method": "用财务质量矩阵和资本动作线索观察利润、现金流、股本摊薄和费用变化。",
+        "current_result": "财务恢复线索存在，但现金流和资本动作仍需要更强证据。",
+        "evidence_status": "LEAD",
+        "source_refs": ["financial quality matrix"]
+      }
+    ],
+    "unresolved_questions": [
+      "机器人相关收入占比和客户订单是否已经可量化？",
+      "资本动作、现金流和股本变化是否会削弱主题弹性？"
+    ]
+  },
+  "observed": [
+    "候选已取得公告元数据和财务预检数据，但机器人和 3D 视觉收入拆分仍缺少直接证据。",
+    "现有 overlay 将公司映射到 3D vision sensing module adoption，证据支持增长为 H2。"
+  ],
+  "inferred": [
+    "如果机器人客户、模组出货和分部收入被官方披露验证，候选的主题弹性会提升。",
+    "在现金流、稀释和收入拆分未核验前，3D 视觉叙事不能等同于高兑现瓶颈。"
+  ],
+  "judgment": [
+    "688322.SH 当前更适合作为主题弹性观察对象。",
+    "AI 增量应保留一定 thesis quality，但风险调整需要高于 688019.SH。"
+  ],
+  "claim_graph": [
+    {
+      "claim": "公司具备机器人/3D 视觉主题研究价值。",
+      "supporting_refs": ["filings_announcements:CNINFO_Announcements_L0", "financial quality matrix"],
+      "opposing_refs": [],
+      "status": "PARTIAL",
+      "decision_impact": "保留研究跟踪，但不足以直接升级行动。"
+    },
+    {
+      "claim": "机器人客户、订单和收入拆分已经足以证明 H4/H5 成长。",
+      "supporting_refs": [],
+      "opposing_refs": ["financial quality matrix"],
+      "status": "UNSUPPORTED",
+      "decision_impact": "限制证据支持增长到 H2，并维持研究门控。"
+    }
+  ],
+  "causal_chain": [
+    {
+      "step": "机器人和空间智能应用渗透",
+      "mechanism": "提升 3D 视觉模组或传感方案需求。",
+      "evidence_status": "INFERRED"
+    },
+    {
+      "step": "客户导入和产品出货",
+      "mechanism": "把主题需求转化为订单、分部收入和毛利率改善。",
+      "evidence_status": "MISSING"
+    },
+    {
+      "step": "资本动作和现金流",
+      "mechanism": "决定成长兑现是否被摊薄、融资或现金流压力抵消。",
+      "evidence_status": "LEAD"
+    }
+  ],
+  "same_layer_comparison": [
+    {
+      "peer": "688019.SH",
+      "comparison_axis": "兑现路径",
+      "relative_position": "688322.SH 更依赖应用渗透和客户订单验证，688019.SH 更依赖材料耗材复购和产能利用率。",
+      "evidence_needed": "需要机器人客户、订单、分部收入、现金流和资本动作量化后才能形成同口径比较。"
+    }
+  ],
+  "bear_case": [
+    "如果机器人收入拆分和客户订单无法验证，3D 视觉叙事只能作为主题线索。",
+    "如果现金流和资本动作压力扩大，估值弹性会被风险折扣抵消。"
+  ],
+  "scenario_view": {
+    "base": {
+      "summary": "保持主题观察，优先补机器人客户、订单和收入拆分证据。",
+      "probability": 0.5,
+      "conditions": ["财务恢复延续，但关键业务线证据仍不足。"]
+    },
+    "upside": {
+      "summary": "官方披露确认机器人客户订单和收入贡献，候选升级为高弹性观察。",
+      "probability": 0.25,
+      "conditions": ["L0/L1 证据证明订单、客户和出货兑现。"]
+    },
+    "downside": {
+      "summary": "主题无法兑现为收入和现金流，资本动作风险压低优先级。",
+      "probability": 0.25,
+      "conditions": ["现金流、稀释或收入拆分恶化。"]
+    }
+  },
+  "trigger_table": {
+    "30d": ["读取最新公告，确认是否有机器人客户、订单或定增进展。"],
+    "90d": ["复核季报收入结构、毛利率、经营现金流和资本动作影响。"],
+    "180d": ["追踪机器人相关收入是否从主题线索变成可量化财务贡献。"]
+  },
+  "action_conditions": {
+    "upgrade_to_action": ["官方披露确认机器人客户/订单/收入拆分，并且现金流和稀释风险可控。"],
+    "add_or_size_up": ["H2 证据升级到 H3 以上，同时估值和技术买点不再阻断。"],
+    "trim_or_exit": ["机器人收入无法验证，且资本动作或现金流压力扩大。"],
+    "stay_research_only": ["机器人客户、订单和分部收入仍停留在主题线索层。"]
+  },
+  "confidence_dampers": [
+    "机器人和 3D 视觉业务线缺少直接收入拆分证据。",
+    "现金流和资本动作会影响主题弹性向股东回报的传导。"
+  ],
+  "overlay_projection": {
+    "layer": "3D vision sensing module adoption",
+    "bottleneck_reason": "公司有机器人和 3D 视觉主题研究价值，但客户、订单和收入拆分证据仍不足。",
+    "revenue_transmission": "收入通过模组出货、机器人客户导入、毛利率恢复和产品结构验证传导。",
+    "serenity_fit": 0.58,
+    "layer_score": 58,
+    "company_fit": 58,
+    "evidence_supported_growth": "H2",
+    "h4_h5_evidence_bar_met": false,
+    "required_next_evidence": "核验机器人客户收入拆分、订单持续性、资本动作摊薄和现金流转化。",
+    "posterior_basis": "AI 深研支持主题观察，但客户/订单/分部收入和资本动作仍限制行动升级。",
+    "ai_confidence": "MEDIUM",
+    "thesis_quality_delta": 1,
+    "evidence_confidence_delta": -1,
+    "risk_adjustment": 3,
+    "action_condition_summary": "保留主题观察；只有机器人收入证据、现金流和资本动作同时改善才升级。"
+  }
+}

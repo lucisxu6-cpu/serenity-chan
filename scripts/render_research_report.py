@@ -202,7 +202,7 @@ def _render_from_report(report: Mapping[str, Any], *, mode: str) -> str:
     markdown: str = to_markdown(report)
     if mode == "quick_audit":
         return "\n".join([
-            "> 快速审计模式：这不是完整研究报告。",
+            "> 快速审计模式：当前输出为快速审计摘要。",
             "",
             markdown,
         ])

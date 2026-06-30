@@ -2,13 +2,13 @@
   "symbol": "0700.HK",
   "as_of_date": "2026-06-29",
   "layer": "中国互联网平台：游戏、广告、金融科技与云/AI 可选性",
-  "bottleneck_reason": "该 thesis 属于平台分发与变现瓶颈，而不是典型上游供应链卡点；游戏、广告、支付、社交关系链和云/AI 可选性共同决定匹配度。",
+  "bottleneck_reason": "该 thesis 属于平台分发与变现瓶颈；游戏、广告、支付、社交关系链和云/AI 可选性共同决定匹配度。",
   "revenue_transmission": "收入通过游戏、营销服务、金融科技/企业服务和云/AI 可选性传导；需要用港交所官方报告复核分部增长、利润率、现金转化和监管/竞争风险。",
   "serenity_fit": 0.63,
   "evidence_supported_growth": "H2",
   "h4_h5_evidence_bar_met": false,
   "required_next_evidence": "将平台 thesis 视为行动级前，需要复核分部收入、游戏管线、广告修复、金融科技利润率、云/AI 贡献和监管约束。",
-  "posterior_basis": "港交所官方财报抽取和 HKD/CNY 估值归一支持大体匹配的 H1/H2 估值增长画像，但公司并非纯粹 Serenity 上游瓶颈。",
+  "posterior_basis": "港交所官方财报抽取和 HKD/CNY 估值归一支持大体匹配的 H1/H2 估值增长画像，同时显示其核心判断应落在平台分发、变现效率和 AI/云可选性。",
   "key_evidence_refs": [
     {
       "claim": "HKEX 财报抽取和估值归一支持 H2 证据支持增长，且与市场预期大体匹配。",
@@ -18,7 +18,7 @@
     }
   ],
   "contrary_evidence": [
-    "公司是多元平台而非狭窄供应链瓶颈；监管、竞争、宏观广告需求和云业务经济性都可能限制赔率。"
+    "公司的多元平台属性使监管、竞争、宏观广告需求和云业务经济性都可能限制赔率。"
   ],
   "research_questions": [
     "哪些分部披露能证明平台分发和 AI/云可选性正在转化为可持续增量增长？",

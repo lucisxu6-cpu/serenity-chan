@@ -9,6 +9,7 @@
     "data_acquisition_summary",
     "serenity_layer_matrix",
     "ai_review_status_matrix",
+    "ai_research_dossier_matrix",
     "financial_quality_matrix",
     "customer_evidence_matrix",
     "valuation_input_matrix",
@@ -34,7 +35,7 @@
         "as_of": { "type": "string" },
         "basis": { "type": "string" }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "candidate_pool_semantic_coherence": {
       "type": "object",
@@ -52,7 +53,7 @@
         },
         "decision_constraint": { "type": "string" }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "candidates": {
       "type": "array",
@@ -68,7 +69,7 @@
           "rating_cap": { "$ref": "#/$defs/rating" },
           "data_package_path": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "data_acquisition_summary": {
@@ -97,9 +98,31 @@
           "layer_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
           "company_fit": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
           "revenue_transmission": { "type": "string" },
-          "evidence_gap": { "type": "string" }
+          "evidence_gap": { "type": "string" },
+          "ai_confidence": { "type": "string" },
+          "ai_review_status": {
+            "type": "string",
+            "enum": ["NOT_RUN", "COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA", "SKIPPED_QUICK_AUDIT"]
+          },
+          "key_evidence_refs": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "contrary_evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "research_questions": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "dossier_ref": { "type": "string" },
+          "thesis_quality_delta": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+          "evidence_confidence_delta": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+          "risk_adjustment": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+          "action_condition_summary": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "ai_review_status_matrix": {
@@ -128,7 +151,69 @@
           "research_question_count": { "type": "integer", "minimum": 0 },
           "blocking_reason": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": false
+      }
+    },
+    "ai_research_dossier_matrix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "dossier_status",
+          "dossier_merged",
+          "source_read_count",
+          "observed_count",
+          "inferred_count",
+          "judgment_count",
+          "hypothesis_count",
+          "evidence_test_count",
+          "unresolved_question_count",
+          "claim_count",
+          "supported_claim_count",
+          "causal_step_count",
+          "scenario_count",
+          "trigger_count",
+          "action_condition_count",
+          "thesis_quality_delta",
+          "evidence_confidence_delta",
+          "risk_adjustment",
+          "confidence_dampers",
+          "action_condition_summary",
+          "dossier_ref"
+        ],
+        "properties": {
+          "symbol": { "type": "string" },
+          "dossier_status": {
+            "type": "string",
+            "enum": ["NOT_PROVIDED", "COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"]
+          },
+          "dossier_merged": { "type": "boolean" },
+          "source_read_count": { "type": "integer", "minimum": 0 },
+          "observed_count": { "type": "integer", "minimum": 0 },
+          "inferred_count": { "type": "integer", "minimum": 0 },
+          "judgment_count": { "type": "integer", "minimum": 0 },
+          "hypothesis_count": { "type": "integer", "minimum": 0 },
+          "evidence_test_count": { "type": "integer", "minimum": 0 },
+          "unresolved_question_count": { "type": "integer", "minimum": 0 },
+          "claim_count": { "type": "integer", "minimum": 0 },
+          "supported_claim_count": { "type": "integer", "minimum": 0 },
+          "causal_step_count": { "type": "integer", "minimum": 0 },
+          "scenario_count": { "type": "integer", "minimum": 0 },
+          "trigger_count": { "type": "integer", "minimum": 0 },
+          "action_condition_count": { "type": "integer", "minimum": 0 },
+          "thesis_quality_delta": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+          "evidence_confidence_delta": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+          "risk_adjustment": { "type": ["number", "null"], "minimum": -8, "maximum": 8 },
+          "confidence_dampers": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "action_condition_summary": { "type": "string" },
+          "dossier_ref": { "type": "string" }
+        },
+        "additionalProperties": false
       }
     },
     "financial_quality_matrix": {
@@ -178,7 +263,7 @@
           },
           "required_next_evidence": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "valuation_input_matrix": {
@@ -243,7 +328,7 @@
             "items": { "type": "string" }
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "currency_normalization_matrix": {
@@ -291,7 +376,7 @@
             "items": { "type": "string" }
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "growth_hypothesis_matrix": {
@@ -346,7 +431,7 @@
           },
           "posterior_basis": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "technical_timing_matrix": {
@@ -447,7 +532,7 @@
             "items": { "type": "string" }
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "research_debt": {
@@ -487,7 +572,7 @@
           "action_gate": { "$ref": "#/$defs/action_gate" },
           "key_reason": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "final_decision": {
@@ -516,7 +601,21 @@
         "candidate_count_warning": { "type": "string" },
         "candidate_pool_semantic_coherence": {
           "type": "object",
-          "additionalProperties": true
+          "required": ["status", "reason", "market_count", "layer_families", "decision_constraint"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["UNREVIEWED", "SAME_LAYER", "SAME_THEME_DIFFERENT_LAYERS", "CROSS_THEME_DIAGNOSTIC", "UNRELATED_DIAGNOSTIC"]
+            },
+            "reason": { "type": "string" },
+            "market_count": { "type": "integer", "minimum": 0 },
+            "layer_families": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "decision_constraint": { "type": "string" }
+          },
+          "additionalProperties": false
         },
         "ranking_validity": {
           "type": "object",
@@ -533,7 +632,7 @@
               "items": { "type": "string" }
             }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "decision": { "type": "string" },
         "next_research_actions": {
@@ -541,7 +640,7 @@
           "items": { "type": "string" }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "report_readiness": {
       "type": "object",
@@ -571,7 +670,7 @@
         },
         "reason": { "type": "string" }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
   "$defs": {
@@ -603,9 +702,9 @@
     },
     "action_gate": {
       "type": "object",
-      "required": ["primary_gate", "primary_gate_class", "gate_classes", "secondary_gates", "blocking_datasets", "blocking_reasons"],
+      "required": ["state", "primary_gate", "primary_gate_class", "gate_classes", "secondary_gates", "blocking_datasets", "blocking_reasons"],
       "properties": {
-        "state": { "type": "string" },
+        "state": { "type": "string", "enum": ["ACTIONABLE_WATCH", "NOT_ACTIONABLE"] },
         "primary_gate": {
           "type": "string",
           "enum": ["NONE", "DATA_GATED", "EVIDENCE_GATED", "VALUATION_GATED", "AI_REVIEW_GATED", "BUY_POINT_GATED", "CAPITAL_ACTION_GATED"]
@@ -637,8 +736,8 @@
           "items": { "type": "string" }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

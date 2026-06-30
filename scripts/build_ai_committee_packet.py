@@ -77,12 +77,17 @@ OVERLAY_REQUIRED_OUTPUTS: list[str] = [
     "ai_confidence",
 ]
 OVERLAY_OPTIONAL_OUTPUTS: list[str] = [
+    "dossier_ref",
     "layer_score",
     "company_fit",
     "evidence_supported_growth",
     "h4_h5_evidence_bar_met",
     "required_next_evidence",
     "posterior_basis",
+    "thesis_quality_delta",
+    "evidence_confidence_delta",
+    "risk_adjustment",
+    "action_condition_summary",
 ]
 COMMITTEE_REVIEW_OUTPUTS: list[str] = [
     "consensus",
@@ -111,6 +116,7 @@ def build_ai_committee_packet(manifest_path: Path) -> dict[str, Any]:
             "Every upgrade claim must cite L0/L1 evidence or remain a research question.",
             "L3/L4 evidence can generate leads but cannot support H4/H5 or S/A conclusions by itself.",
             "Final overlays must include at least one contrary_evidence item and at least two concrete research_questions.",
+            "The research dossier is the full reasoning surface; the overlay is only the bounded projection used by scoring and reports.",
             "Open research_debt remains blocking until cleared, scoped out, or explicitly tied to a lower rating/action state.",
         ],
         "base_ai_review_packet": dict(base_packet),
@@ -119,16 +125,18 @@ def build_ai_committee_packet(manifest_path: Path) -> dict[str, Any]:
         "required_overlay_outputs": OVERLAY_REQUIRED_OUTPUTS,
         "optional_overlay_outputs": OVERLAY_OPTIONAL_OUTPUTS,
         "overlay_output_contract": {
+            "dossier_schema_path": "assets/ai_research_dossier.schema.json",
             "schema_path": "assets/ai_research_overlay.schema.json",
             "allowed_fields": overlay_allowed_outputs,
             "committee_fields_are_not_overlay_fields": True,
         },
         "committee_to_overlay_mapping": COMMITTEE_TO_OVERLAY_MAPPING,
         "overlay_instructions": [
-            "Write committee review notes separately from the final overlay JSON.",
+            "Write the dossier research_path before the final overlay or outcome.",
+            "Write committee review notes inside the dossier or separately from the final overlay JSON.",
             "The final overlay JSON may contain only required_overlay_outputs and optional_overlay_outputs.",
             "If evidence_supported_growth is H4 or H5, set h4_h5_evidence_bar_met=true and cite L0/L1 evidence; otherwise keep the claim below H4/H5.",
-            "Compress consensus, dissent, upgrade conditions, and downgrade conditions into posterior_basis, contrary_evidence, required_next_evidence, and research_questions before validation.",
+            "Project consensus, dissent, upgrade conditions, downgrade conditions, scenario triggers, and action conditions into the overlay's bounded fields before validation.",
         ],
     }
 

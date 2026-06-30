@@ -663,6 +663,10 @@
       "688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json",
       "688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json"
     ],
+    "dossier_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_dossier_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_dossier_688322.json"
+    ],
     "expect_pass": true,
     "expected_result": {
       "mode": "full_research",
@@ -973,6 +977,66 @@
       {
         "path": "serenity_layer_matrix.0.layer_score",
         "value": 999
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-unsupported-root-field",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "unsupported_extra_root_field",
+        "value": "diagnostic fields must not enter the final report root"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-unsupported-final-decision-field",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "final_decision.unsupported_extra_field",
+        "value": "final decision must only use consumed contract fields"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-unsupported-ranking-validity-field",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "final_decision.ranking_validity.unconsumed_axis",
+        "value": "ranking validity must only use explicit blocked_by and partial_axes"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "comparison-report-validation-rejects-unsupported-action-gate-field",
+    "kind": "comparison_report_validation",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "mutations": [
+      {
+        "path": "candidate_priority_ranking.0.action_gate.unconsumed_gate_note",
+        "value": "action gates must use explicit consumed fields"
       }
     ],
     "expect_pass": false
@@ -2307,6 +2371,47 @@
     "expect_pass": false
   },
   {
+    "name": "ai-overlay-validation-blocks-null-optional-string",
+    "kind": "ai_overlay_validation",
+    "payload": {
+      "symbol": "688019.SH",
+      "as_of_date": "2026-06-23",
+      "layer": "CMP slurry and wet-process materials bottleneck",
+      "bottleneck_reason": "Official filings connect product qualification and domestic substitution to revenue growth.",
+      "revenue_transmission": "Revenue transmits through customer qualification, materials share gain, and fab utilization.",
+      "serenity_fit": 0.74,
+      "evidence_supported_growth": "H3",
+      "action_condition_summary": null,
+      "key_evidence_refs": [
+        {
+          "claim": "Revenue and margin expansion are visible in official reports.",
+          "source_ref": "filings_announcements:CNINFO_Announcements_L0",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["Customer concentration and gross-margin durability still require tracking."],
+      "research_questions": [
+        "Verify customer/order contribution and capacity utilization in the next filing cycle.",
+        "Cross-check whether gross-margin durability is supported by official product mix disclosures."
+      ],
+      "ai_confidence": "HIGH"
+    },
+    "expect_pass": false
+  },
+  {
+    "name": "ai-overlay-validation-rejects-unsupported-evidence-ref-field",
+    "kind": "ai_overlay_validation",
+    "payload_file": "examples/comparison_688019_688322/ai_overlay_688019.json",
+    "mutations": [
+      {
+        "path": "key_evidence_refs.0.unconsumed_field",
+        "value": "evidence references must use the explicit citation contract"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
     "name": "ai-overlay-validation-blocks-high-confidence-without-primary-evidence",
     "kind": "ai_overlay_validation",
     "payload": {
@@ -2345,7 +2450,8 @@
       "valuation_input_matrix_row.valuation_input_ref": "valuation_input_matrix:688019.SH",
       "deterministic_matrices.valuation_input.status": "OK",
       "open_research_debt.0.dataset": "financials",
-      "required_ai_questions.4": "Return an overlay matching assets/ai_research_overlay.schema.json.",
+      "expected_overlay_contract.dossier_schema": "assets/ai_research_dossier.schema.json",
+      "required_ai_questions.5": "Return a dossier plus either an overlay matching assets/ai_research_overlay.schema.json or an outcome matching assets/ai_review_outcome.schema.json.",
       "deterministic_matrices.growth_hypothesis.market_implied_growth": "H3"
     }
   },
@@ -2439,6 +2545,40 @@
     }
   },
   {
+    "name": "ai-overlay-merge-rejects-unresolved-overlay-source-ref-at-report-core",
+    "kind": "ai_overlay_merge",
+    "manifests": [
+      "evals/fixtures/comparison_688019_manifest.json",
+      "evals/fixtures/comparison_688322_manifest.json"
+    ],
+    "overlays": {
+      "688019.SH": {
+        "symbol": "688019.SH",
+        "as_of_date": "2026-06-23",
+        "layer": "test layer",
+        "bottleneck_reason": "This fixture verifies that report-core overlay merging rejects unresolved evidence references.",
+        "revenue_transmission": "A completed overlay must resolve its source references against the candidate manifest.",
+        "serenity_fit": 0.5,
+        "evidence_supported_growth": "H2",
+        "key_evidence_refs": [
+          {
+            "claim": "This claim uses an unresolved source reference.",
+            "source_ref": "Imaginary source not in manifest",
+            "source_level": "L2",
+            "confidence": 0.5
+          }
+        ],
+        "contrary_evidence": ["The source reference is not present in the candidate manifest."],
+        "research_questions": [
+          "Replace the unresolved reference with a manifest source.",
+          "Validate the overlay with candidate evidence context."
+        ],
+        "ai_confidence": "LOW"
+      }
+    },
+    "expect_pass": false
+  },
+  {
     "name": "ai-overlay-merge-cannot-infer-market-growth-without-valuation-inputs",
     "kind": "ai_overlay_merge",
     "manifests": [
@@ -2456,9 +2596,9 @@
         "evidence_supported_growth": "H3",
         "key_evidence_refs": [
           {
-            "claim": "The company is exposed to AI infrastructure demand.",
-            "source_ref": "Static fixture research note",
-            "source_level": "L2",
+            "claim": "The fixture manifest contains share-capital data and does not provide valuation inputs.",
+            "source_ref": "manifest",
+            "source_level": "L1",
             "confidence": 0.6
           }
         ],
@@ -2931,10 +3071,16 @@
       "688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json"
     ],
     "outcome_values": [],
+    "dossier_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_dossier_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_dossier_688322.json"
+    ],
     "expect_pass": true,
     "expected_result": {
       "ai_review_status_matrix.0.ai_review_status": "COMPLETED",
       "ai_review_status_matrix.1.ai_review_status": "COMPLETED",
+      "ai_research_dossier_matrix.0.dossier_status": "COMPLETED",
+      "ai_research_dossier_matrix.1.dossier_status": "COMPLETED",
       "final_decision.decision_mode": "research_lead"
     }
   },
@@ -2949,6 +3095,306 @@
       "688019.SH=examples/comparison_688019_688322/ai_overlay_688019.json"
     ],
     "outcome_values": [],
+    "dossier_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_dossier_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_dossier_688322.json"
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "ai-research-dossier-validator-accepts-complete-research-package",
+    "kind": "ai_research_dossier_validation",
+    "payload": {
+      "contract_type": "serenity_ai_research_dossier",
+      "schema_version": "1.0",
+      "symbol": "TEST.SH",
+      "as_of_date": "2026-06-30",
+      "research_status": "COMPLETED",
+      "source_reading_log": [
+        {
+          "source_ref": "CNINFO official filing",
+          "source_level": "L0",
+          "read_status": "READ",
+          "finding": "官方披露提供业务和财务核验入口。"
+        }
+      ],
+      "research_path": {
+        "core_question": "测试候选是否具备可进入研究队列的证据基础？",
+        "decision_use": "验证 dossier 能完整表达 AI 研究路径并通过校验。",
+        "base_rate_anchor": "主题线索需要被客户、订单和财务兑现证据确认。",
+        "reflexivity_check": "如果证据停留在线索层，结论应保留研究门控。",
+        "hypotheses": [
+          {
+            "hypothesis": "候选具备研究价值。",
+            "current_view": "SUPPORTED",
+            "why_it_matters": "决定是否进入正式研究队列。",
+            "evidence_needed": "官方披露、客户和订单证据。"
+          },
+          {
+            "hypothesis": "当前证据不足以直接升级行动。",
+            "current_view": "PARTIAL",
+            "why_it_matters": "避免把研究价值误判为行动结论。",
+            "evidence_needed": "客户、订单、估值和买点共同确认。"
+          }
+        ],
+        "evidence_tests": [
+          {
+            "test": "读取官方披露是否支持研究价值。",
+            "method": "核验 CNINFO official filing。",
+            "current_result": "官方披露提供业务和财务核验入口。",
+            "evidence_status": "DIRECT",
+            "source_refs": ["CNINFO official filing"]
+          },
+          {
+            "test": "识别客户和订单证据缺口。",
+            "method": "把已读来源与行动门控所需证据对照。",
+            "current_result": "客户和订单直接证据仍不足。",
+            "evidence_status": "MISSING",
+            "source_refs": ["CNINFO official filing"]
+          }
+        ],
+        "unresolved_questions": [
+          "客户和订单证据能否补齐？",
+          "财务兑现是否足以支撑行动升级？"
+        ]
+      },
+      "observed": ["已读取官方披露。"],
+      "inferred": ["业务线仍需要客户和订单证据。"],
+      "judgment": ["当前适合研究跟踪。"],
+      "claim_graph": [
+        {
+          "claim": "候选具备研究价值。",
+          "supporting_refs": ["CNINFO official filing"],
+          "opposing_refs": [],
+          "status": "SUPPORTED",
+          "decision_impact": "可进入研究队列。"
+        }
+      ],
+      "causal_chain": [
+        {
+          "step": "需求变化",
+          "mechanism": "推动订单线索增加。",
+          "evidence_status": "LEAD"
+        },
+        {
+          "step": "客户导入",
+          "mechanism": "转化为收入。",
+          "evidence_status": "MISSING"
+        },
+        {
+          "step": "财务兑现",
+          "mechanism": "体现为收入和现金流改善。",
+          "evidence_status": "INFERRED"
+        }
+      ],
+      "same_layer_comparison": [],
+      "bear_case": ["客户和订单证据不足。"],
+      "scenario_view": {
+        "base": {
+          "summary": "继续观察。",
+          "probability": 0.55,
+          "conditions": ["补齐客户证据。"]
+        },
+        "upside": {
+          "summary": "证据增强。",
+          "probability": 0.25,
+          "conditions": ["订单披露增强。"]
+        },
+        "downside": {
+          "summary": "证据不及预期。",
+          "probability": 0.2,
+          "conditions": ["财务兑现不足。"]
+        }
+      },
+      "trigger_table": {
+        "30d": ["读取公告。"],
+        "90d": ["复核季报。"],
+        "180d": ["复盘收入传导。"]
+      },
+      "action_conditions": {
+        "upgrade_to_action": ["客户和订单证据补齐。"],
+        "add_or_size_up": ["估值和买点同步改善。"],
+        "trim_or_exit": ["核心证据被证伪。"],
+        "stay_research_only": ["证据仍停留在线索层。"]
+      },
+      "confidence_dampers": ["客户/订单直接证据不足。"],
+      "overlay_projection": {
+        "layer": "test bottleneck",
+        "bottleneck_reason": "候选仍需业务和客户证据核验。",
+        "revenue_transmission": "收入通过客户导入和订单兑现传导。",
+        "serenity_fit": 0.52,
+        "evidence_supported_growth": "H2",
+        "h4_h5_evidence_bar_met": false,
+        "required_next_evidence": "补齐客户和订单证据。",
+        "posterior_basis": "证据支持研究跟踪但不支持行动升级。",
+        "ai_confidence": "MEDIUM",
+        "thesis_quality_delta": 1,
+        "evidence_confidence_delta": 0,
+        "risk_adjustment": 2,
+        "action_condition_summary": "等待客户和订单证据。"
+      }
+    },
+    "evidence_context": {
+      "CNINFO official filing": "官方披露提供业务、财务、客户和订单核验入口。"
+    },
+    "expect_pass": true
+  },
+  {
+    "name": "ai-research-dossier-validator-rejects-unsupported-nested-field",
+    "kind": "ai_research_dossier_validation",
+    "payload_file": "examples/comparison_688019_688322/ai_dossier_688019.json",
+    "mutations": [
+      {
+        "path": "research_path.hypotheses.0.unconsumed_field",
+        "value": "dossier research must use the explicit consumed research structure"
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "ai-research-dossier-validator-rejects-empty-action-condition-summary",
+    "kind": "ai_research_dossier_validation",
+    "payload_file": "examples/comparison_688019_688322/ai_dossier_688019.json",
+    "mutations": [
+      {
+        "path": "overlay_projection.action_condition_summary",
+        "value": ""
+      }
+    ],
+    "expect_pass": false
+  },
+  {
+    "name": "ai-research-dossier-validator-rejects-unbalanced-scenarios",
+    "kind": "ai_research_dossier_validation",
+    "payload": {
+      "contract_type": "serenity_ai_research_dossier",
+      "schema_version": "1.0",
+      "symbol": "TEST.SH",
+      "as_of_date": "2026-06-30",
+      "research_status": "COMPLETED",
+      "source_reading_log": [
+        {
+          "source_ref": "CNINFO official filing",
+          "source_level": "L0",
+          "read_status": "READ",
+          "finding": "官方披露提供业务和财务核验入口。"
+        }
+      ],
+      "research_path": {
+        "core_question": "测试候选是否具备可进入研究队列的证据基础？",
+        "decision_use": "验证场景概率校验能够独立发现错误。",
+        "base_rate_anchor": "主题线索需要被客户、订单和财务兑现证据确认。",
+        "reflexivity_check": "如果证据停留在线索层，结论应保留研究门控。",
+        "hypotheses": [
+          {
+            "hypothesis": "候选具备研究价值。",
+            "current_view": "SUPPORTED",
+            "why_it_matters": "决定是否进入正式研究队列。",
+            "evidence_needed": "官方披露、客户和订单证据。"
+          },
+          {
+            "hypothesis": "当前证据不足以直接升级行动。",
+            "current_view": "PARTIAL",
+            "why_it_matters": "避免把研究价值误判为行动结论。",
+            "evidence_needed": "客户、订单、估值和买点共同确认。"
+          }
+        ],
+        "evidence_tests": [
+          {
+            "test": "读取官方披露是否支持研究价值。",
+            "method": "核验 CNINFO official filing。",
+            "current_result": "官方披露提供业务和财务核验入口。",
+            "evidence_status": "DIRECT",
+            "source_refs": ["CNINFO official filing"]
+          },
+          {
+            "test": "识别客户和订单证据缺口。",
+            "method": "把已读来源与行动门控所需证据对照。",
+            "current_result": "客户和订单直接证据仍不足。",
+            "evidence_status": "MISSING",
+            "source_refs": ["CNINFO official filing"]
+          }
+        ],
+        "unresolved_questions": [
+          "客户和订单证据能否补齐？",
+          "财务兑现是否足以支撑行动升级？"
+        ]
+      },
+      "observed": ["已读取官方披露。"],
+      "inferred": ["业务线仍需要客户和订单证据。"],
+      "judgment": ["当前适合研究跟踪。"],
+      "claim_graph": [
+        {
+          "claim": "候选具备研究价值。",
+          "supporting_refs": ["CNINFO official filing"],
+          "opposing_refs": [],
+          "status": "SUPPORTED",
+          "decision_impact": "可进入研究队列。"
+        }
+      ],
+      "causal_chain": [
+        {
+          "step": "需求变化",
+          "mechanism": "推动订单线索增加。",
+          "evidence_status": "LEAD"
+        },
+        {
+          "step": "客户导入",
+          "mechanism": "转化为收入。",
+          "evidence_status": "MISSING"
+        },
+        {
+          "step": "财务兑现",
+          "mechanism": "体现为收入和现金流改善。",
+          "evidence_status": "INFERRED"
+        }
+      ],
+      "same_layer_comparison": [],
+      "bear_case": ["客户和订单证据不足。"],
+      "scenario_view": {
+        "base": {
+          "summary": "继续观察。",
+          "probability": 0.6,
+          "conditions": ["补齐客户证据。"]
+        },
+        "upside": {
+          "summary": "证据增强。",
+          "probability": 0.6,
+          "conditions": ["订单披露增强。"]
+        },
+        "downside": {
+          "summary": "证据不及预期。",
+          "probability": 0.2,
+          "conditions": ["财务兑现不足。"]
+        }
+      },
+      "trigger_table": {
+        "30d": ["读取公告。"],
+        "90d": ["复核季报。"],
+        "180d": ["复盘收入传导。"]
+      },
+      "action_conditions": {
+        "upgrade_to_action": ["客户和订单证据补齐。"],
+        "add_or_size_up": ["估值和买点同步改善。"],
+        "trim_or_exit": ["核心证据被证伪。"],
+        "stay_research_only": ["证据仍停留在线索层。"]
+      },
+      "confidence_dampers": ["客户/订单直接证据不足。"],
+      "overlay_projection": {
+        "layer": "test bottleneck",
+        "bottleneck_reason": "候选仍需业务和客户证据核验。",
+        "revenue_transmission": "收入通过客户导入和订单兑现传导。",
+        "serenity_fit": 0.52,
+        "evidence_supported_growth": "H2",
+        "h4_h5_evidence_bar_met": false,
+        "required_next_evidence": "补齐客户和订单证据。",
+        "posterior_basis": "证据支持研究跟踪但不支持行动升级。",
+        "ai_confidence": "MEDIUM"
+      }
+    },
+    "evidence_context": {
+      "CNINFO official filing": "官方披露提供业务、财务、客户和订单核验入口。"
+    },
     "expect_pass": false
   },
   {
@@ -2971,27 +3417,38 @@
       "work_items": [
         {
           "symbol": "688019.SH",
-          "required_action": "produce_validated_ai_overlay_or_outcome",
+          "required_action": "produce_validated_ai_research_package",
           "manifest_path": "evals/fixtures/comparison_688019_manifest.json",
           "review_packet": "/tmp/serenity-test/688019/ai_review_packet.json",
           "committee_packet": "/tmp/serenity-test/688019/ai_committee_packet.json",
           "overlay_prompt": "/tmp/serenity-test/688019/ai_overlay_prompt.json",
           "theme_universe": "",
           "theme_research_packet": "",
+          "dossier_schema": "assets/ai_research_dossier.schema.json",
           "overlay_schema": "assets/ai_research_overlay.schema.json",
           "outcome_schema": "assets/ai_review_outcome.schema.json",
+          "dossier_output_path": "/tmp/serenity-test/688019/ai_research_dossier.json",
           "overlay_output_path": "/tmp/serenity-test/688019/ai_research_overlay.json",
           "outcome_output_path": "/tmp/serenity-test/688019/ai_review_outcome.json",
           "allowed_results": [
-            "COMPLETED via ai_research_overlay",
-            "FAILED_INSUFFICIENT_EVIDENCE via ai_review_outcome",
-            "CONFLICT_WITH_DATA via ai_review_outcome"
+            "COMPLETED via ai_research_dossier plus ai_research_overlay",
+            "FAILED_INSUFFICIENT_EVIDENCE via ai_research_dossier plus ai_review_outcome",
+            "CONFLICT_WITH_DATA via ai_research_dossier plus ai_review_outcome"
+          ],
+          "research_expansion_protocol": [
+            "Frame the core decision question before scoring the candidate.",
+            "Write at least two competing or complementary hypotheses, including one that can reduce the thesis.",
+            "Turn each major uncertainty into an evidence test with method, current result, evidence status, and source refs.",
+            "Separate observed facts, inferences, and judgment before writing final judgment.",
+            "Use scenarios, triggers, and action conditions to convert research into an executable decision path."
           ],
           "validation_commands": [
+            "python scripts/validate_ai_research_dossier.py <dossier.json> --manifest <manifest.json>",
             "python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>",
             "python scripts/validate_ai_review_outcome.py <ai_review_outcome.json>"
           ],
           "guardrails": [
+            "First write the full AI research dossier, then project it into one validated overlay or one validated review outcome.",
             "Do not invent customers, orders, revenue split, or current data.",
             "Do not override deterministic fields.",
             "Do not use SKIPPED_QUICK_AUDIT in formal mode."
@@ -3044,6 +3501,10 @@
       "688322.SH=examples/comparison_688019_688322/ai_overlay_688322.json"
     ],
     "outcome_values": [],
+    "dossier_values": [
+      "688019.SH=examples/comparison_688019_688322/ai_dossier_688019.json",
+      "688322.SH=examples/comparison_688019_688322/ai_dossier_688322.json"
+    ],
     "expect_pass": true
   },
   {
@@ -3289,7 +3750,7 @@
       "contrary_evidence": ["客户集中度仍需追踪。"],
       "research_questions": [
         "下一期客户结构是否继续改善？",
-        "毛利率是否由产品结构而非一次性因素驱动？"
+        "毛利率是否具备产品结构驱动的持续性？"
       ],
       "ai_confidence": "HIGH"
     },
@@ -3320,7 +3781,7 @@
       "contrary_evidence": ["客户集中度仍需追踪。"],
       "research_questions": [
         "下一期客户结构是否继续改善？",
-        "毛利率是否由产品结构而非一次性因素驱动？"
+        "毛利率是否具备产品结构驱动的持续性？"
       ],
       "ai_confidence": "HIGH"
     },

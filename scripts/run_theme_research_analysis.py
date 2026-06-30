@@ -131,6 +131,7 @@ def run_theme_analysis(
     sec_user_agent: str,
     overlay_values: Sequence[str],
     outcome_values: Sequence[str],
+    dossier_values: Sequence[str],
     strategy_horizon: str,
     strategy_geography: str,
     strategy_decision_use: str,
@@ -165,6 +166,7 @@ def run_theme_analysis(
         sec_user_agent=sec_user_agent,
         overlay_values=overlay_values,
         outcome_values=outcome_values,
+        dossier_values=dossier_values,
         strategy_theme=theme,
         strategy_horizon=strategy_horizon,
         strategy_geography=strategy_geography,
@@ -203,6 +205,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--sec-user-agent", default="", help="SEC-compliant User-Agent for US symbols")
     parser.add_argument("--overlay", action="append", default=[], help="SYMBOL=overlay.json")
     parser.add_argument("--ai-outcome", action="append", default=[], help="SYMBOL=ai_review_outcome.json")
+    parser.add_argument("--dossier", action="append", default=[], help="SYMBOL=ai_research_dossier.json")
     parser.add_argument("--strategy-horizon", default="3-6个月")
     parser.add_argument("--strategy-geography", default="")
     parser.add_argument("--strategy-decision-use", default="watchlist allocation, action triggers, and invalidation")
@@ -223,6 +226,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             sec_user_agent=args.sec_user_agent,
             overlay_values=args.overlay,
             outcome_values=args.ai_outcome,
+            dossier_values=args.dossier,
             strategy_horizon=args.strategy_horizon,
             strategy_geography=args.strategy_geography,
             strategy_decision_use=args.strategy_decision_use,

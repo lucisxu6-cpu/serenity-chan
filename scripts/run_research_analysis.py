@@ -96,27 +96,38 @@ def _agent_research_work_items(
         result_dir: Path = Path(str(artifact.get("ai_overlay_prompt") or ".")).parent
         work_items.append({
             "symbol": symbol,
-            "required_action": "produce_validated_ai_overlay_or_outcome",
+            "required_action": "produce_validated_ai_research_package",
             "manifest_path": manifest_by_symbol.get(symbol, ""),
             "review_packet": artifact.get("ai_review_packet", ""),
             "committee_packet": artifact.get("ai_committee_packet", ""),
             "overlay_prompt": artifact.get("ai_overlay_prompt", ""),
             "theme_universe": artifact.get("theme_universe", ""),
             "theme_research_packet": artifact.get("theme_research_packet", ""),
+            "dossier_schema": "assets/ai_research_dossier.schema.json",
             "overlay_schema": "assets/ai_research_overlay.schema.json",
             "outcome_schema": "assets/ai_review_outcome.schema.json",
+            "dossier_output_path": str(result_dir / "ai_research_dossier.json"),
             "overlay_output_path": str(result_dir / "ai_research_overlay.json"),
             "outcome_output_path": str(result_dir / "ai_review_outcome.json"),
             "allowed_results": [
-                "COMPLETED via ai_research_overlay",
-                "FAILED_INSUFFICIENT_EVIDENCE via ai_review_outcome",
-                "CONFLICT_WITH_DATA via ai_review_outcome",
+                "COMPLETED via ai_research_dossier plus ai_research_overlay",
+                "FAILED_INSUFFICIENT_EVIDENCE via ai_research_dossier plus ai_review_outcome",
+                "CONFLICT_WITH_DATA via ai_research_dossier plus ai_review_outcome",
+            ],
+            "research_expansion_protocol": [
+                "Frame the core decision question before scoring the candidate.",
+                "Write at least two competing or complementary hypotheses, including one that can reduce the thesis.",
+                "Turn each major uncertainty into an evidence test with method, current result, evidence status, and source refs.",
+                "Separate observed facts, inferences, and judgment before writing final judgment.",
+                "Use scenarios, triggers, and action conditions to convert research into an executable decision path.",
             ],
             "validation_commands": [
+                "python scripts/validate_ai_research_dossier.py <dossier.json> --manifest <manifest.json>",
                 "python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>",
                 "python scripts/validate_ai_review_outcome.py <ai_review_outcome.json>",
             ],
             "guardrails": [
+                "First write the full AI research dossier, then project it into one validated overlay or one validated review outcome.",
                 "Do not invent customers, orders, revenue split, or current data.",
                 "Do not override deterministic PE/PS, market_implied_growth, valuation_stage, data status, or capital-action facts.",
                 "Use SKIPPED_QUICK_AUDIT only when the user explicitly requested diagnostic or quick-audit mode.",
@@ -209,6 +220,7 @@ def run_analysis(
     sec_user_agent: str,
     overlay_values: Sequence[str],
     outcome_values: Sequence[str],
+    dossier_values: Sequence[str],
     strategy_theme: str,
     strategy_horizon: str,
     strategy_geography: str,
@@ -287,8 +299,10 @@ def run_analysis(
             _write_text(baseline_markdown_path, to_markdown(baseline_report))
 
     candidate_symbols: set[str] = {_manifest_symbol(path) for path in manifest_paths}
-    supplied_symbols: set[str] = _assigned_symbols(overlay_values) | _assigned_symbols(outcome_values)
-    missing_ai_symbols: list[str] = sorted(candidate_symbols - supplied_symbols)
+    supplied_result_symbols: set[str] = _assigned_symbols(overlay_values) | _assigned_symbols(outcome_values)
+    supplied_dossier_symbols: set[str] = _assigned_symbols(dossier_values)
+    completed_ai_package_symbols: set[str] = supplied_result_symbols & supplied_dossier_symbols
+    missing_ai_symbols: list[str] = sorted(candidate_symbols - completed_ai_package_symbols)
     if missing_ai_symbols:
         if research_mode == "diagnostic":
             summary: dict[str, Any] = _diagnostic_summary(
@@ -314,7 +328,7 @@ def run_analysis(
         _write_json(out_dir / "agent_research_queue.json", summary)
         return summary
 
-    final_report: dict[str, Any] = build_validated_merged_report(manifest_paths, overlay_values, outcome_values)
+    final_report: dict[str, Any] = build_validated_merged_report(manifest_paths, overlay_values, outcome_values, dossier_values)
     final_report_path: Path = out_dir / "comparison_final.json"
     final_markdown_path: Path = out_dir / "comparison_final.md"
     _write_json(final_report_path, final_report)
@@ -367,6 +381,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--sec-user-agent", default="", help="SEC-compliant User-Agent for US symbols")
     parser.add_argument("--overlay", action="append", default=[], help="SYMBOL=overlay.json")
     parser.add_argument("--ai-outcome", action="append", default=[], help="SYMBOL=ai_review_outcome.json")
+    parser.add_argument("--dossier", action="append", default=[], help="SYMBOL=ai_research_dossier.json")
     parser.add_argument("--strategy-theme", default="", help="theme or strategy object for laplace_strategy_input.json")
     parser.add_argument("--strategy-horizon", default="3-6个月", help="strategy horizon for laplace_strategy_input.json")
     parser.add_argument("--strategy-geography", default="", help="strategy geography; defaults to inferred candidate markets")
@@ -387,6 +402,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             sec_user_agent=args.sec_user_agent,
             overlay_values=args.overlay,
             outcome_values=args.ai_outcome,
+            dossier_values=args.dossier,
             strategy_theme=args.strategy_theme,
             strategy_horizon=args.strategy_horizon,
             strategy_geography=args.strategy_geography,
