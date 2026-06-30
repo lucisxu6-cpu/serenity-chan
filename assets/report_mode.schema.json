@@ -6,7 +6,7 @@
   "properties": {
     "mode": {
       "type": "string",
-      "enum": ["candidate_comparison", "full_research", "quick_audit"]
+      "enum": ["candidate_comparison", "full_research", "quick_audit", "research_brief"]
     },
     "required_sections": {
       "type": "array",

@@ -82,6 +82,7 @@ REQUIRED_FILES: Any = [
     "scripts/validate_research_delivery.py",
     "scripts/merge_ai_research_overlay.py",
     "scripts/validate_and_merge_ai_overlay.py",
+    "scripts/execute_agent_research_queue.py",
     "scripts/serenity_chan_scorecard.py",
     "scripts/candidate_ranker.py",
     "scripts/validate_output_contract.py",

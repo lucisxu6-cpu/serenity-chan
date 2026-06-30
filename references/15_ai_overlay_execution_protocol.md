@@ -11,19 +11,29 @@ The final user-facing report must be rendered after every candidate has a valida
 - `COMPLETED`: AI generated a dossier and overlay, both validators accepted them, and both were merged into the comparison report.
 - `FAILED_INSUFFICIENT_EVIDENCE`: AI generated a dossier and validated `ai_review_outcome` because primary evidence was insufficient.
 - `CONFLICT_WITH_DATA`: AI generated a dossier and validated `ai_review_outcome` because the thesis conflicted with deterministic data, source level, currency normalization, valuation, or capital-action constraints.
-- `SKIPPED_QUICK_AUDIT`: AI generated a validated `ai_review_outcome` because the user explicitly requested quick audit or data-only diagnostics.
 
-Formal reports use explicit AI execution statuses: `COMPLETED`, `FAILED_INSUFFICIENT_EVIDENCE`, or `CONFLICT_WITH_DATA`. `NOT_RUN` belongs only to internal data baselines before the agent research queue is executed. `SKIPPED_QUICK_AUDIT` belongs only to explicit diagnostic or quick-audit flows. The validated merge and delivery validators reject missing AI dossiers or missing projected AI results for formal candidate comparison.
+Formal reports use explicit AI execution statuses: `COMPLETED`, `FAILED_INSUFFICIENT_EVIDENCE`, or `CONFLICT_WITH_DATA`. The validated merge and delivery validators reject missing AI dossiers, missing projected AI results, internal baselines, and diagnostic artifacts for formal candidate comparison.
 
 ## Required Workflow
 
 1. Fetch real data and keep every manifest.
 2. Build deterministic comparison JSON.
 3. Build one `ai_review_packet` and one `ai_committee_packet` per candidate.
-4. If `run_research_analysis.py` returns `AGENT_RESEARCH_QUEUE_READY`, validate `agent_research_queue.json`, build `agent_overlay_workspace.json`, then execute every `work_item`.
+4. If `run_research_analysis.py` returns `AGENT_RESEARCH_QUEUE_READY`, run the queue executor:
+
+```bash
+python scripts/execute_agent_research_queue.py run <run_dir>/agent_research_queue.json \
+  --workspace-out <run_dir>/agent_overlay_workspace.json \
+  --taskbook-out <run_dir>/agent_research_taskbook.md \
+  --status-out <run_dir>/agent_research_execution_status.json \
+  --report-out <run_dir>/comparison_final.json \
+  --markdown-out <run_dir>/comparison_final.md
+```
+
+If the status is `AGENT_RESEARCH_REQUIRED`, the current AI reviewer completes every `work_item` before formal delivery.
 5. Read the workspace, packets and source artifacts that support the open debts.
 6. Generate one `ai_research_dossier.json` per candidate. The dossier records source reading, research path, hypotheses, evidence tests, observed facts, inferences, judgment, claim graph, causal chain, same-layer comparison, bear case, scenarios, triggers, and action conditions.
-7. Project each dossier into one AI result per candidate: `ai_overlay.json` for completed evidence-backed research, or `ai_review_outcome.json` for insufficient evidence or data conflict. Use `SKIPPED_QUICK_AUDIT` only for explicit diagnostic/quick-audit requests.
+7. Project each dossier into one AI result per candidate: `ai_overlay.json` for completed evidence-backed research, or `ai_review_outcome.json` for insufficient evidence or data conflict.
 8. Validate each dossier with `scripts/validate_ai_research_dossier.py`; validate each overlay with `scripts/validate_ai_overlay.py`; validate each outcome with `scripts/validate_ai_review_outcome.py`.
 9. Merge dossiers, overlays, and outcomes with `scripts/validate_and_merge_ai_overlay.py`.
 10. Validate the merged comparison report and delivery gate with `scripts/validate_research_delivery.py`.
@@ -124,9 +134,23 @@ The report may remain research-gated, and it must state that AI research was att
 When formal mode lacks AI results, `run_research_analysis.py` writes `agent_research_queue.json`. Validate it with:
 
 ```bash
-python scripts/validate_agent_research_queue.py <run_dir>/agent_research_queue.json
-python scripts/build_agent_overlay_workspace.py <run_dir>/agent_research_queue.json \
-  --out <run_dir>/agent_overlay_workspace.json
+python scripts/execute_agent_research_queue.py prepare <run_dir>/agent_research_queue.json \
+  --workspace-out <run_dir>/agent_overlay_workspace.json \
+  --taskbook-out <run_dir>/agent_research_taskbook.md \
+  --status-out <run_dir>/agent_research_execution_status.json
 ```
 
 These artifacts are internal work instructions. The current AI agent must complete every `work_item` before formal delivery. Each item points to the manifest, review packet, committee packet, overlay prompt, source reference catalog, customer/order/capacity evidence, deterministic matrices, research expansion protocol, allowed result types, output paths, validation commands, and guardrails.
+
+After writing each dossier and projected result, rerun:
+
+```bash
+python scripts/execute_agent_research_queue.py run <run_dir>/agent_research_queue.json \
+  --workspace-out <run_dir>/agent_overlay_workspace.json \
+  --taskbook-out <run_dir>/agent_research_taskbook.md \
+  --status-out <run_dir>/agent_research_execution_status.json \
+  --report-out <run_dir>/comparison_final.json \
+  --markdown-out <run_dir>/comparison_final.md
+```
+
+The executor merges only when every candidate has a validated `ai_research_dossier` plus exactly one validated `ai_research_overlay` or `ai_review_outcome`.

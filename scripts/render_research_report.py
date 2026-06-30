@@ -17,7 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover
     from scripts.report_labels import display_bool, display_label, display_list, display_mapping_pairs
 
 
-REPORT_MODES: set[str] = {"candidate_comparison", "full_research", "quick_audit"}
+REPORT_MODES: set[str] = {"candidate_comparison", "full_research", "quick_audit", "research_brief"}
 FORMAL_REPORT_MODES: set[str] = {"candidate_comparison", "full_research"}
 FORMAL_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
 
@@ -96,6 +96,62 @@ def _research_debt_lines(rows: Sequence[Mapping[str, Any]]) -> list[str]:
         action: str = _text(row.get("next_action") or row.get("objective"), "待补充验证动作")
         lines.append(f"- `{dataset}` [{priority}/{impact}]：{action}")
     return lines
+
+
+def _render_research_brief(report: Mapping[str, Any]) -> str:
+    readiness: Mapping[str, Any] = report.get("report_readiness") if isinstance(report.get("report_readiness"), Mapping) else {}
+    decision: Mapping[str, Any] = report.get("final_decision") if isinstance(report.get("final_decision"), Mapping) else {}
+    coherence: Mapping[str, Any] = decision.get("candidate_pool_semantic_coherence") if isinstance(decision.get("candidate_pool_semantic_coherence"), Mapping) else {}
+    validity: Mapping[str, Any] = decision.get("ranking_validity") if isinstance(decision.get("ranking_validity"), Mapping) else {}
+    ranking: list[Mapping[str, Any]] = _mapping_rows(report.get("candidate_priority_ranking"))
+    data_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("data_acquisition_summary")))
+    ai_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("ai_review_status_matrix")))
+    customer_rows: dict[str, Mapping[str, Any]] = _first_by_symbol(_mapping_rows(report.get("customer_evidence_matrix")))
+    debt_rows: dict[str, list[Mapping[str, Any]]] = _many_by_symbol(_mapping_rows(report.get("research_debt_runbook")))
+    lines: list[str] = [
+        "# Serenity 研究简报",
+        "",
+        "这份简报用于研究推进、补证和候选比较校准。正式行动结论以 `FINAL_REPORT_READY` 且通过正式交付校验的报告为准。",
+        "",
+        "## 当前判断",
+        f"- 报告阶段：`{display_label(readiness.get('stage'), 'NA')}`；可正式交付：{display_bool(readiness.get('delivery_allowed'))}",
+        f"- 研究队列首位：`{_text(decision.get('leading_research_candidate'), 'NA')}`",
+        f"- 行动候选首位：`{_text(decision.get('leading_action_candidate'), '无')}`",
+        f"- 正式决策对象：`{_text(decision.get('decision_candidate'), '无')}`",
+        f"- 决策模式：`{display_label(decision.get('decision_mode'), 'NA')}`",
+        f"- 候选池一致性：`{display_label(coherence.get('status'), 'NA')}`；{_text(coherence.get('reason'), '')}",
+        f"- 排序可信度：`{display_label(validity.get('status'), 'NA')}`；{_text(validity.get('reason'), '')}",
+        f"- 结论：{_text(decision.get('decision'), '待完成研究后生成结论。')}",
+        "",
+        "## 候选排序",
+        "| 排名 | 公司 | 研究分 | 行动分 | 行动状态 | 主门控 | 关键原因 |",
+        "|---:|---|---:|---:|---|---|---|",
+    ]
+    for row in ranking:
+        gate: Mapping[str, Any] = row.get("action_gate") if isinstance(row.get("action_gate"), Mapping) else {}
+        lines.append(
+            f"| {row.get('rank')} | `{row.get('symbol')}` | {row.get('research_priority_score')} | "
+            f"{row.get('action_priority_score')} | {display_label(row.get('action_readiness'))} | "
+            f"{display_label(gate.get('primary_gate'))} | {_text(row.get('key_reason'), '')} |"
+        )
+    lines.extend(["", "## 数据与 AI 状态", "| 公司 | 数据上限 | AI 状态 | 客户/订单/产能证据 | 下一步 |", "|---|---|---|---|---|"])
+    for row in ranking:
+        symbol: str = str(row.get("symbol") or "")
+        data: Mapping[str, Any] = data_rows.get(symbol, {})
+        ai: Mapping[str, Any] = ai_rows.get(symbol, {})
+        customer: Mapping[str, Any] = customer_rows.get(symbol, {})
+        runbook: list[Mapping[str, Any]] = debt_rows.get(symbol, [])
+        next_step: str = _text(runbook[0].get("next_action"), "继续读取 AI workspace 并补齐最高优先级证据。") if runbook else "继续读取 AI workspace 并补齐最高优先级证据。"
+        lines.append(
+            f"| `{symbol}` | {display_label(data.get('rating_cap'), 'NA')} | "
+            f"{display_label(ai.get('ai_review_status'), 'NA')} | "
+            f"{display_label(customer.get('evidence_status') or customer.get('status'), 'NA')} | {next_step} |"
+        )
+    next_actions: list[Any] = list(decision.get("next_research_actions") or []) if isinstance(decision.get("next_research_actions"), list) else []
+    if next_actions:
+        lines.extend(["", "## 下一步研究动作"])
+        lines.extend([f"- {action}" for action in next_actions[:12]])
+    return "\n".join(lines)
 
 
 def _render_full_research(report: Mapping[str, Any], *, comparison_markdown: str) -> str:
@@ -206,6 +262,8 @@ def _render_from_report(report: Mapping[str, Any], *, mode: str) -> str:
             "",
             markdown,
         ])
+    if mode == "research_brief":
+        return _render_research_brief(report)
     if mode == "full_research":
         return _render_full_research(report, comparison_markdown=markdown)
     return markdown

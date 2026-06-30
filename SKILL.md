@@ -32,7 +32,7 @@ Choose exactly one primary route. Read only the references needed for that route
 | Theme scan, industry chain, candidate discovery | Theme scan | `references/17_industry_domain_packs.md`, `references/01_data_first_market_router.md` | `python scripts/build_theme_candidate_universe.py <theme> --out <universe.json>` then `python scripts/run_theme_research_analysis.py <theme> --out-dir <run_dir> --research-mode formal` |
 | Multiple candidate comparison | Candidate comparison | `references/01_data_first_market_router.md`, `references/02_serenity_bottleneck_workflow.md`, `references/03_fundamental_valuation_framework.md`, `references/04_chan_technical_framework.md`, `references/15_ai_overlay_execution_protocol.md` | `python scripts/run_research_analysis.py <symbol...> --out-dir <run_dir> --research-mode formal` |
 | Recommendation, allocation, action plan, trend forecast | Strategy forecast | `references/16_laplace_strategy_bridge.md`, `companion-skills/laplace-forecast/SKILL.md` | Build `laplace_strategy_input.json`, `laplace_strategy_prompt.json`, `laplace_strategy_judgment.json`, then render strategy report |
-| Report rendering or delivery validation | Delivery | `references/05_output_templates.md`, `references/06_risk_compliance_no_guess.md` | `python scripts/validate_research_delivery.py <comparison_final.json>` and `python scripts/render_research_report.py --comparison-report <comparison_final.json>` |
+| Report rendering or delivery validation | Delivery | `references/05_output_templates.md`, `references/06_risk_compliance_no_guess.md` | Formal: `python scripts/validate_research_delivery.py <comparison_final.json>` then `python scripts/render_research_report.py --comparison-report <comparison_final.json>`; research progress: `python scripts/render_research_report.py --comparison-report <baseline.json> --mode research_brief` |
 
 When a task crosses routes, complete the earlier evidence route first. For example, a strategy recommendation built from stocks must complete candidate comparison before entering strategy forecast.
 
@@ -63,14 +63,18 @@ Formal analysis and comparison must include AI research execution. Use `referenc
 Required loop:
 
 1. Run the formal research command.
-2. If it returns `AGENT_RESEARCH_QUEUE_READY`, validate the queue:
+2. If it returns `AGENT_RESEARCH_QUEUE_READY`, immediately enter the execution workspace:
 
 ```bash
-python scripts/validate_agent_research_queue.py <run_dir>/agent_research_queue.json
-python scripts/build_agent_overlay_workspace.py <run_dir>/agent_research_queue.json --out <run_dir>/agent_overlay_workspace.json
+python scripts/execute_agent_research_queue.py run <run_dir>/agent_research_queue.json \
+  --workspace-out <run_dir>/agent_overlay_workspace.json \
+  --taskbook-out <run_dir>/agent_research_taskbook.md \
+  --status-out <run_dir>/agent_research_execution_status.json \
+  --report-out <run_dir>/comparison_final.json \
+  --markdown-out <run_dir>/comparison_final.md
 ```
 
-3. For every work item, read the workspace, manifest, review packet, committee packet, source catalog, customer/order/capacity evidence, deterministic matrices, and prompt package.
+3. If the execution status is `AGENT_RESEARCH_REQUIRED`, the current AI reviewer must complete every candidate work item before user-facing formal delivery. Read the workspace, taskbook, manifest, review packet, committee packet, source catalog, customer/order/capacity evidence, deterministic matrices, and prompt package.
 4. Write one `ai_research_dossier.json` per candidate using `assets/ai_research_dossier.schema.json`.
 5. Project the dossier into exactly one result:
 
@@ -85,7 +89,9 @@ python scripts/validate_ai_overlay.py <overlay.json> --manifest <manifest.json>
 python scripts/validate_ai_review_outcome.py <outcome.json>
 ```
 
-7. Merge and validate:
+7. Rerun the execution command. It will merge and validate when every AI package is complete. If a package is incomplete or invalid, repair the exact candidate artifact named by `agent_research_execution_status.json`.
+
+Manual merge remains available when paths are supplied directly:
 
 ```bash
 python scripts/validate_and_merge_ai_overlay.py <manifest...> \

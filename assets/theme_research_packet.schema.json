@@ -10,7 +10,10 @@
     "universe_path",
     "candidate_count",
     "candidate_symbols",
+    "candidate_expansion_status",
+    "layer_coverage",
     "value_chain_layers",
+    "per_candidate_research_tasks",
     "direction_research_questions",
     "macro_evidence_tasks",
     "falsification_questions",
@@ -24,6 +27,14 @@
     "generated_at": { "type": "string", "minLength": 1 },
     "universe_path": { "type": "string" },
     "candidate_count": { "type": "integer", "minimum": 1 },
+    "candidate_expansion_status": {
+      "type": "string",
+      "enum": ["CURATED_FULL", "CURATED_INITIAL", "AI_EXPANSION_REQUIRED"]
+    },
+    "layer_coverage": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
     "candidate_symbols": {
       "type": "array",
       "minItems": 1,
@@ -33,6 +44,30 @@
       "type": "array",
       "minItems": 3,
       "items": { "type": "object" }
+    },
+    "per_candidate_research_tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "name", "layer", "evidence_tasks", "downgrade_triggers"],
+        "properties": {
+          "symbol": { "type": "string", "minLength": 1 },
+          "name": { "type": "string" },
+          "layer": { "type": "string", "minLength": 1 },
+          "evidence_tasks": {
+            "type": "array",
+            "minItems": 3,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "downgrade_triggers": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": true
+      }
     },
     "direction_research_questions": {
       "type": "array",

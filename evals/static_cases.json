@@ -2759,7 +2759,7 @@
     "expect_pass": true,
     "expected_result": {
       "normalization_status": "DATA_GATED",
-      "reason_code": "CURRENCY_MISSING",
+      "reason_code": "TARGET_FINANCIAL_CURRENCY_MISSING",
       "target_currency": ""
     }
   },
@@ -2780,7 +2780,7 @@
     "expect_pass": true,
     "expected_result": {
       "normalization_status": "DATA_GATED",
-      "reason_code": "CURRENCY_MISSING",
+      "reason_code": "TARGET_FINANCIAL_CURRENCY_MISSING",
       "target_currency": ""
     }
   },
@@ -3414,6 +3414,7 @@
       "ai_artifacts": [],
       "internal_baseline_report": "/tmp/serenity-test/comparison_internal_baseline.json",
       "missing_ai_result_symbols": ["688019.SH"],
+      "existing_ai_packages": [],
       "work_items": [
         {
           "symbol": "688019.SH",
@@ -3451,7 +3452,7 @@
             "First write the full AI research dossier, then project it into one validated overlay or one validated review outcome.",
             "Do not invent customers, orders, revenue split, or current data.",
             "Do not override deterministic fields.",
-            "Do not use SKIPPED_QUICK_AUDIT in formal mode."
+            "Formal mode accepts COMPLETED, FAILED_INSUFFICIENT_EVIDENCE, or CONFLICT_WITH_DATA as final AI statuses."
           ]
         }
       ],
@@ -3461,7 +3462,7 @@
         "quick_audit_allowed": false,
         "forbidden": [
           "Do not present internal baseline artifacts as final research.",
-          "Do not convert missing AI work into SKIPPED_QUICK_AUDIT in formal mode.",
+          "Do not treat missing AI work as a terminal formal result.",
           "Do not use unverified claims to upgrade evidence-supported growth."
         ]
       }

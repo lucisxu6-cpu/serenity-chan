@@ -77,6 +77,53 @@ def _assigned_symbols(values: Sequence[str]) -> set[str]:
     return symbols
 
 
+def _assigned_paths(values: Sequence[str], *, label: str) -> dict[str, str]:
+    assignments: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"{label} assignments must use SYMBOL=path")
+        symbol: str
+        path_text: str
+        symbol, path_text = value.split("=", 1)
+        if symbol in assignments:
+            raise ValueError(f"duplicate {label} assignment for {symbol}")
+        assignments[symbol] = path_text
+    return assignments
+
+
+def _existing_ai_packages(
+    *,
+    overlay_values: Sequence[str],
+    outcome_values: Sequence[str],
+    dossier_values: Sequence[str],
+    completed_symbols: Sequence[str],
+) -> list[dict[str, str]]:
+    overlay_paths: dict[str, str] = _assigned_paths(overlay_values, label="overlay")
+    outcome_paths: dict[str, str] = _assigned_paths(outcome_values, label="ai-outcome")
+    dossier_paths: dict[str, str] = _assigned_paths(dossier_values, label="dossier")
+    packages: list[dict[str, str]] = []
+    for symbol in sorted(completed_symbols):
+        if symbol in overlay_paths and symbol in outcome_paths:
+            raise ValueError(f"candidate cannot have both overlay and ai-outcome assignments: {symbol}")
+        if symbol not in dossier_paths:
+            continue
+        if symbol in overlay_paths:
+            packages.append({
+                "symbol": symbol,
+                "dossier_path": dossier_paths[symbol],
+                "result_type": "overlay",
+                "result_path": overlay_paths[symbol],
+            })
+        elif symbol in outcome_paths:
+            packages.append({
+                "symbol": symbol,
+                "dossier_path": dossier_paths[symbol],
+                "result_type": "ai_outcome",
+                "result_path": outcome_paths[symbol],
+            })
+    return packages
+
+
 def _agent_research_work_items(
     ai_artifacts: Sequence[Mapping[str, str]],
     fetch_summaries: Sequence[Mapping[str, Any]],
@@ -130,7 +177,7 @@ def _agent_research_work_items(
                 "First write the full AI research dossier, then project it into one validated overlay or one validated review outcome.",
                 "Do not invent customers, orders, revenue split, or current data.",
                 "Do not override deterministic PE/PS, market_implied_growth, valuation_stage, data status, or capital-action facts.",
-                "Use SKIPPED_QUICK_AUDIT only when the user explicitly requested diagnostic or quick-audit mode.",
+                "Formal mode accepts COMPLETED, FAILED_INSUFFICIENT_EVIDENCE, or CONFLICT_WITH_DATA as final AI statuses.",
             ],
         })
     return work_items
@@ -144,6 +191,7 @@ def _agent_research_queue_summary(
     internal_baseline_report_path: Path,
     missing_ai_symbols: Sequence[str],
     research_mode: str,
+    existing_ai_packages: Sequence[Mapping[str, str]],
 ) -> dict[str, Any]:
     return {
         "contract_type": "serenity_agent_research_queue",
@@ -159,6 +207,7 @@ def _agent_research_queue_summary(
         "ai_artifacts": list(ai_artifacts),
         "internal_baseline_report": str(internal_baseline_report_path),
         "missing_ai_result_symbols": list(missing_ai_symbols),
+        "existing_ai_packages": [dict(item) for item in existing_ai_packages],
         "work_items": _agent_research_work_items(ai_artifacts, fetch_summaries, missing_ai_symbols),
         "execution_policy": {
             "current_agent_executes_work_items": True,
@@ -166,7 +215,7 @@ def _agent_research_queue_summary(
             "quick_audit_allowed": False,
             "forbidden": [
                 "Do not present internal baseline artifacts as final research.",
-                "Do not convert missing AI work into SKIPPED_QUICK_AUDIT in formal mode.",
+                "Do not treat missing AI work as a terminal formal result.",
                 "Do not use market heat, theme labels, or unverified claims to upgrade evidence-supported growth.",
             ],
         },
@@ -303,6 +352,12 @@ def run_analysis(
     supplied_dossier_symbols: set[str] = _assigned_symbols(dossier_values)
     completed_ai_package_symbols: set[str] = supplied_result_symbols & supplied_dossier_symbols
     missing_ai_symbols: list[str] = sorted(candidate_symbols - completed_ai_package_symbols)
+    existing_ai_packages: list[dict[str, str]] = _existing_ai_packages(
+        overlay_values=overlay_values,
+        outcome_values=outcome_values,
+        dossier_values=dossier_values,
+        completed_symbols=sorted(completed_ai_package_symbols),
+    )
     if missing_ai_symbols:
         if research_mode == "diagnostic":
             summary: dict[str, Any] = _diagnostic_summary(
@@ -324,6 +379,7 @@ def run_analysis(
             internal_baseline_report_path=baseline_report_path,
             missing_ai_symbols=missing_ai_symbols,
             research_mode=research_mode,
+            existing_ai_packages=existing_ai_packages,
         )
         _write_json(out_dir / "agent_research_queue.json", summary)
         return summary

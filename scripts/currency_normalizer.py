@@ -46,6 +46,7 @@ def build_currency_normalization_row(
     market_cap: Optional[float] = _as_float(total_market_cap)
     date_text: str = str(as_of_date or dt.date.today().isoformat())
 
+    initial_reason: str = "NONE" if source_currency and source_currency == target_currency else "CURRENCY_MISMATCH"
     base_row: dict[str, Any] = {
         "symbol": symbol,
         "source_currency": source_currency,
@@ -59,16 +60,25 @@ def build_currency_normalization_row(
         "fx_source_level": "NOT_APPLICABLE" if source_currency and source_currency == target_currency else "",
         "normalization_stage": "same_currency" if source_currency and source_currency == target_currency else "preflight_fx",
         "normalization_status": "NOT_REQUIRED" if source_currency and source_currency == target_currency else "FAILED",
-        "reason_code": "NONE" if source_currency and source_currency == target_currency else "CURRENCY_MISMATCH",
+        "reason_code": initial_reason,
         "warnings": [],
         "errors": [],
     }
 
     if not source_currency or not target_currency:
+        if source_currency and not target_currency:
+            reason_code: str = "TARGET_FINANCIAL_CURRENCY_MISSING"
+            error_text: str = "financial reporting currency is missing"
+        elif target_currency and not source_currency:
+            reason_code = "VALUATION_CURRENCY_MISSING"
+            error_text = "valuation currency is missing"
+        else:
+            reason_code = "CURRENCY_MISSING"
+            error_text = "valuation currency and financial reporting currency are missing"
         base_row.update({
             "normalization_status": "DATA_GATED",
-            "reason_code": "CURRENCY_MISSING",
-            "errors": ["valuation currency or financial reporting currency is missing"],
+            "reason_code": reason_code,
+            "errors": [error_text],
         })
         return base_row
     if market_cap is None:
