@@ -218,7 +218,7 @@ latest annual report
 latest quarterly/interim report
 last 24 months announcements/filings
 revenue/gross profit/net income/OCF/capex/debt/cash/shares
-customer/order/capacity evidence if thesis depends on it
+customer/order/capacity evidence
 ```
 
 缺任意关键数据，评级上限下降。
@@ -339,6 +339,7 @@ shares_outstanding
 | 最新财报失败 | 最高 B；不能给 S/A 长线结论 |
 | 原始公告/filing 失败 | 客户/订单最高 Medium，综合最高 B |
 | 客户/订单只有传闻 | 综合最高 C |
+| 客户/订单/产能证据 lane 未取得 | 收入传导和 H4/H5 增长保持研究门控 |
 | 股本/市值无法确认 | 不能输出市值错配、估值赔率、市场隐含增长或核心行动 |
 | 多源价格差异 >2% | 最高 C，暂停估值与技术 |
 | 供应链证据只有社媒 | 最高 C |
@@ -359,8 +360,8 @@ shares_outstanding
     "currency": "CNY"
   },
   "retrieved_at": "2026-06-22T...Z",
-  "requested_datasets": ["current_quote", "price_history_adjusted", "valuation_inputs", "filings_announcements"],
-  "full_research_required_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements", "valuation_inputs"],
+  "requested_datasets": ["current_quote", "price_history_adjusted", "valuation_inputs", "filings_announcements", "customer_order_capacity_evidence"],
+  "full_research_required_datasets": ["current_quote", "price_history_adjusted", "financials", "filings_announcements", "customer_order_capacity_evidence", "valuation_inputs"],
   "data_acquisition": {
     "policy": "assets/data_acquisition_policy.json",
     "status_by_dataset": {
@@ -368,7 +369,8 @@ shares_outstanding
       "price_history_adjusted": "OK",
       "valuation_inputs": "OK",
       "financials": "NOT_REQUESTED",
-      "filings_announcements": "OK"
+      "filings_announcements": "OK",
+      "customer_order_capacity_evidence": "OK"
     },
     "attempt_ledger": [
       {
@@ -462,9 +464,14 @@ python scripts/validate_ai_review_outcome.py ai_review_outcome.json
 python scripts/validate_and_merge_ai_overlay.py manifest_a.json manifest_b.json --overlay TICKER_A=ai_overlay.json --ai-outcome TICKER_B=ai_review_outcome.json --report-out comparison_final.json --markdown-out comparison_final.md
 python scripts/validate_research_delivery.py comparison_final.json
 python scripts/render_research_report.py --comparison-report comparison_final.json --mode full_research
+python scripts/build_laplace_strategy_input.py comparison_final.json --out laplace_strategy_input.json
+python scripts/validate_laplace_strategy_input.py laplace_strategy_input.json
+python scripts/build_laplace_strategy_prompt.py laplace_strategy_input.json --out laplace_strategy_prompt.json
+python scripts/validate_laplace_strategy_judgment.py laplace_strategy_judgment.json --strategy-input laplace_strategy_input.json
+python scripts/render_strategy_report.py laplace_strategy_judgment.json --strategy-input laplace_strategy_input.json --out strategy_report.md
 ```
 
-`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, valuation inputs, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 structured preflight, HKEXnews announcements, HKEX annual/interim report PDF evidence, or HK valuation inputs from HKEX issued-share disclosure plus Yahoo HK quote data. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
+`fetch` is the preferred preflight entry point when the task depends on current price, adjusted history, valuation inputs, SEC financials, SEC filings, A-share Eastmoney/Tencent quote and K-line data, A-share CNINFO equity-distribution adjustment evidence, A-share CNINFO announcements, A-share CNINFO official report PDF line-item extraction, A-share financial-sector report profiles, A-share Eastmoney F10 L3 structured preflight, HKEXnews announcements, HKEX annual/interim report PDF evidence, HK valuation inputs from HKEX issued-share disclosure plus Yahoo HK quote data, or A/US/HK customer/order/capacity evidence. It writes an auditable bundle with raw source payloads, hashes, selected `pdf_hash` report artifacts, `attempt_ledger.json`, `data_gaps.json`, `research_debt.json`, `manual_retrieval_tasks.json`, and `manifest.json` under `--out-dir` or `/tmp/serenity-chan-data/...`.
 
 For US SEC JSON, pass a compliant identity with `--sec-user-agent` or `SEC_USER_AGENT`. Resolve CIK through the bundled bootstrap table first, then SEC ticker directories. Fetch filings through SEC submissions. Fetch financials through SEC companyfacts and SEC companyconcepts using US-GAAP / IFRS facts from 10-K, 10-Q, 20-F, and 40-F reports. If network, TLS, identity, rate limit, or provider support fails after the available route is attempted, mark the dataset `FAILED` / `PENDING`, keep the failure in the data-quality section, and apply rating caps. If a scoped fetch does not request a dataset, mark it `NOT_REQUESTED` and keep the full-research cap conservative. Do not replace failed or unrequested real fetches with guessed prices, financials, or filing facts.
 
@@ -473,6 +480,8 @@ If deterministic validation caps a dataset while the dataset status remains `OK`
 CNINFO financial reports provide A-share L0 official PDF evidence and extract core financial statement lines when readable. The latest period must contain revenue, net income, operating cash flow, assets, liabilities, and equity before `financials=OK` can support S/A research work; a single complete period can support only limited trend analysis. Financial-sector issuers must include an industry profile before S/A ratings are allowed: banks need net interest, deposit, loan, asset-quality, provision, and capital metrics; securities firms need net capital and risk-control ratios; insurers need insurance service revenue, insurance contract liabilities, and solvency metrics. Eastmoney F10 financials are an L3 structured preflight source and create research debt when used without L0/L1 line-item verification. HKEX financial reports provide L0 official annual/interim report PDF evidence for HK issuers. Use the fetch manifest's `ai_review` section to explain source strength, industry reporting fit, validation warnings, and upgrade requirements.
 
 Valuation inputs are a first-class dataset. A complete valuation input row records total shares, float shares, total market cap, float market cap, currency, as-of date, source basis, share-count basis, and market-cap basis. Candidate comparisons must expose these rows through `valuation_input_matrix`, and `growth_hypothesis_matrix` must reference that matrix before making market-implied growth or payoff claims. Missing valuation inputs create `VALUATION_IMPACT` gaps and a `VALUATION_GATED` action gate; they block market-implied growth, payoff quality, and core action claims.
+
+Customer/order/capacity evidence is a first-class evidence lane. Fetch produces `customer_order_capacity_evidence` from market-specific official disclosures when available; candidate comparisons expose it through `customer_evidence_matrix`. Direct evidence can support an overlay only after the AI reviewer reads the referenced source. Disclosure leads and review-queue items become research questions, next evidence, invalidation, and gates.
 
 AI research results are the formal bridge from deterministic data to domain judgment. Build a prompt package with `scripts/build_ai_overlay_prompt.py`, build supporting packets with `scripts/build_ai_review_packet.py` and `scripts/build_ai_committee_packet.py`, then produce one validated result per candidate. Evidence-backed research uses `assets/ai_research_overlay.schema.json` and `scripts/validate_ai_overlay.py`. Insufficient evidence, deterministic-data conflict, and quick audit use `assets/ai_review_outcome.schema.json` and `scripts/validate_ai_review_outcome.py`. Merge both result types through `scripts/validate_and_merge_ai_overlay.py`, which also validates the final comparison report. The overlay can affect layer score, company fit, evidence-supported growth, contrary evidence, and research questions only after validation. Market-implied growth and growth gap are generated from valuation inputs, PE/PS, and evidence-supported growth in the comparison report.
 

@@ -483,6 +483,7 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
             Dataset.PRICE_HISTORY_RAW: SourcePolicy(market, dataset, ["licensed vendor"], ["Tushare Pro", "BaoStock"], ["Eastmoney", "Tencent", "AKShare"], ["SEC EDGAR"], "Use raw for actual current/reference price."),
             Dataset.SHARE_CAPITAL: SourcePolicy(market, dataset, ["CNINFO/exchange capital disclosures"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["Tencent quote market-cap fields", "Eastmoney capital structure"], ["SEC EDGAR"], "Total and float shares are required for valuation and market-implied growth."),
             Dataset.VALUATION_INPUTS: SourcePolicy(market, dataset, ["CNINFO/exchange capital disclosures"], ["Wind", "Choice", "CSMAR", "Tushare Pro"], ["Tencent quote market-cap fields", "Eastmoney capital structure"], ["SEC EDGAR"], "Market cap, float market cap, and share count are required for valuation preflight."),
+            Dataset.CUSTOMER_EVIDENCE: SourcePolicy(market, dataset, ["CNINFO/SSE/SZSE/BSE announcements and investor relations records"], ["Wind", "Choice", "CSMAR"], ["Eastmoney/THS investor relations as leads"], ["SEC EDGAR"], "Customer, order, bid-win, capacity, and investor-relation evidence must stay separate from valuation facts."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["CNINFO/SSE/SZSE/BSE as applicable"], ["Wind/Choice/CSMAR/Tushare"], ["AKShare/Eastmoney"], ["SEC EDGAR"]))
 
@@ -495,6 +496,7 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
             Dataset.SHARE_CAPITAL: SourcePolicy(market, dataset, ["SEC companyfacts / company filings"], ["FactSet", "Koyfin", "TIKR"], ["company IR"], ["CNINFO"], "Share count basis must be explicit before market-cap-derived valuation."),
             Dataset.VALUATION_INPUTS: SourcePolicy(market, dataset, ["SEC companyfacts / company filings"], ["FactSet", "Koyfin", "TIKR"], ["current quote plus SEC share count"], ["CNINFO"], "Market cap can be derived from current quote and SEC share count when direct market cap is unavailable."),
             Dataset.ESTIMATES: SourcePolicy(market, dataset, ["company guidance"], ["FactSet", "Visible Alpha", "Koyfin", "TIKR"], ["SeekingAlpha", "Yahoo Analysis"], ["CNINFO"], "Consensus is not reported fact."),
+            Dataset.CUSTOMER_EVIDENCE: SourcePolicy(market, dataset, ["SEC filings and company IR"], ["FactSet", "Visible Alpha", "Koyfin", "TIKR"], ["company website"], ["CNINFO"], "Customer concentration, backlog, purchase obligations, and capacity claims require filing or IR evidence."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["SEC/Company IR"], ["FactSet/Koyfin/TIKR"], ["yfinance"], ["CNINFO"]))
 
@@ -507,6 +509,7 @@ def source_policy(market: Market, dataset: Dataset) -> SourcePolicy:
             Dataset.PRICE_HISTORY_ADJUSTED: SourcePolicy(market, dataset, ["licensed vendor"], ["Wind", "Choice", "Bloomberg"], ["yfinance", "AAStocks"], ["SEC EDGAR unless ADR/dual-listed"], "Use adjusted HK series consistently for Chan/GF-DMA."),
             Dataset.SHARE_CAPITAL: SourcePolicy(market, dataset, ["HKEX announcements / annual reports"], ["Wind", "Choice", "Bloomberg"], ["company IR"], ["SEC EDGAR unless ADR/dual-listed"], "Share count and currency basis must follow HK line-item disclosures."),
             Dataset.VALUATION_INPUTS: SourcePolicy(market, dataset, ["HKEX announcements / annual reports"], ["Wind", "Choice", "Bloomberg"], ["HK quote plus official share count"], ["SEC EDGAR unless ADR/dual-listed"], "HKD market-cap and share-count basis must be explicit."),
+            Dataset.CUSTOMER_EVIDENCE: SourcePolicy(market, dataset, ["HKEXnews announcements and company IR"], ["Wind", "Choice", "Bloomberg"], ["company website"], ["SEC EDGAR unless ADR/dual-listed"], "Customer, order, placing, and capacity evidence must be tied to HKEX or issuer disclosures."),
         }
         return policies.get(dataset, SourcePolicy(market, dataset, ["HKEXnews", "Company IR"], ["Wind", "Choice", "Bloomberg"], ["yfinance", "AAStocks"], ["SEC EDGAR unless ADR/dual-listed"], "Watch liquidity, placing, connected transactions."))
 
@@ -1809,6 +1812,226 @@ class CninfoAnnouncementsProvider:
         if any(token in compact for token in ["股权激励", "员工持股计划"]):
             return "equity_incentive"
         return "other"
+
+
+class DisclosureCustomerEvidenceProvider:
+    """Build customer, order, bid-win, and capacity evidence from official disclosure metadata."""
+
+    name: str = "Disclosure_Customer_Order_Capacity_Evidence_L0"
+    level: SourceLevel = SourceLevel.L0
+    markets: list[Market] = [Market.CN_A, Market.HK, Market.US]
+    datasets: list[Dataset] = [Dataset.CUSTOMER_EVIDENCE]
+    direct_categories: set[str] = {"major_contract", "bid_win", "capacity_expansion"}
+    lead_categories: set[str] = {
+        "investor_relations_activity",
+        "earnings_preannouncement",
+        "regulatory_inquiry",
+        "annual_report",
+        "interim_report",
+        "quarterly_report",
+    }
+    keyword_axes: tuple[tuple[str, str, str], ...] = (
+        ("客户", "customer_validation", "DISCLOSURE_LEAD"),
+        ("customer", "customer_validation", "DISCLOSURE_LEAD"),
+        ("订单", "order_backlog", "DIRECT_DISCLOSURE"),
+        ("order", "order_backlog", "DIRECT_DISCLOSURE"),
+        ("合同", "order_backlog", "DIRECT_DISCLOSURE"),
+        ("contract", "order_backlog", "DIRECT_DISCLOSURE"),
+        ("中标", "bid_win", "DIRECT_DISCLOSURE"),
+        ("bid", "bid_win", "DIRECT_DISCLOSURE"),
+        ("产能", "capacity_expansion", "DIRECT_DISCLOSURE"),
+        ("capacity", "capacity_expansion", "DIRECT_DISCLOSURE"),
+        ("扩产", "capacity_expansion", "DIRECT_DISCLOSURE"),
+        ("investor relations", "investor_relations", "DISCLOSURE_LEAD"),
+        ("调研", "investor_relations", "DISCLOSURE_LEAD"),
+        ("业绩说明会", "investor_relations", "DISCLOSURE_LEAD"),
+    )
+
+    def fetch(self, symbol: SymbolInfo, dataset: Dataset, **kwargs: Any) -> DataResult:
+        if dataset != Dataset.CUSTOMER_EVIDENCE:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported dataset {dataset.value}")
+        if symbol.market not in self.markets:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"unsupported market {symbol.market.value}")
+        try:
+            records: list[dict[str, Any]]
+            source_name: str
+            raw_payload: Mapping[str, Any]
+            records, source_name, raw_payload = self._load_disclosure_records(symbol, kwargs)
+            data: dict[str, Any] = self._build_payload(symbol, records, source_name=source_name)
+            raw_path: Any
+            raw_hash: Any
+            raw_path = raw_hash = None
+            raw_dir: Any = kwargs.get("raw_dir")
+            if raw_dir:
+                raw_path, raw_hash = save_raw_json(
+                    {"source": source_name, "records": records, "raw_payload": raw_payload, "customer_evidence": data},
+                    raw_dir,
+                    f"{symbol.symbol}_{Dataset.CUSTOMER_EVIDENCE.value}_raw.json",
+                )
+            return DataResult(
+                True,
+                Dataset.CUSTOMER_EVIDENCE,
+                symbol.symbol,
+                self.name,
+                self.level,
+                utc_now(),
+                as_of_date=data.get("as_of_date"),
+                data=data,
+                raw_path=raw_path,
+                raw_hash=raw_hash,
+                currency=symbol.currency,
+                warnings=list(data.get("warnings", [])),
+            )
+        except Exception as exc:
+            return DataResult.failed(dataset, symbol.symbol, self.name, self.level, f"customer evidence fetch failed: {type(exc).__name__}: {exc}")
+
+    def _load_disclosure_records(self, symbol: SymbolInfo, kwargs: Mapping[str, Any]) -> tuple[list[dict[str, Any]], str, Mapping[str, Any]]:
+        supplied: Any = kwargs.get("filings_result")
+        supplied_data: Any = supplied.get("data") if isinstance(supplied, Mapping) else supplied
+        if isinstance(supplied_data, Mapping):
+            records: list[dict[str, Any]] = self._records_from_payload(symbol.market, supplied_data)
+            if records:
+                return records, str(supplied.get("source_name") or "filings_result") if isinstance(supplied, Mapping) else "filings_result", supplied_data
+
+        if symbol.market == Market.CN_A:
+            provider: Any = CninfoAnnouncementsProvider()
+            result: Any = provider.fetch(symbol, Dataset.FILINGS, raw_dir=kwargs.get("raw_dir"))
+            if not result.ok:
+                raise RuntimeError("; ".join(result.errors) or "CNINFO announcements unavailable")
+            payload: Mapping[str, Any] = result.data if isinstance(result.data, Mapping) else {}
+            return self._records_from_payload(symbol.market, payload), provider.name, payload
+        if symbol.market == Market.HK:
+            provider = HkexAnnouncementsProvider()
+            result = provider.fetch(symbol, Dataset.FILINGS, raw_dir=kwargs.get("raw_dir"))
+            if not result.ok:
+                raise RuntimeError("; ".join(result.errors) or "HKEX announcements unavailable")
+            payload = result.data if isinstance(result.data, Mapping) else {}
+            return self._records_from_payload(symbol.market, payload), provider.name, payload
+        if symbol.market == Market.US:
+            provider = SecCompanyFactsProvider()
+            result = provider.fetch(symbol, Dataset.FILINGS, raw_dir=kwargs.get("raw_dir"))
+            if not result.ok:
+                raise RuntimeError("; ".join(result.errors) or "SEC submissions unavailable")
+            payload = result.data if isinstance(result.data, Mapping) else {}
+            return self._records_from_payload(symbol.market, payload), provider.name, payload
+        return [], "unsupported_market", {}
+
+    @staticmethod
+    def _records_from_payload(market: Market, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+        source_rows: Any = []
+        if market == Market.CN_A:
+            source_rows = payload.get("recent_announcements") or payload.get("announcements") or []
+        elif market == Market.HK:
+            source_rows = payload.get("announcements") or payload.get("recent_announcements") or []
+        elif market == Market.US:
+            source_rows = payload.get("recent_filings") or []
+        records: list[dict[str, Any]] = []
+        for row in source_rows if isinstance(source_rows, list) else []:
+            if not isinstance(row, Mapping):
+                continue
+            title: str = str(row.get("title") or row.get("short_title") or row.get("form") or row.get("primary_document") or "")
+            date: str = str(row.get("announcement_date") or row.get("announcement_datetime") or row.get("filing_date") or row.get("report_date") or "")
+            category: str = str(row.get("document_category") or row.get("form") or "")
+            url: str = str(row.get("pdf_url") or row.get("file_link") or row.get("primary_document") or "")
+            record_id: str = str(row.get("announcement_id") or row.get("news_id") or row.get("accession_number") or title)
+            records.append({
+                "record_id": record_id,
+                "title": title,
+                "date": date[:10],
+                "category": category,
+                "url": url,
+                "raw": dict(row),
+            })
+        return records
+
+    def _evidence_axis(self, title: str, category: str) -> tuple[str, str]:
+        category_text: str = category.lower()
+        form_text: str = re.sub(r"\s+", "", category_text)
+        sec_periodic_or_registration_form: bool = form_text.startswith(("10-k", "10-q", "20-f", "40-f", "6-k", "s-1", "s-3", "f-1", "424b"))
+        sec_current_report_form: bool = form_text.startswith("8-k")
+        if category_text == "major_contract":
+            return "order_backlog", "DIRECT_DISCLOSURE"
+        if category_text == "bid_win":
+            return "bid_win", "DIRECT_DISCLOSURE"
+        if category_text == "capacity_expansion":
+            return "capacity_expansion", "DIRECT_DISCLOSURE"
+        if sec_periodic_or_registration_form:
+            return "disclosure_review", "DISCLOSURE_LEAD"
+        if category_text in self.lead_categories:
+            return "disclosure_review", "DISCLOSURE_LEAD"
+        text: str = title.lower()
+        for keyword, axis, strength in self.keyword_axes:
+            if keyword.lower() in text:
+                return axis, strength
+        if sec_current_report_form:
+            return "disclosure_review", "DISCLOSURE_LEAD"
+        return "disclosure_review", "REVIEW_QUEUE"
+
+    def _build_payload(self, symbol: SymbolInfo, records: Sequence[Mapping[str, Any]], *, source_name: str) -> dict[str, Any]:
+        evidence_items: list[dict[str, Any]] = []
+        review_queue: list[dict[str, Any]] = []
+        for record in records[:120]:
+            title: str = str(record.get("title") or "")
+            category: str = str(record.get("category") or "")
+            axis: str
+            strength: str
+            axis, strength = self._evidence_axis(title, category)
+            item: dict[str, Any] = {
+                "symbol": symbol.symbol,
+                "source_ref": f"{Dataset.CUSTOMER_EVIDENCE.value}:{symbol.symbol}:{record.get('record_id') or title}",
+                "source_name": source_name,
+                "source_level": "L0",
+                "title": title,
+                "date": str(record.get("date") or ""),
+                "category": category,
+                "evidence_axis": axis,
+                "evidence_strength": strength,
+                "url": str(record.get("url") or ""),
+                "claim_boundary": "该条目是披露索引；只有 AI 审阅者读取对应公告或 filing 正文后，才能作为客户、订单、产能或收入传导 claim 的支持证据。",
+            }
+            if strength in {"DIRECT_DISCLOSURE", "DISCLOSURE_LEAD"} or category in self.direct_categories or category in self.lead_categories:
+                evidence_items.append(item)
+            else:
+                review_queue.append(item)
+
+        direct_count: int = sum(1 for item in evidence_items if item.get("evidence_strength") == "DIRECT_DISCLOSURE")
+        lead_count: int = sum(1 for item in evidence_items if item.get("evidence_strength") == "DISCLOSURE_LEAD")
+        if direct_count:
+            evidence_status: str = "DIRECT_EVIDENCE_FOUND"
+            score: float = min(92.0, 72.0 + direct_count * 6.0 + lead_count * 2.0)
+        elif lead_count:
+            evidence_status = "DISCLOSURE_LEADS_ONLY"
+            score = min(68.0, 50.0 + lead_count * 4.0)
+        else:
+            evidence_status = "NO_DIRECT_CUSTOMER_ORDER_CAPACITY_DISCLOSURE"
+            score = 38.0
+        warnings: list[str] = []
+        if evidence_status != "DIRECT_EVIDENCE_FOUND":
+            warnings.append("客户/订单/产能证据 lane 未在已扫描披露中找到直接 L0 客户、订单、招投标或产能证据。")
+        return {
+            "contract_type": "serenity_customer_order_capacity_evidence",
+            "schema_version": "1.0",
+            "symbol": symbol.symbol,
+            "market": symbol.market.value,
+            "source_name": source_name,
+            "source_level": self.level.value,
+            "as_of_date": next((str(item.get("date")) for item in evidence_items if item.get("date")), ""),
+            "summary": {
+                "evidence_status": evidence_status,
+                "score": round(score, 2),
+                "direct_evidence_count": direct_count,
+                "lead_evidence_count": lead_count,
+                "review_queue_count": len(review_queue),
+                "loaded_record_count": len(records),
+            },
+            "evidence_items": evidence_items[:30],
+            "review_queue": review_queue[:20],
+            "required_next_evidence": [
+                "读取 direct 或 lead 证据对应公告正文，确认客户、订单、产能或分部收入是否能映射到收入传导。",
+                "若市场隐含增长为 H4/H5，必须用 L0/L1 客户、订单、产能、分部收入或财务兑现证据闭合增长假设。",
+            ],
+            "warnings": warnings,
+        }
 
 
 class PdfTextExtractionMixin:
@@ -6655,6 +6878,8 @@ def default_real_providers(symbol: Optional[SymbolInfo] = None) -> List[DataProv
         providers.append(CninfoAnnouncementsProvider())
         providers.append(CninfoFinancialReportsProvider())
         providers.append(EastmoneyF10FinancialsProvider())
+    if symbol is None or symbol.market in {Market.CN_A, Market.HK, Market.US}:
+        providers.append(DisclosureCustomerEvidenceProvider())
     if symbol is None or symbol.market == Market.US:
         providers.append(SecCompanyFactsProvider())
         providers.append(SecCompanyConceptsProvider())

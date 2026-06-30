@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Laplace Strategy Judgment",
+  "type": "object",
+  "required": [
+    "contract_type",
+    "schema_version",
+    "source_strategy_input_path",
+    "as_of_date",
+    "forecast",
+    "decision",
+    "decision_model",
+    "observed",
+    "inferred",
+    "judgment",
+    "dominant_variables",
+    "scenarios",
+    "triggers",
+    "invalidation",
+    "next_evidence",
+    "action_plan",
+    "confidence",
+    "ledger_claims"
+  ],
+  "properties": {
+    "contract_type": { "type": "string", "const": "serenity_laplace_strategy_judgment" },
+    "schema_version": { "type": "string", "const": "1.0" },
+    "source_strategy_input_path": { "type": "string", "minLength": 1 },
+    "as_of_date": { "type": "string", "minLength": 1 },
+    "forecast": { "$ref": "#/$defs/text_block" },
+    "decision": { "$ref": "#/$defs/text_block" },
+    "decision_model": { "$ref": "#/$defs/text_block" },
+    "observed": { "$ref": "#/$defs/string_array" },
+    "inferred": { "$ref": "#/$defs/string_array" },
+    "judgment": { "$ref": "#/$defs/string_array" },
+    "dominant_variables": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["variable", "role", "direction", "confidence", "why"],
+        "properties": {
+          "variable": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 },
+          "direction": { "type": "string", "minLength": 1 },
+          "confidence": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "why": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "required": ["base", "upside", "downside"],
+      "properties": {
+        "base": { "$ref": "#/$defs/scenario" },
+        "upside": { "$ref": "#/$defs/scenario" },
+        "downside": { "$ref": "#/$defs/scenario" }
+      },
+      "additionalProperties": false
+    },
+    "triggers": {
+      "type": "object",
+      "required": ["30d", "90d", "180d"],
+      "properties": {
+        "30d": { "$ref": "#/$defs/string_array" },
+        "90d": { "$ref": "#/$defs/string_array" },
+        "180d": { "$ref": "#/$defs/string_array" }
+      },
+      "additionalProperties": false
+    },
+    "invalidation": { "$ref": "#/$defs/string_array" },
+    "next_evidence": { "$ref": "#/$defs/string_array" },
+    "action_plan": { "$ref": "#/$defs/string_array" },
+    "confidence": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+    "ledger_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "probability", "resolution_date", "resolution_criteria"],
+        "properties": {
+          "claim": { "type": "string", "minLength": 1 },
+          "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+          "resolution_date": { "type": "string", "minLength": 1 },
+          "resolution_criteria": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "$defs": {
+    "text_block": { "type": "string", "minLength": 1 },
+    "string_array": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "scenario": {
+      "type": "object",
+      "required": ["summary", "probability", "conditions"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "conditions": { "$ref": "#/$defs/string_array" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

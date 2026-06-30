@@ -130,6 +130,7 @@ def _candidate_row(
     layer_rows: Mapping[str, Mapping[str, Any]],
     ai_rows: Mapping[str, Mapping[str, Any]],
     financial_rows: Mapping[str, Mapping[str, Any]],
+    customer_rows: Mapping[str, Mapping[str, Any]],
     valuation_rows: Mapping[str, Mapping[str, Any]],
     growth_rows: Mapping[str, Mapping[str, Any]],
     technical_rows: Mapping[str, Mapping[str, Any]],
@@ -142,6 +143,7 @@ def _candidate_row(
     layer: Mapping[str, Any] = layer_rows.get(symbol, {})
     ai: Mapping[str, Any] = ai_rows.get(symbol, {})
     financial: Mapping[str, Any] = financial_rows.get(symbol, {})
+    customer: Mapping[str, Any] = customer_rows.get(symbol, {})
     valuation: Mapping[str, Any] = valuation_rows.get(symbol, {})
     growth: Mapping[str, Any] = growth_rows.get(symbol, {})
     technical: Mapping[str, Any] = technical_rows.get(symbol, {})
@@ -170,6 +172,7 @@ def _candidate_row(
         "layer_score": _safe_float(layer.get("layer_score")),
         "company_fit": _safe_float(layer.get("company_fit")),
         "financial_quality": dict(financial),
+        "customer_order_capacity_evidence": dict(customer),
         "valuation": {
             "regular_market_price": _safe_float(valuation.get("regular_market_price")),
             "total_market_cap": _safe_float(valuation.get("total_market_cap")),
@@ -294,6 +297,7 @@ def build_strategy_input(
     layer_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("serenity_layer_matrix"))
     ai_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("ai_review_status_matrix"))
     financial_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("financial_quality_matrix"))
+    customer_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("customer_evidence_matrix"))
     valuation_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("valuation_input_matrix"))
     growth_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("growth_hypothesis_matrix"))
     technical_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("technical_timing_matrix"))
@@ -309,6 +313,7 @@ def build_strategy_input(
             layer_rows=layer_rows,
             ai_rows=ai_rows,
             financial_rows=financial_rows,
+            customer_rows=customer_rows,
             valuation_rows=valuation_rows,
             growth_rows=growth_rows,
             technical_rows=technical_rows,
@@ -352,6 +357,7 @@ def build_strategy_input(
             "readiness_matrix": _as_list(report.get("readiness_matrix")),
             "research_debt_runbook": _as_list(report.get("research_debt_runbook")),
             "data_consumption_audit": _as_list(report.get("data_consumption_audit")),
+            "customer_evidence_matrix": _as_list(report.get("customer_evidence_matrix")),
         },
         "forecast_variables": _forecast_variables(report),
         "strategy_questions": _strategy_questions(object_name),

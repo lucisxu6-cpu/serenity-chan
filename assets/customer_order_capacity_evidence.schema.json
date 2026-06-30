@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Customer Order Capacity Evidence",
+  "type": "object",
+  "required": [
+    "contract_type",
+    "schema_version",
+    "symbol",
+    "market",
+    "source_name",
+    "source_level",
+    "summary",
+    "evidence_items",
+    "review_queue",
+    "required_next_evidence"
+  ],
+  "properties": {
+    "contract_type": { "type": "string", "const": "serenity_customer_order_capacity_evidence" },
+    "schema_version": { "type": "string", "const": "1.0" },
+    "symbol": { "type": "string", "minLength": 1 },
+    "market": { "type": "string", "minLength": 1 },
+    "source_name": { "type": "string", "minLength": 1 },
+    "source_level": { "type": "string", "minLength": 1 },
+    "as_of_date": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": ["evidence_status", "score", "direct_evidence_count", "lead_evidence_count", "review_queue_count", "loaded_record_count"],
+      "properties": {
+        "evidence_status": {
+          "type": "string",
+          "enum": ["DIRECT_EVIDENCE_FOUND", "DISCLOSURE_LEADS_ONLY", "NO_DIRECT_CUSTOMER_ORDER_CAPACITY_DISCLOSURE"]
+        },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "direct_evidence_count": { "type": "integer", "minimum": 0 },
+        "lead_evidence_count": { "type": "integer", "minimum": 0 },
+        "review_queue_count": { "type": "integer", "minimum": 0 },
+        "loaded_record_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "evidence_items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_item" }
+    },
+    "review_queue": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_item" }
+    },
+    "required_next_evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "evidence_item": {
+      "type": "object",
+      "required": ["symbol", "source_ref", "source_name", "source_level", "title", "evidence_axis", "evidence_strength", "claim_boundary"],
+      "properties": {
+        "symbol": { "type": "string" },
+        "source_ref": { "type": "string" },
+        "source_name": { "type": "string" },
+        "source_level": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "category": { "type": "string" },
+        "evidence_axis": { "type": "string" },
+        "evidence_strength": {
+          "type": "string",
+          "enum": ["DIRECT_DISCLOSURE", "DISCLOSURE_LEAD", "REVIEW_QUEUE"]
+        },
+        "url": { "type": "string" },
+        "claim_boundary": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -17,6 +17,7 @@ try:
     from build_ai_review_packet import build_ai_review_packet
     from build_comparison_report import build_comparison_report, to_markdown
     from build_laplace_strategy_input import build_strategy_input, infer_geography
+    from build_laplace_strategy_prompt import build_strategy_prompt
     from data_router import fetch_real_data
     from validate_and_merge_ai_overlay import build_validated_merged_report
 except ModuleNotFoundError:  # pragma: no cover
@@ -25,6 +26,7 @@ except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_ai_review_packet import build_ai_review_packet
     from scripts.build_comparison_report import build_comparison_report, to_markdown
     from scripts.build_laplace_strategy_input import build_strategy_input, infer_geography
+    from scripts.build_laplace_strategy_prompt import build_strategy_prompt
     from scripts.data_router import fetch_real_data
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
 
@@ -34,6 +36,7 @@ DEFAULT_DATASETS: list[str] = [
     "price_history_adjusted",
     "financials",
     "filings_announcements",
+    "customer_order_capacity_evidence",
     "valuation_inputs",
 ]
 RESEARCH_MODES: set[str] = {"formal", "diagnostic"}
@@ -327,6 +330,9 @@ def run_analysis(
     )
     strategy_input_path: Path = out_dir / "laplace_strategy_input.json"
     _write_json(strategy_input_path, strategy_input)
+    strategy_prompt: dict[str, Any] = build_strategy_prompt(strategy_input_path)
+    strategy_prompt_path: Path = out_dir / "laplace_strategy_prompt.json"
+    _write_json(strategy_prompt_path, strategy_prompt)
     summary = {
         "contract_type": "serenity_research_workflow_summary",
         "schema_version": "1.0",
@@ -344,6 +350,7 @@ def run_analysis(
         "final_report": str(final_report_path),
         "final_markdown": str(final_markdown_path),
         "laplace_strategy_input": str(strategy_input_path),
+        "laplace_strategy_prompt": str(strategy_prompt_path),
     }
     _write_json(out_dir / "workflow_summary.json", summary)
     return summary

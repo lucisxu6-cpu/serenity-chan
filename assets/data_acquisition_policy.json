@@ -102,6 +102,11 @@
       "filings_announcements": [
         "CNINFO announcements",
         "exchange disclosures"
+      ],
+      "customer_order_capacity_evidence": [
+        "CNINFO announcements and official report metadata",
+        "exchange disclosures",
+        "licensed customer/order/capacity databases"
       ]
     },
     "US": {
@@ -121,6 +126,11 @@
       ],
       "filings_announcements": [
         "SEC submissions"
+      ],
+      "customer_order_capacity_evidence": [
+        "SEC submissions",
+        "company IR disclosures",
+        "licensed supply-chain and backlog databases"
       ]
     },
     "HK": {
@@ -142,6 +152,11 @@
       "filings_announcements": [
         "HKEXnews announcements",
         "Company IR"
+      ],
+      "customer_order_capacity_evidence": [
+        "HKEXnews announcements",
+        "issuer annual/interim reports",
+        "licensed supply-chain and backlog databases"
       ]
     }
   },

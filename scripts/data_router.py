@@ -944,6 +944,8 @@ def _next_action_for_gap(dataset: str, gap_type: str) -> str:
         return "Fetch latest official or licensed financial statements and run financial validation before scoring fundamentals."
     if dataset == CanonicalDataset.FILINGS.value:
         return "Fetch official filings or announcement metadata from the market-primary disclosure venue."
+    if dataset == CanonicalDataset.CUSTOMER_EVIDENCE.value:
+        return "Fetch and review market-primary customer, order, bid-win, capacity, investor-relations, and revenue-transmission disclosures before upgrading the bottleneck thesis."
     if dataset == CanonicalDataset.CURRENT_QUOTE.value:
         return "Fetch a current market quote from a market-appropriate source before making current price or valuation claims."
     if dataset in {CanonicalDataset.SHARE_CAPITAL.value, CanonicalDataset.VALUATION_INPUTS.value}:
@@ -1040,6 +1042,18 @@ def _manual_task_for_gap(gap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 "Source venue matches the resolved market.",
                 "Filing title, date, URL/path, and source level are recorded.",
                 "Claims used in the thesis are linked to a concrete filing or announcement.",
+            ],
+        ).to_dict()
+    if dataset == CanonicalDataset.CUSTOMER_EVIDENCE.value:
+        return ManualRetrievalTask(
+            dataset=dataset,
+            priority="high",
+            target_source="Market-primary disclosure venue and issuer IR",
+            objective="Recover customer, order, bid-win, capacity, and revenue-transmission evidence before upgrading the value-chain thesis.",
+            acceptance_criteria=[
+                "Each customer, order, capacity, or revenue-transmission claim is linked to a filing, announcement, investor-relations record, or issuer presentation.",
+                "Evidence source level, date, title, and URL/path are recorded.",
+                "Weak disclosure leads remain research questions until the referenced document text is reviewed.",
             ],
         ).to_dict()
     if dataset in {CanonicalDataset.CURRENT_QUOTE.value, CanonicalDataset.PRICE_HISTORY_ADJUSTED.value}:
@@ -1386,6 +1400,8 @@ def fetch_real_data(
             provider_kwargs.update({"range": chart_range, "interval": interval})
         if dataset in {CanonicalDataset.SHARE_CAPITAL, CanonicalDataset.VALUATION_INPUTS} and CanonicalDataset.CURRENT_QUOTE.value in fetched_payloads:
             provider_kwargs["current_quote_result"] = fetched_payloads[CanonicalDataset.CURRENT_QUOTE.value]
+        if dataset == CanonicalDataset.CUSTOMER_EVIDENCE and CanonicalDataset.FILINGS.value in fetched_payloads:
+            provider_kwargs["filings_result"] = fetched_payloads[CanonicalDataset.FILINGS.value]
         result: Any
         attempts: Any
         result, attempts = _fetch_with_attempt_ledger(
@@ -1510,8 +1526,12 @@ def fetch_real_data(
         CanonicalDataset.FINANCIALS.value,
         CanonicalDataset.FILINGS.value,
     ]
-    full_research_required_datasets: Any = [
+    full_research_rating_datasets: Any = [
         *rating_critical_datasets,
+        CanonicalDataset.CUSTOMER_EVIDENCE.value,
+    ]
+    full_research_required_datasets: Any = [
+        *full_research_rating_datasets,
         CanonicalDataset.VALUATION_INPUTS.value,
     ]
     rating_cap_exempt_datasets: Any = {
@@ -1531,7 +1551,7 @@ def fetch_real_data(
     full_research_cap: Any = _cap_for_statuses(
         effective_statuses,
         validation_caps,
-        required_datasets=rating_critical_datasets,
+        required_datasets=full_research_rating_datasets,
         downgrade_not_requested=True,
     )
     data_quality: Any = {
@@ -1541,6 +1561,7 @@ def fetch_real_data(
         "valuation_inputs": effective_statuses.get(CanonicalDataset.VALUATION_INPUTS.value, DataStatus.NOT_REQUESTED.value),
         "financials": effective_statuses.get(CanonicalDataset.FINANCIALS.value, DataStatus.NOT_REQUESTED.value),
         "filings": effective_statuses.get(CanonicalDataset.FILINGS.value, DataStatus.NOT_REQUESTED.value),
+        "customer_order_capacity_evidence": effective_statuses.get(CanonicalDataset.CUSTOMER_EVIDENCE.value, DataStatus.NOT_REQUESTED.value),
         "requested_data_rating_cap": requested_cap.value,
         "full_research_rating_cap": full_research_cap.value,
         "rating_cap": full_research_cap.value,
@@ -1651,6 +1672,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             CanonicalDataset.PRICE_HISTORY_ADJUSTED.value,
             CanonicalDataset.FINANCIALS.value,
             CanonicalDataset.FILINGS.value,
+            CanonicalDataset.CUSTOMER_EVIDENCE.value,
             CanonicalDataset.VALUATION_INPUTS.value,
         ],
     )

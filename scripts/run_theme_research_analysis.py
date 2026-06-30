@@ -48,6 +48,56 @@ def _candidate_symbols(universe: Mapping[str, Any]) -> list[str]:
     return symbols
 
 
+def _layer_symbol_groups(universe: Mapping[str, Any]) -> list[list[str]]:
+    groups: list[list[str]] = []
+    layers: Any = universe.get("value_chain_layers")
+    for row in layers if isinstance(layers, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        symbols: list[str] = []
+        for symbol in row.get("candidate_symbols", []) if isinstance(row.get("candidate_symbols"), list) else []:
+            symbol_text: str = str(symbol).strip()
+            if symbol_text and symbol_text not in symbols:
+                symbols.append(symbol_text)
+        if symbols:
+            groups.append(symbols)
+    return groups
+
+
+def _append_unique(target: list[str], symbols: Sequence[str], *, limit: int) -> None:
+    for symbol in symbols:
+        if limit > 0 and len(target) >= limit:
+            return
+        if symbol not in target:
+            target.append(symbol)
+
+
+def _select_candidate_symbols(universe: Mapping[str, Any], *, max_candidates: int, selection_policy: str) -> list[str]:
+    all_symbols: list[str] = _candidate_symbols(universe)
+    limit: int = max_candidates if max_candidates > 0 else 0
+    if selection_policy == "theme-cluster":
+        return all_symbols if limit <= 0 else all_symbols[:limit]
+
+    groups: list[list[str]] = _layer_symbol_groups(universe)
+    selected: list[str] = []
+    if selection_policy == "same-layer":
+        primary_group: list[str] = max(groups, key=len, default=[])
+        _append_unique(selected, primary_group, limit=limit)
+        return selected
+
+    if selection_policy == "balanced-layers":
+        max_group_size: int = max((len(group) for group in groups), default=0)
+        for index in range(max_group_size):
+            for group in groups:
+                if index < len(group):
+                    _append_unique(selected, [group[index]], limit=limit)
+                if limit > 0 and len(selected) >= limit:
+                    return selected
+        return selected
+
+    raise ValueError("selection_policy must be one of: same-layer, balanced-layers, theme-cluster")
+
+
 def _prepare_universe(theme: str, universe_path: str, out_dir: Path) -> tuple[Mapping[str, Any], Path]:
     if universe_path:
         source_path: Path = Path(universe_path)
@@ -86,6 +136,7 @@ def run_theme_analysis(
     strategy_decision_use: str,
     strategy_profile: str,
     research_mode: str,
+    selection_policy: str,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     if sec_user_agent:
@@ -100,8 +151,7 @@ def run_theme_analysis(
 
     selected_symbols: list[str] = [str(symbol).strip() for symbol in symbols if str(symbol).strip()]
     if not selected_symbols:
-        universe_symbols: list[str] = _candidate_symbols(universe)
-        selected_symbols = universe_symbols if max_candidates <= 0 else universe_symbols[:max_candidates]
+        selected_symbols = _select_candidate_symbols(universe, max_candidates=max_candidates, selection_policy=selection_policy)
     if len(selected_symbols) < 2:
         raise ValueError("theme research requires at least two selected symbols")
 
@@ -131,6 +181,7 @@ def run_theme_analysis(
         "theme_candidate_universe": str(prepared_universe_path),
         "theme_research_packet": str(theme_packet_path),
         "selected_symbols": selected_symbols,
+        "selection_policy": selection_policy,
         "research_summary": research_summary,
     }
     _write_json(out_dir / "theme_workflow_summary.json", summary)
@@ -144,6 +195,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--universe", default="", help="optional prebuilt theme_candidate_universe.json")
     parser.add_argument("--symbols", nargs="*", default=[], help="explicit symbols to analyze; defaults to universe candidates")
     parser.add_argument("--max-candidates", type=int, default=12, help="maximum universe candidates to analyze by default; use 0 for all")
+    parser.add_argument("--selection-policy", choices=["same-layer", "balanced-layers", "theme-cluster"], default="theme-cluster", help="how to select default candidates from the theme universe")
     parser.add_argument("--datasets", nargs="+", default=DEFAULT_DATASETS, help="datasets passed to data_router fetch")
     parser.add_argument("--range", dest="chart_range", default="2y", help="chart range for price history")
     parser.add_argument("--interval", default="1d", help="chart interval")
@@ -176,6 +228,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             strategy_decision_use=args.strategy_decision_use,
             strategy_profile=args.strategy_profile,
             research_mode=args.research_mode,
+            selection_policy=args.selection_policy,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     except Exception as exc:

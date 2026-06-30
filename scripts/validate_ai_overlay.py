@@ -196,6 +196,30 @@ def _resolve_source_text(source_ref: str, evidence_context: Mapping[str, str]) -
 def _numeric_tokens(text: str) -> list[float]:
     values: list[float] = []
     for match in re.finditer(r"(?<![A-Za-z])[-+]?\d+(?:,\d{3})*(?:\.\d+)?%?(?![A-Za-z])", text):
+        start: int = match.start()
+        end: int = match.end()
+        raw_token: str = match.group(0)
+        compact_token: str = raw_token.replace(",", "").replace("%", "")
+        token_without_sign: str = compact_token.lstrip("+-")
+        before: str = text[max(0, start - 4):start].lower()
+        after: str = text[end:end + 4].lower()
+        if start > 0 and text[start - 1] in {"-", "/"}:
+            continue
+        if start > 1 and text[start - 1] == "." and text[start - 2].isdigit():
+            continue
+        if end < len(text) and text[end] in {"-", "/"}:
+            continue
+        if end + 1 < len(text) and text[end] == "." and text[end + 1].isdigit():
+            continue
+        if re.fullmatch(r"\d{4}", token_without_sign):
+            try:
+                year_value: int = int(token_without_sign)
+            except ValueError:
+                year_value = 0
+            if 1900 <= year_value <= 2100:
+                continue
+        if after.startswith(("q1", "q2", "q3", "q4", "h1", "h2")) or before.endswith(("fy", "q1", "q2", "q3", "q4", "h1", "h2")):
+            continue
         raw: str = match.group(0).replace(",", "").replace("%", "")
         try:
             values.append(float(raw))

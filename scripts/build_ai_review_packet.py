@@ -13,6 +13,7 @@ try:
     from a_share_capital_action_quantifier import quantify_capital_actions
     from build_comparison_report import (
         _capital_summary,
+        _customer_evidence_summary,
         _currency_normalization_row,
         _data_summary,
         _financial_quality,
@@ -29,6 +30,7 @@ except ModuleNotFoundError:  # pragma: no cover
     from scripts.a_share_capital_action_quantifier import quantify_capital_actions
     from scripts.build_comparison_report import (
         _capital_summary,
+        _customer_evidence_summary,
         _currency_normalization_row,
         _data_summary,
         _financial_quality,
@@ -72,6 +74,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     financial = _financial_quality(manifest)
     technical = _technical_summary(manifest)
     capital = _capital_summary(manifest)
+    customer_evidence = _customer_evidence_summary(manifest)
     layer_seed = _serenity_layer(manifest, {})
     valuation_inputs = dict(_valuation_payload(manifest))
     total_shares: Optional[float]
@@ -83,7 +86,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
     valuation_input_matrix_row = _valuation_input_row(manifest)
     currency_normalization = _currency_normalization_row(manifest, financial, valuation_input_matrix_row)
     growth = _growth_hypothesis(manifest, financial, {}, currency_normalization)
-    research_debt = _research_debt_rows(manifest, capital, capital_quantification, financial, technical, layer_seed, growth)
+    research_debt = _research_debt_rows(manifest, capital, capital_quantification, customer_evidence, financial, technical, layer_seed, growth)
     acquisition = manifest.get("data_acquisition") if isinstance(manifest.get("data_acquisition"), Mapping) else {}
     ai_questions = [
         "Identify the value-chain layer and the concrete bottleneck this company may control.",
@@ -105,6 +108,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
             "full_research_ready": acquisition.get("full_research_ready", False),
         },
         "source_artifacts": _result_summaries(manifest),
+        "customer_order_capacity_evidence": customer_evidence,
         "valuation_inputs": valuation_inputs,
         "valuation_input_matrix_row": valuation_input_matrix_row,
         "open_research_debt": research_debt,
@@ -116,6 +120,7 @@ def build_ai_review_packet(manifest_path: Path) -> dict[str, Any]:
             "technical_timing": technical,
             "capital_actions": capital,
             "capital_action_quantification": capital_quantification,
+            "customer_order_capacity_evidence": customer_evidence,
             "growth_hypothesis": growth,
             "open_research_debt": research_debt,
         },

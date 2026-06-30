@@ -20,8 +20,8 @@ Formal reports use explicit AI execution statuses: `COMPLETED`, `FAILED_INSUFFIC
 1. Fetch real data and keep every manifest.
 2. Build deterministic comparison JSON.
 3. Build one `ai_review_packet` and one `ai_committee_packet` per candidate.
-4. If `run_research_analysis.py` returns `AGENT_RESEARCH_QUEUE_READY`, read `agent_research_queue.json` and execute every `work_item`.
-5. Read the packets and source artifacts that support the open debts.
+4. If `run_research_analysis.py` returns `AGENT_RESEARCH_QUEUE_READY`, validate `agent_research_queue.json`, build `agent_overlay_workspace.json`, then execute every `work_item`.
+5. Read the workspace, packets and source artifacts that support the open debts.
 6. Generate one AI result per candidate: `ai_overlay.json` for completed evidence-backed research, or `ai_review_outcome.json` for insufficient evidence or data conflict. Use `SKIPPED_QUICK_AUDIT` only for explicit diagnostic/quick-audit requests.
 7. Validate each overlay with `scripts/validate_ai_overlay.py`; validate each outcome with `scripts/validate_ai_review_outcome.py`.
 8. Merge overlays and outcomes with `scripts/validate_and_merge_ai_overlay.py`.
@@ -52,6 +52,15 @@ An overlay may provide:
 - concrete research questions
 
 H4/H5 evidence-supported growth requires at least one L0/L1 evidence reference with confidence >= 0.65 and `h4_h5_evidence_bar_met=true`.
+
+## Customer / Order / Capacity Evidence
+
+Every formal candidate workspace includes `customer_order_capacity_evidence` when the fetch layer can produce it. The AI reviewer must use this lane before making customer, order, bid-win, capacity, backlog, or revenue-transmission claims.
+
+- `DIRECT_EVIDENCE_FOUND` can support an overlay only after the reviewer reads the referenced filing or announcement and cites a valid `source_ref`.
+- `DISCLOSURE_LEADS_ONLY` creates research questions, next evidence, and gating language; it does not support H4/H5 evidence-supported growth by itself.
+- `NO_DIRECT_CUSTOMER_ORDER_CAPACITY_DISCLOSURE` keeps customer/order/capacity claims in research debt and action gates.
+- `review_queue` items are triage targets. They become support only after the reviewer reads the underlying source artifact and writes a validated overlay claim.
 
 ## Outcome Handling
 
@@ -92,6 +101,8 @@ When formal mode lacks AI results, `run_research_analysis.py` writes `agent_rese
 
 ```bash
 python scripts/validate_agent_research_queue.py <run_dir>/agent_research_queue.json
+python scripts/build_agent_overlay_workspace.py <run_dir>/agent_research_queue.json \
+  --out <run_dir>/agent_overlay_workspace.json
 ```
 
-This artifact is an internal work queue. The current AI agent must complete every `work_item` before formal delivery. Each item points to the manifest, review packet, committee packet, overlay prompt, allowed result types, output paths, validation commands, and guardrails.
+These artifacts are internal work instructions. The current AI agent must complete every `work_item` before formal delivery. Each item points to the manifest, review packet, committee packet, overlay prompt, source reference catalog, customer/order/capacity evidence, deterministic matrices, allowed result types, output paths, validation commands, and guardrails.

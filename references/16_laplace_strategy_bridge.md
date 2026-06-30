@@ -14,6 +14,10 @@ The current AI agent performs the bridge. Deterministic scripts prepare the stru
 - Strategy input schema: `assets/laplace_strategy_input.schema.json`
 - Strategy input builder: `scripts/build_laplace_strategy_input.py`
 - Strategy input validator: `scripts/validate_laplace_strategy_input.py`
+- Strategy prompt builder: `scripts/build_laplace_strategy_prompt.py`
+- Strategy judgment schema: `assets/laplace_strategy_judgment.schema.json`
+- Strategy judgment validator: `scripts/validate_laplace_strategy_judgment.py`
+- Strategy report renderer: `scripts/render_strategy_report.py`
 
 ## Required Flow
 
@@ -40,11 +44,28 @@ python scripts/build_laplace_strategy_input.py comparison_final.json \
 python scripts/validate_laplace_strategy_input.py laplace_strategy_input.json
 ```
 
-5. Read `companion-skills/laplace-forecast/SKILL.md`.
-6. Read `companion-skills/laplace-forecast/references/first-order-lenses.md` when the question involves a theme, industry, market trend, or allocation.
-7. Read `companion-skills/laplace-forecast/references/evidence-loop.md` when evidence is partial, contradictory, proxy-based, or decision-grade.
-8. Read `companion-skills/laplace-forecast/references/ledger-schema.md` when the result should be revisited or scored later.
-9. Produce the strategy answer using observed / inferred / judgment labels.
+5. Build the strategy prompt package:
+
+```bash
+python scripts/build_laplace_strategy_prompt.py laplace_strategy_input.json \
+  --out laplace_strategy_prompt.json
+```
+
+6. Read `companion-skills/laplace-forecast/SKILL.md`.
+7. Read `companion-skills/laplace-forecast/references/first-order-lenses.md` when the question involves a theme, industry, market trend, or allocation.
+8. Read `companion-skills/laplace-forecast/references/evidence-loop.md` when evidence is partial, contradictory, proxy-based, or decision-grade.
+9. Read `companion-skills/laplace-forecast/references/ledger-schema.md` when the result should be revisited or scored later.
+10. Produce `laplace_strategy_judgment.json` using `assets/laplace_strategy_judgment.schema.json`; user-facing fields use Chinese and preserve observed / inferred / judgment labels.
+11. Validate and render the strategy result:
+
+```bash
+python scripts/validate_laplace_strategy_judgment.py laplace_strategy_judgment.json \
+  --strategy-input laplace_strategy_input.json
+
+python scripts/render_strategy_report.py laplace_strategy_judgment.json \
+  --strategy-input laplace_strategy_input.json \
+  --out strategy_report.md
+```
 
 ## Output Requirements
 
@@ -62,6 +83,19 @@ The strategy answer must include:
 - `Invalidation`: events that should break the thesis.
 - `Next evidence`: the cheapest useful evidence to check next.
 - `Action plan`: candidate buckets, position discipline, add/trim rules, and data gates.
+
+## Strategy Judgment Contract
+
+`laplace_strategy_judgment.json` is the executable strategy artifact. It must contain:
+
+- `forecast`, `decision`, and `decision_model` as concise Chinese text.
+- `observed`, `inferred`, and `judgment` as separate arrays.
+- `dominant_variables` with variable, role, direction, confidence, and why.
+- `scenarios.base`, `scenarios.upside`, and `scenarios.downside`; probabilities must sum to approximately 1.
+- `triggers.30d`, `triggers.90d`, and `triggers.180d`.
+- `invalidation`, `next_evidence`, `action_plan`, `confidence`, and `ledger_claims`.
+
+When Serenity ranking validity is `PARTIAL` or `INVALID`, the validator requires a gated watch/wait/evidence-first decision. The strategy layer keeps research leads separate from action candidates.
 
 ## Guardrails
 

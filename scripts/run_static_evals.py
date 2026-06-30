@@ -16,12 +16,12 @@ try:
     from validate_output_contract import validate_text
     from validate_output_contract_json import validate_contract
     from validate_comparison_report import validate_file as validate_comparison_report_file
-    from data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _fetch_with_attempt_ledger
+    from data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _cap_for_statuses, _fetch_with_attempt_ledger
     from build_falsification_dashboard import build_from_output_contract
     from a_share_capital_actions import analyze_announcements
     from a_share_capital_action_quantifier import quantify_capital_actions
     from build_ai_overlay_prompt import build_ai_overlay_prompt
-    from build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile, _financial_currency, _growth_hypothesis
+    from build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _customer_evidence_summary, _debt_gate_profile, _financial_currency, _growth_hypothesis
     from build_ai_committee_packet import build_ai_committee_packet
     from build_ai_review_packet import build_ai_review_packet
     from build_research_debt_runbook import build_runbook_rows
@@ -34,22 +34,25 @@ try:
     from technical_health import analyze_price_rows
     from validate_ai_overlay import validate_overlay
     from validate_ai_review_outcome import validate_review_outcome
+    from validate_laplace_strategy_judgment import validate_strategy_judgment
     from validate_agent_research_queue import validate_agent_research_queue
     from validate_research_delivery import validate_delivery_payload
     from validate_and_merge_ai_overlay import build_validated_merged_report
     from render_research_report import render_report
+    from build_theme_candidate_universe import build_universe
+    from run_theme_research_analysis import _select_candidate_symbols
     from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
     from scripts import data_layer as data_layer_module
     from scripts.validate_output_contract import validate_text
     from scripts.validate_output_contract_json import validate_contract
     from scripts.validate_comparison_report import validate_file as validate_comparison_report_file
-    from scripts.data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _fetch_with_attempt_ledger
+    from scripts.data_router import validate_financials, validate_valuation_inputs, _build_data_gaps, _build_research_debt, _cap_for_statuses, _fetch_with_attempt_ledger
     from scripts.build_falsification_dashboard import build_from_output_contract
     from scripts.a_share_capital_actions import analyze_announcements
     from scripts.a_share_capital_action_quantifier import quantify_capital_actions
     from scripts.build_ai_overlay_prompt import build_ai_overlay_prompt
-    from scripts.build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _debt_gate_profile, _financial_currency, _growth_hypothesis
+    from scripts.build_comparison_report import build_comparison_report, validate_comparison_report, _action_gate_profile, _customer_evidence_summary, _debt_gate_profile, _financial_currency, _growth_hypothesis
     from scripts.build_ai_committee_packet import build_ai_committee_packet
     from scripts.build_ai_review_packet import build_ai_review_packet
     from scripts.build_research_debt_runbook import build_runbook_rows
@@ -62,10 +65,13 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.technical_health import analyze_price_rows
     from scripts.validate_ai_overlay import validate_overlay
     from scripts.validate_ai_review_outcome import validate_review_outcome
+    from scripts.validate_laplace_strategy_judgment import validate_strategy_judgment
     from scripts.validate_agent_research_queue import validate_agent_research_queue
     from scripts.validate_research_delivery import validate_delivery_payload
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
     from scripts.render_research_report import render_report
+    from scripts.build_theme_candidate_universe import build_universe
+    from scripts.run_theme_research_analysis import _select_candidate_symbols
     from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 
 
@@ -400,6 +406,80 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 raise ValueError("capital_action_quantification static eval requires capital_actions object")
             result_payload = quantify_capital_actions(str(case.get("symbol") or "TEST"), capital_actions)
             actual_pass = True
+        elif kind == "customer_evidence_summary":
+            evidence_payload: Any = case.get("payload", {})
+            if not isinstance(evidence_payload, dict):
+                raise ValueError("customer_evidence_summary static eval requires payload object")
+            with tempfile.TemporaryDirectory(prefix="serenity-static-customer-") as temp_dir:
+                temp_path: Path = Path(temp_dir)
+                data_path: Path = temp_path / "customer_evidence.json"
+                manifest_path: Path = temp_path / "manifest.json"
+                data_path.write_text(json.dumps(evidence_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                manifest_payload: dict[str, Any] = {
+                    "symbol": {"symbol": str(evidence_payload.get("symbol") or "TEST.SZ"), "market": evidence_payload.get("market", "CN_A"), "currency": "CNY"},
+                    "out_dir": str(temp_path),
+                    "data_acquisition": {
+                        "status_by_dataset": {"customer_order_capacity_evidence": "OK"},
+                    },
+                    "data_quality": {},
+                    "results": [
+                        {
+                            "dataset": "customer_order_capacity_evidence",
+                            "status": "OK",
+                            "source": evidence_payload.get("source_name", "Disclosure_Customer_Order_Capacity_Evidence_L0"),
+                            "source_level": evidence_payload.get("source_level", "L0_OFFICIAL_DISCLOSURE"),
+                            "data_path": str(data_path),
+                        }
+                    ],
+                }
+                manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                result_payload = _customer_evidence_summary(manifest_payload)
+            actual_pass = True
+        elif kind == "customer_evidence_provider":
+            payload: Any = case.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("customer_evidence_provider static eval requires payload object")
+            market: Market = Market(str(case.get("market") or "US"))
+            symbol = SymbolInfo(
+                input_value=str(case.get("symbol") or "NVDA"),
+                symbol=str(case.get("symbol") or "NVDA"),
+                market=market,
+                exchange=str(case.get("exchange") or market.value),
+                currency=str(case.get("currency") or "USD"),
+            )
+            provider = data_layer_module.DisclosureCustomerEvidenceProvider()
+            records = provider._records_from_payload(market, payload)
+            result_payload = provider._build_payload(symbol, records, source_name=str(case.get("source_name") or "static_disclosure"))
+            actual_pass = True
+        elif kind == "debt_gate_profile":
+            rows: Any = case.get("rows", [])
+            if not isinstance(rows, list):
+                raise ValueError("debt_gate_profile static eval requires rows array")
+            result_payload = _debt_gate_profile(rows)
+            actual_pass = True
+        elif kind == "rating_cap_for_statuses":
+            statuses: Any = case.get("statuses", {})
+            required_datasets: Any = case.get("required_datasets", [])
+            validation_caps: Any = case.get("validation_caps", [])
+            if not isinstance(statuses, dict) or not isinstance(required_datasets, list) or not isinstance(validation_caps, list):
+                raise ValueError("rating_cap_for_statuses requires statuses object and required_datasets/validation_caps arrays")
+            result_payload = {
+                "rating_cap": _cap_for_statuses(
+                    {str(key): str(value) for key, value in statuses.items()},
+                    [str(item) for item in validation_caps],
+                    required_datasets=[str(item) for item in required_datasets],
+                    downgrade_not_requested=bool(case.get("downgrade_not_requested", True)),
+                ).value
+            }
+            actual_pass = True
+        elif kind == "theme_selection":
+            theme: str = str(case.get("theme") or "")
+            policy: str = str(case.get("selection_policy") or "theme-cluster")
+            max_candidates: int = int(case.get("max_candidates") or 0)
+            universe: dict[str, Any] = build_universe(theme)
+            selected: list[str] = _select_candidate_symbols(universe, max_candidates=max_candidates, selection_policy=policy)
+            result_payload = {"selected_symbols": selected, "selected_count": len(selected)}
+            actual_pass = True
         elif kind == "data_consumption_ranking_validity":
             financial_payload: Any = case.get("financial_payload", {})
             financial_row: Any = case.get("financial_row", {})
@@ -634,6 +714,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 actual_pass = False
                 findings = [f"{type(exc).__name__}: {exc}"]
+        elif kind == "strategy_judgment_validation":
+            payload = case.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("strategy_judgment_validation static eval requires payload object")
+            errors = validate_strategy_judgment(payload)
+            result_payload = {"ok": not errors, "errors": errors}
+            actual_pass = not errors
+            findings = errors
         elif kind == "agent_research_queue_validation":
             payload = case.get("payload", {})
             if not isinstance(payload, dict):

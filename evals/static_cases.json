@@ -551,15 +551,15 @@
     "expect_pass": true,
     "expected_result": {
       "candidate_priority_ranking.0.symbol": "688019.SH",
-      "candidate_priority_ranking.0.priority_score": 68.84,
-      "candidate_priority_ranking.0.research_priority_score": 80.23,
-      "candidate_priority_ranking.0.action_priority_score": 39.56,
+      "candidate_priority_ranking.0.priority_score": 60.94,
+      "candidate_priority_ranking.0.research_priority_score": 69.9,
+      "candidate_priority_ranking.0.action_priority_score": 37.91,
       "candidate_priority_ranking.0.rating_cap": "B",
       "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
       "candidate_priority_ranking.0.action_gate.primary_gate": "DATA_GATED",
-      "candidate_priority_ranking.1.priority_score": 57.2,
-      "candidate_priority_ranking.1.research_priority_score": 67.27,
-      "candidate_priority_ranking.1.action_priority_score": 31.33,
+      "candidate_priority_ranking.1.priority_score": 51.23,
+      "candidate_priority_ranking.1.research_priority_score": 59.46,
+      "candidate_priority_ranking.1.action_priority_score": 30.08,
       "candidate_priority_ranking.1.rating_cap": "B",
       "candidate_priority_ranking.1.action_readiness": "DATA_GATED",
       "candidate_priority_ranking.1.action_gate.primary_gate": "DATA_GATED",
@@ -574,8 +574,12 @@
       "growth_hypothesis_matrix.1.market_implied_growth": "H5",
       "growth_hypothesis_matrix.1.gap": "market_ahead_of_evidence",
       "growth_hypothesis_matrix.1.h4_h5_evidence_bar_met": false,
+      "customer_evidence_matrix.0.status": "NOT_REQUESTED",
+      "customer_evidence_matrix.0.score": 35.0,
+      "customer_evidence_matrix.1.status": "NOT_REQUESTED",
+      "customer_evidence_matrix.1.score": 35.0,
       "final_decision.decision_mode": "research_lead",
-      "final_decision.score_gap_to_runner_up": 11.64,
+      "final_decision.score_gap_to_runner_up": 9.71,
       "final_decision.ranking_validity.status": "PARTIAL",
       "final_decision.candidate_count_warning": "insufficient_universe_warning"
     },
@@ -610,6 +614,9 @@
       "candidate_priority_ranking.0.action_readiness": "DATA_GATED",
       "candidate_priority_ranking.1.symbol": "688322.SH",
       "candidate_priority_ranking.1.action_readiness": "DATA_GATED",
+      "readiness_matrix.0.primary_gate_class": "DATA_ACQUISITION",
+      "readiness_matrix.0.gate_classes.DATA_GATED": "DATA_ACQUISITION",
+      "readiness_matrix.0.gate_classes.EVIDENCE_GATED": "EVIDENCE_VALIDATION",
       "final_decision.ranking_validity.status": "PARTIAL"
     },
     "expected_contains": [
@@ -3321,5 +3328,269 @@
       "CNINFO annual report": "2025 revenue reached 100.0 and gross margin improved."
     },
     "expect_pass": false
+  },
+  {
+    "name": "ai-overlay-validation-ignores-period-labels-but-checks-financial-number",
+    "kind": "ai_overlay_validation_with_context",
+    "payload": {
+      "symbol": "300308.SZ",
+      "as_of_date": "2026-06-30",
+      "layer": "光模块、光芯片与高速互联",
+      "bottleneck_reason": "公司处在高速光模块交付和客户认证环节。",
+      "revenue_transmission": "收入通过高速光模块出货、客户验证和产能释放传导。",
+      "serenity_fit": 0.74,
+      "evidence_supported_growth": "H3",
+      "key_evidence_refs": [
+        {
+          "claim": "2026 Q1 revenue reached 100.0.",
+          "source_ref": "customer evidence",
+          "source_level": "L0",
+          "confidence": 0.82
+        }
+      ],
+      "contrary_evidence": ["客户订单持续性仍需逐季验证。"],
+      "research_questions": [
+        "下一期客户结构是否继续改善？",
+        "扩产是否转化为收入和现金流？"
+      ],
+      "ai_confidence": "HIGH"
+    },
+    "evidence_context": {
+      "customer evidence": "Revenue reached 100.0 in the reviewed filing."
+    },
+    "expect_pass": true
+  },
+  {
+    "name": "customer-evidence-summary-exposes-direct-disclosure-score",
+    "kind": "customer_evidence_summary",
+    "payload": {
+      "contract_type": "serenity_customer_order_capacity_evidence",
+      "schema_version": "1.0",
+      "symbol": "300308.SZ",
+      "market": "CN_A",
+      "source_name": "Disclosure_Customer_Order_Capacity_Evidence_L0",
+      "source_level": "L0_OFFICIAL_DISCLOSURE",
+      "summary": {
+        "evidence_status": "DIRECT_EVIDENCE_FOUND",
+        "score": 84.0,
+        "direct_evidence_count": 2,
+        "lead_evidence_count": 1,
+        "review_queue_count": 3,
+        "loaded_record_count": 30
+      },
+      "evidence_items": [
+        {
+          "source_ref": "customer_order_capacity_evidence:300308.SZ:order",
+          "title": "重大合同公告"
+        }
+      ],
+      "review_queue": [],
+      "required_next_evidence": ["复核订单与收入传导。"]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "evidence_status": "DIRECT_EVIDENCE_FOUND",
+      "score": 84.0,
+      "direct_evidence_count": 2,
+      "lead_evidence_count": 1
+    }
+  },
+  {
+    "name": "customer-evidence-provider-treats-sec-10k-as-disclosure-lead",
+    "kind": "customer_evidence_provider",
+    "market": "US",
+    "symbol": "NVDA",
+    "payload": {
+      "recent_filings": [
+        {
+          "form": "10-K",
+          "filing_date": "2026-02-26",
+          "accession_number": "0001045810-26-000001",
+          "primary_document": "nvda-20260125.htm"
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "summary.evidence_status": "DISCLOSURE_LEADS_ONLY",
+      "summary.direct_evidence_count": 0,
+      "summary.lead_evidence_count": 1,
+      "summary.review_queue_count": 0,
+      "evidence_items.0.evidence_strength": "DISCLOSURE_LEAD"
+    }
+  },
+  {
+    "name": "customer-evidence-provider-treats-generic-sec-8k-as-disclosure-lead",
+    "kind": "customer_evidence_provider",
+    "market": "US",
+    "symbol": "NVDA",
+    "payload": {
+      "recent_filings": [
+        {
+          "form": "8-K",
+          "filing_date": "2026-03-01",
+          "accession_number": "0001045810-26-000002",
+          "primary_document": "nvda-20260301.htm"
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "summary.evidence_status": "DISCLOSURE_LEADS_ONLY",
+      "summary.direct_evidence_count": 0,
+      "summary.lead_evidence_count": 1,
+      "summary.review_queue_count": 0,
+      "evidence_items.0.evidence_axis": "disclosure_review",
+      "evidence_items.0.evidence_strength": "DISCLOSURE_LEAD"
+    }
+  },
+  {
+    "name": "customer-evidence-provider-treats-contract-sec-8k-title-as-direct-disclosure",
+    "kind": "customer_evidence_provider",
+    "market": "US",
+    "symbol": "NVDA",
+    "payload": {
+      "recent_filings": [
+        {
+          "form": "8-K",
+          "title": "Material Contract Announcement",
+          "filing_date": "2026-03-02",
+          "accession_number": "0001045810-26-000003",
+          "primary_document": "nvda-20260302.htm"
+        }
+      ]
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "summary.evidence_status": "DIRECT_EVIDENCE_FOUND",
+      "summary.direct_evidence_count": 1,
+      "summary.lead_evidence_count": 0,
+      "summary.review_queue_count": 0,
+      "evidence_items.0.evidence_axis": "order_backlog",
+      "evidence_items.0.evidence_strength": "DIRECT_DISCLOSURE"
+    }
+  },
+  {
+    "name": "customer-evidence-missing-data-uses-data-acquisition-gate-class",
+    "kind": "debt_gate_profile",
+    "rows": [
+      {
+        "symbol": "TEST.SZ",
+        "dataset": "customer_order_capacity_evidence",
+        "priority": "high",
+        "status": "NOT_REQUESTED",
+        "gap_type": "SCOPE_NOT_REQUESTED"
+      }
+    ],
+    "expect_pass": true,
+    "expected_result": {
+      "dataset_gate_classes.customer_order_capacity_evidence": "DATA_ACQUISITION",
+      "blocking_datasets.0": "customer_order_capacity_evidence"
+    }
+  },
+  {
+    "name": "customer-evidence-not-requested-caps-full-research-rating",
+    "kind": "rating_cap_for_statuses",
+    "statuses": {
+      "current_quote": "OK",
+      "price_history_adjusted": "OK",
+      "financials": "OK",
+      "filings_announcements": "OK",
+      "customer_order_capacity_evidence": "NOT_REQUESTED",
+      "valuation_inputs": "OK"
+    },
+    "required_datasets": [
+      "current_quote",
+      "price_history_adjusted",
+      "financials",
+      "filings_announcements",
+      "customer_order_capacity_evidence"
+    ],
+    "downgrade_not_requested": true,
+    "expect_pass": true,
+    "expected_result": {
+      "rating_cap": "B"
+    }
+  },
+  {
+    "name": "ai-compute-theme-first-three-candidates-stay-in-optical-layer",
+    "kind": "theme_selection",
+    "theme": "AI算力",
+    "selection_policy": "theme-cluster",
+    "max_candidates": 3,
+    "expect_pass": true,
+    "expected_result": {
+      "selected_symbols.0": "300308.SZ",
+      "selected_symbols.1": "300502.SZ",
+      "selected_symbols.2": "300394.SZ",
+      "selected_count": 3
+    }
+  },
+  {
+    "name": "laplace-strategy-judgment-contract-accepts-gated-watch-plan",
+    "kind": "strategy_judgment_validation",
+    "payload": {
+      "contract_type": "serenity_laplace_strategy_judgment",
+      "schema_version": "1.0",
+      "source_strategy_input_path": "/tmp/laplace_strategy_input.json",
+      "as_of_date": "2026-06-30",
+      "forecast": "AI算力仍是强主题，但当前更适合作为证据驱动的观察池。",
+      "decision": "维持观察和补证，不把研究首位直接转成行动对象。",
+      "decision_model": "默认平衡型研究账户，目标是保留上行观察权并避免在证据缺口中追高。",
+      "observed": ["候选池存在估值与证据支持增长差距。"],
+      "inferred": ["客户订单证据越直接，越能提高研究优先级。"],
+      "judgment": ["当前策略应先处理客户、订单、产能和买点门控。"],
+      "dominant_variables": [
+        {
+          "variable": "客户订单证据",
+          "role": "bottleneck",
+          "direction": "direct evidence improves confidence",
+          "confidence": "HIGH",
+          "why": "它决定增长假设能否支撑高估值。"
+        },
+        {
+          "variable": "估值隐含增长",
+          "role": "tripwire",
+          "direction": "market ahead of evidence is negative",
+          "confidence": "MEDIUM",
+          "why": "估值过高会压低行动赔率。"
+        },
+        {
+          "variable": "技术买点",
+          "role": "timing",
+          "direction": "confirmed structure improves action readiness",
+          "confidence": "MEDIUM",
+          "why": "买点决定研究候选能否执行。"
+        }
+      ],
+      "scenarios": {
+        "base": {
+          "summary": "主题强但门控仍在。",
+          "probability": 0.55,
+          "conditions": ["订单和财务兑现逐季验证。"]
+        },
+        "upside": {
+          "summary": "客户订单证据增强并解除估值缺口。",
+          "probability": 0.25,
+          "conditions": ["出现 L0/L1 订单、产能或分部收入证据。"]
+        },
+        "downside": {
+          "summary": "估值继续领先证据并出现回撤。",
+          "probability": 0.2,
+          "conditions": ["业绩或客户证据无法跟上市场预期。"]
+        }
+      },
+      "triggers": {
+        "30d": ["跟踪最新公告和调研。"],
+        "90d": ["验证季报收入和现金流。"],
+        "180d": ["复盘订单到财务的传导。"]
+      },
+      "invalidation": ["核心客户订单证据缺失且估值继续抬升。"],
+      "next_evidence": ["获取客户、订单、产能和分部收入证据。"],
+      "action_plan": ["保持观察，等待证据和买点同时改善。"],
+      "confidence": "MEDIUM",
+      "ledger_claims": []
+    },
+    "expect_pass": true
   }
 ]
