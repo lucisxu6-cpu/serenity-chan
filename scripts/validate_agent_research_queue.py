@@ -125,6 +125,7 @@ def validate_agent_research_queue(payload: Mapping[str, Any]) -> list[str]:
         "overlay_prompt",
         "theme_universe",
         "theme_research_packet",
+        "candidate_funnel",
         "dossier_schema",
         "overlay_schema",
         "outcome_schema",

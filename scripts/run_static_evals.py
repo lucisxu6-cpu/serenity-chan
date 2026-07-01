@@ -41,7 +41,12 @@ try:
     from validate_and_merge_ai_overlay import build_validated_merged_report
     from render_research_report import render_report
     from build_theme_candidate_universe import build_universe
+    from build_opportunity_discovery_plan import build_plan
+    from build_candidate_funnel import build_candidate_funnel
+    from validate_opportunity_discovery_plan import validate_opportunity_discovery_plan
+    from validate_candidate_funnel import validate_candidate_funnel
     from run_theme_research_analysis import _select_candidate_symbols
+    from run_research_analysis import _validate_candidate_funnel_scope
     from data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run_static_evals
     from scripts import data_layer as data_layer_module
@@ -73,7 +78,12 @@ except ModuleNotFoundError:  # pragma: no cover - supports python -m scripts.run
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
     from scripts.render_research_report import render_report
     from scripts.build_theme_candidate_universe import build_universe
+    from scripts.build_opportunity_discovery_plan import build_plan
+    from scripts.build_candidate_funnel import build_candidate_funnel
+    from scripts.validate_opportunity_discovery_plan import validate_opportunity_discovery_plan
+    from scripts.validate_candidate_funnel import validate_candidate_funnel
     from scripts.run_theme_research_analysis import _select_candidate_symbols
+    from scripts.run_research_analysis import _validate_candidate_funnel_scope
     from scripts.data_layer import CninfoFinancialReportsProvider, EastmoneyF10FinancialsProvider, HkexFinancialReportsProvider, Market, SymbolInfo, default_real_providers, _sec_submission_matches_symbol
 
 
@@ -482,6 +492,94 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             selected: list[str] = _select_candidate_symbols(universe, max_candidates=max_candidates, selection_policy=policy)
             result_payload = {"selected_symbols": selected, "selected_count": len(selected)}
             actual_pass = True
+        elif kind == "opportunity_discovery_plan":
+            plan_payload: dict[str, Any] = build_plan(
+                prompt=str(case.get("prompt") or ""),
+                market_scope=[str(item) for item in case.get("market_scope", ["CN_A"])],
+                excluded_boards=[str(item) for item in case.get("excluded_boards", [])],
+                horizon=str(case.get("horizon") or "3-6个月"),
+                risk_profile=str(case.get("risk_profile") or "balanced"),
+                max_price=case.get("max_price"),
+                min_price=case.get("min_price"),
+                explicit_themes=[str(item) for item in case.get("themes", [])],
+                preflight_candidate_limit=int(case.get("preflight_candidate_limit") or 24),
+                shortlist_target=int(case.get("shortlist_target") or 8),
+            )
+            plan_errors: list[str] = validate_opportunity_discovery_plan(plan_payload)
+            result_payload = {
+                "ok": not plan_errors,
+                "errors": plan_errors,
+                "discovery_mode": plan_payload.get("discovery_mode"),
+                "theme_keys": [
+                    str(item.get("theme_key") or "")
+                    for item in plan_payload.get("trend_hypotheses", [])
+                    if isinstance(item, dict)
+                ],
+                "theme_sources": [
+                    str(item.get("theme_source") or "")
+                    for item in plan_payload.get("trend_hypotheses", [])
+                    if isinstance(item, dict)
+                ],
+                "market_scope": plan_payload.get("request", {}).get("market_scope", []),
+                "excluded_boards": plan_payload.get("request", {}).get("excluded_boards", []),
+            }
+            actual_pass = not plan_errors
+            findings = plan_errors
+        elif kind == "candidate_funnel":
+            with tempfile.TemporaryDirectory(prefix="serenity-static-funnel-") as temp_dir:
+                temp_root: Path = Path(temp_dir)
+                plan_payload: dict[str, Any] = build_plan(
+                    prompt=str(case.get("prompt") or ""),
+                    market_scope=[str(item) for item in case.get("market_scope", ["CN_A"])],
+                    excluded_boards=[str(item) for item in case.get("excluded_boards", [])],
+                    horizon=str(case.get("horizon") or "3-6个月"),
+                    risk_profile=str(case.get("risk_profile") or "balanced"),
+                    max_price=case.get("max_price"),
+                    min_price=case.get("min_price"),
+                    explicit_themes=[str(item) for item in case.get("themes", [])],
+                    preflight_candidate_limit=int(case.get("preflight_candidate_limit") or 24),
+                    shortlist_target=int(case.get("shortlist_target") or 8),
+                )
+                plan_path: Path = temp_root / "opportunity_discovery_plan.json"
+                plan_path.write_text(json.dumps(plan_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                snapshot_path: Path = temp_root / "preflight_snapshot.json"
+                snapshot_path.write_text(json.dumps(case.get("preflight_snapshot", {}), ensure_ascii=False, indent=2), encoding="utf-8")
+                funnel_payload: dict[str, Any] = build_candidate_funnel(
+                    plan_path=plan_path,
+                    universe_paths=[],
+                    preflight_root=None,
+                    preflight_snapshot_path=snapshot_path,
+                )
+            funnel_errors: list[str] = validate_candidate_funnel(funnel_payload)
+            result_payload = {
+                "ok": not funnel_errors,
+                "errors": funnel_errors,
+                "shortlist_symbols": funnel_payload.get("shortlist_symbols", []),
+                "stage_summary": funnel_payload.get("stage_summary", []),
+                "excluded_count": len([
+                    row for row in funnel_payload.get("candidate_rows", [])
+                    if isinstance(row, dict) and row.get("final_bucket") == "constraint_excluded"
+                ]),
+            }
+            actual_pass = not funnel_errors
+            findings = funnel_errors
+        elif kind == "candidate_funnel_scope":
+            with tempfile.TemporaryDirectory(prefix="serenity-static-funnel-scope-") as temp_dir:
+                temp_root: Path = Path(temp_dir)
+                funnel_path: Path = temp_root / "candidate_funnel.json"
+                funnel_payload: dict[str, Any] = dict(case.get("candidate_funnel", {}))
+                funnel_path.write_text(json.dumps(funnel_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                try:
+                    _validate_candidate_funnel_scope(
+                        str(funnel_path),
+                        [str(item) for item in case.get("symbols", [])],
+                    )
+                    result_payload = {"accepted": True, "error": ""}
+                    actual_pass = True
+                except Exception as exc:
+                    result_payload = {"accepted": False, "error": str(exc)}
+                    findings = [str(exc)]
+                    actual_pass = False
         elif kind == "data_consumption_ranking_validity":
             financial_payload: Any = case.get("financial_payload", {})
             financial_row: Any = case.get("financial_row", {})

@@ -12,9 +12,11 @@ from typing import Any, Mapping, Optional, Sequence
 try:
     from build_ai_committee_packet import build_ai_committee_packet
     from build_ai_review_packet import build_ai_review_packet
+    from validate_candidate_funnel import validate_candidate_funnel
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_ai_committee_packet import build_ai_committee_packet
     from scripts.build_ai_review_packet import build_ai_review_packet
+    from scripts.validate_candidate_funnel import validate_candidate_funnel
 
 
 def _load_optional_json(path: Optional[Path]) -> Mapping[str, Any]:
@@ -26,17 +28,44 @@ def _load_optional_json(path: Optional[Path]) -> Mapping[str, Any]:
     return payload
 
 
+def _load_candidate_funnel(path: Optional[Path]) -> Mapping[str, Any]:
+    payload: Mapping[str, Any] = _load_optional_json(path)
+    if not payload:
+        return {}
+    errors: list[str] = validate_candidate_funnel(payload)
+    if errors:
+        raise ValueError(f"candidate_funnel is invalid: {'; '.join(errors)}")
+    return payload
+
+
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _validate_funnel_symbol(candidate_funnel: Mapping[str, Any], symbol: str) -> None:
+    if not candidate_funnel:
+        return
+    shortlist: set[str] = {str(item).strip() for item in _as_list(candidate_funnel.get("shortlist_symbols")) if str(item).strip()}
+    if not shortlist:
+        raise ValueError("candidate_funnel.shortlist_symbols is empty; repair discovery before AI research")
+    if symbol not in shortlist:
+        raise ValueError(f"{symbol} is outside candidate_funnel shortlist")
+
+
 def build_ai_overlay_prompt(
     manifest_path: Path,
     *,
     theme_universe_path: Optional[Path] = None,
     theme_research_packet_path: Optional[Path] = None,
+    candidate_funnel_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     review_packet: dict[str, Any] = build_ai_review_packet(manifest_path)
     committee_packet: dict[str, Any] = build_ai_committee_packet(manifest_path)
     theme_universe: Mapping[str, Any] = _load_optional_json(theme_universe_path)
     theme_research_packet: Mapping[str, Any] = _load_optional_json(theme_research_packet_path)
+    candidate_funnel: Mapping[str, Any] = _load_candidate_funnel(candidate_funnel_path)
     symbol: str = str(review_packet.get("symbol") or "")
+    _validate_funnel_symbol(candidate_funnel, symbol)
     return {
         "packet_type": "serenity_ai_overlay_prompt",
         "symbol": symbol,
@@ -74,6 +103,11 @@ def build_ai_overlay_prompt(
             "theme_research_packet": dict(theme_research_packet),
             "usage_rule": "When present, use theme context to map the candidate into the value chain, compare it with same-layer alternatives, and keep macro/theme claims separate from company-specific evidence.",
         },
+        "discovery_context": {
+            "candidate_funnel_path": str(candidate_funnel_path.resolve()) if candidate_funnel_path else "",
+            "candidate_funnel": dict(candidate_funnel),
+            "usage_rule": "When present, explain why this candidate survived the discovery funnel, which peers were deferred or excluded, and which funnel constraints still limit formal action.",
+        },
         "expected_output": {
             "json_only": True,
             "dossier_schema_path": "assets/ai_research_dossier.schema.json",
@@ -97,6 +131,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("manifest", help="fetch manifest JSON path")
     parser.add_argument("--theme-universe", help="optional theme_candidate_universe.json for direction context")
     parser.add_argument("--theme-research-packet", help="optional theme_research_packet.json for direction-level AI questions")
+    parser.add_argument("--candidate-funnel", help="optional candidate_funnel.json for discovery and narrowing context")
     parser.add_argument("--out", help="write prompt package JSON to this path")
     args: argparse.Namespace = parser.parse_args(argv)
     try:
@@ -104,6 +139,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             Path(args.manifest),
             theme_universe_path=Path(args.theme_universe) if args.theme_universe else None,
             theme_research_packet_path=Path(args.theme_research_packet) if args.theme_research_packet else None,
+            candidate_funnel_path=Path(args.candidate_funnel) if args.candidate_funnel else None,
         )
         text: str = json.dumps(payload, ensure_ascii=False, indent=2)
         if args.out:

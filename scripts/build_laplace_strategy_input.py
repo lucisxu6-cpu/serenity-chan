@@ -10,6 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
+try:
+    from validate_candidate_funnel import validate_candidate_funnel
+except ModuleNotFoundError:  # pragma: no cover
+    from scripts.validate_candidate_funnel import validate_candidate_funnel
 
 CONTRACT_TYPE: str = "serenity_laplace_strategy_input"
 SCHEMA_VERSION: str = "1.0"
@@ -21,6 +25,28 @@ def _load_json(path: Path) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         raise ValueError(f"{path} must contain a JSON object")
     return payload
+
+
+def _load_candidate_funnel(path: Optional[Path]) -> Mapping[str, Any]:
+    if path is None:
+        return {}
+    payload: Mapping[str, Any] = _load_json(path)
+    errors: list[str] = validate_candidate_funnel(payload)
+    if errors:
+        raise ValueError(f"candidate_funnel is invalid: {'; '.join(errors)}")
+    return payload
+
+
+def _validate_funnel_candidate_scope(candidate_funnel: Mapping[str, Any], candidate_symbols: Sequence[str]) -> None:
+    if not candidate_funnel:
+        return
+    shortlist: set[str] = {str(item).strip() for item in _as_list(candidate_funnel.get("shortlist_symbols")) if str(item).strip()}
+    if not shortlist:
+        raise ValueError("candidate_funnel.shortlist_symbols is empty; repair discovery before strategy handoff")
+    requested: set[str] = {str(symbol).strip() for symbol in candidate_symbols if str(symbol).strip()}
+    outside: list[str] = sorted(requested - shortlist)
+    if outside:
+        raise ValueError(f"report candidates outside candidate_funnel shortlist: {', '.join(outside)}")
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -289,6 +315,7 @@ def build_strategy_input(
     geography: str,
     decision_use: str,
     default_profile: str,
+    candidate_funnel_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     readiness: dict[str, Any] = _ensure_strategy_ready(report, source_report_path)
     comparison_scope: Mapping[str, Any] = _as_mapping(report.get("comparison_scope"))
@@ -308,6 +335,8 @@ def build_strategy_input(
     readiness_rows: Mapping[str, Mapping[str, Any]] = _by_symbol(report.get("readiness_matrix"))
     research_debt_rows: list[Any] = _as_list(report.get("research_debt"))
     ranking_rows: list[Any] = _as_list(report.get("candidate_priority_ranking"))
+    candidate_funnel: Mapping[str, Any] = _load_candidate_funnel(candidate_funnel_path)
+    _validate_funnel_candidate_scope(candidate_funnel, list(candidate_rows.keys()))
     resolved_geography: str = geography or infer_geography(report)
     candidates: list[dict[str, Any]] = [
         _candidate_row(
@@ -364,6 +393,7 @@ def build_strategy_input(
             "data_consumption_audit": _as_list(report.get("data_consumption_audit")),
             "customer_evidence_matrix": _as_list(report.get("customer_evidence_matrix")),
             "ai_research_dossier_matrix": _as_list(report.get("ai_research_dossier_matrix")),
+            "candidate_funnel": dict(candidate_funnel),
         },
         "forecast_variables": _forecast_variables(report),
         "strategy_questions": _strategy_questions(object_name),
@@ -397,6 +427,11 @@ def build_strategy_input(
             "decision_use": decision_use,
             "claims": [],
         },
+        "discovery_context": {
+            "candidate_funnel_path": str(candidate_funnel_path.resolve()) if candidate_funnel_path else "",
+            "candidate_funnel_present": bool(candidate_funnel),
+            "policy": "When present, use the funnel to preserve opportunity-universe breadth, excluded directions, shortlist constraints, and opportunity cost before writing strategy judgment.",
+        },
     }
 
 
@@ -408,6 +443,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--geography", default="", help="geography; defaults to inferred markets from comparison report")
     parser.add_argument("--decision-use", default="watchlist allocation, action triggers, and invalidation")
     parser.add_argument("--default-profile", default="balanced")
+    parser.add_argument("--candidate-funnel", help="optional candidate_funnel.json used before formal comparison")
     parser.add_argument("--out", help="write strategy input JSON")
     args: argparse.Namespace = parser.parse_args(argv)
     try:
@@ -420,6 +456,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             geography=args.geography,
             decision_use=args.decision_use,
             default_profile=args.default_profile,
+            candidate_funnel_path=Path(args.candidate_funnel) if args.candidate_funnel else None,
         )
         text: str = json.dumps(payload, ensure_ascii=False, indent=2)
         if args.out:

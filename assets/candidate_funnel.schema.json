@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Candidate Funnel",
+  "type": "object",
+  "required": [
+    "contract_type",
+    "schema_version",
+    "generated_at",
+    "source_plan_path",
+    "source_universe_paths",
+    "constraints",
+    "stage_summary",
+    "candidate_rows",
+    "shortlist_symbols",
+    "excluded_directions",
+    "next_step"
+  ],
+  "properties": {
+    "contract_type": {
+      "type": "string",
+      "const": "serenity_candidate_funnel"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_plan_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_universe_paths": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["market_scope", "excluded_boards", "price_preference", "shortlist_target"],
+      "properties": {
+        "market_scope": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "excluded_boards": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "price_preference": { "type": "object" },
+        "shortlist_target": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "stage_summary": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["stage", "input_count", "output_count", "rule"],
+        "properties": {
+          "stage": { "type": "string", "minLength": 1 },
+          "input_count": { "type": "integer", "minimum": 0 },
+          "output_count": { "type": "integer", "minimum": 0 },
+          "rule": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "candidate_rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "name",
+          "market",
+          "theme",
+          "layer",
+          "stage_status",
+          "final_bucket",
+          "selected_for_formal",
+          "score",
+          "reasons",
+          "evidence_tasks"
+        ],
+        "properties": {
+          "symbol": { "type": "string", "minLength": 1 },
+          "name": { "type": "string" },
+          "market": { "type": "string", "minLength": 1 },
+          "theme": { "type": "string", "minLength": 1 },
+          "layer": { "type": "string", "minLength": 1 },
+          "stage_status": {
+            "type": "string",
+            "enum": ["IN_SHORTLIST", "DEFERRED", "FILTERED_OUT"]
+          },
+          "final_bucket": {
+            "type": "string",
+            "enum": [
+              "formal_shortlist",
+              "evidence_watch",
+              "constraint_excluded",
+              "data_preflight_needed"
+            ]
+          },
+          "selected_for_formal": { "type": "boolean" },
+          "score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "reasons": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "evidence_tasks": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "shortlist_symbols": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "excluded_directions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["direction", "reason", "revisit_trigger"],
+        "properties": {
+          "direction": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "revisit_trigger": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "next_step": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

@@ -15,7 +15,8 @@
     "forecast_variables",
     "strategy_questions",
     "laplace_execution",
-    "ledger_seed"
+    "ledger_seed",
+    "discovery_context"
   ],
   "properties": {
     "contract_type": {
@@ -151,6 +152,16 @@
           "type": "array",
           "items": {"type": "object"}
         }
+      },
+      "additionalProperties": true
+    },
+    "discovery_context": {
+      "type": "object",
+      "required": ["candidate_funnel_path", "candidate_funnel_present", "policy"],
+      "properties": {
+        "candidate_funnel_path": {"type": "string"},
+        "candidate_funnel_present": {"type": "boolean"},
+        "policy": {"type": "string"}
       },
       "additionalProperties": true
     }

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Serenity Opportunity Discovery Plan",
+  "type": "object",
+  "required": [
+    "contract_type",
+    "schema_version",
+    "generated_at",
+    "request",
+    "discovery_mode",
+    "trend_hypotheses",
+    "universe_policy",
+    "next_step"
+  ],
+  "properties": {
+    "contract_type": {
+      "type": "string",
+      "const": "serenity_opportunity_discovery_plan"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "prompt",
+        "market_scope",
+        "horizon",
+        "risk_profile",
+        "price_preference",
+        "excluded_boards"
+      ],
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1 },
+        "market_scope": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL"] }
+        },
+        "horizon": { "type": "string", "minLength": 1 },
+        "risk_profile": { "type": "string", "minLength": 1 },
+        "price_preference": {
+          "type": "object",
+          "required": ["style", "min_price", "max_price"],
+          "properties": {
+            "style": { "type": "string", "minLength": 1 },
+            "min_price": { "type": ["number", "null"] },
+            "max_price": { "type": ["number", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "excluded_boards": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "discovery_mode": {
+      "type": "string",
+      "enum": ["open_opportunity", "theme_opportunity", "theme_research_required", "constraint_first"]
+    },
+    "trend_hypotheses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "theme_key",
+          "theme",
+          "why_now",
+          "value_chain_focus",
+          "evidence_to_seek",
+          "disconfirmation"
+        ],
+        "properties": {
+          "theme_key": { "type": "string", "minLength": 1 },
+          "theme_source": { "type": "string", "enum": ["curated_pack", "ai_built_required"] },
+          "theme": { "type": "string", "minLength": 1 },
+          "why_now": { "type": "string", "minLength": 1 },
+          "value_chain_focus": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "evidence_to_seek": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "disconfirmation": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "universe_policy": {
+      "type": "object",
+      "required": [
+        "minimum_universe_candidates",
+        "preflight_candidate_limit",
+        "shortlist_target",
+        "selection_order",
+        "evidence_floor"
+      ],
+      "properties": {
+        "minimum_universe_candidates": { "type": "integer", "minimum": 1 },
+        "preflight_candidate_limit": { "type": "integer", "minimum": 1 },
+        "shortlist_target": { "type": "integer", "minimum": 1 },
+        "selection_order": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence_floor": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "next_step": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

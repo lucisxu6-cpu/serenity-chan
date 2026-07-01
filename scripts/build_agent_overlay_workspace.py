@@ -131,6 +131,7 @@ def _workspace_item(work_item: Mapping[str, Any]) -> dict[str, Any]:
         "customer_order_capacity_evidence": _customer_evidence_workspace(review_packet),
         "deterministic_matrices": review_packet.get("deterministic_matrices", {}),
         "committee_roles": committee_packet.get("committee_roles", []),
+        "discovery_context": overlay_prompt.get("discovery_context", {}),
         "overlay_contract": overlay_prompt.get("expected_output", {}),
         "research_expansion_protocol": _research_expansion_protocol(work_item, overlay_prompt),
         "hard_constraints": overlay_prompt.get("hard_constraints", []),

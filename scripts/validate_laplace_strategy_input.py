@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
+try:
+    from validate_candidate_funnel import validate_candidate_funnel
+except ModuleNotFoundError:  # pragma: no cover
+    from scripts.validate_candidate_funnel import validate_candidate_funnel
+
 
 REQUIRED_ROOT: set[str] = {
     "contract_type",
@@ -24,6 +29,7 @@ REQUIRED_ROOT: set[str] = {
     "strategy_questions",
     "laplace_execution",
     "ledger_seed",
+    "discovery_context",
 }
 STRATEGY_READY_AI_STATUSES: set[str] = {"COMPLETED", "FAILED_INSUFFICIENT_EVIDENCE", "CONFLICT_WITH_DATA"}
 REQUIRED_CANDIDATE: set[str] = {
@@ -166,6 +172,21 @@ def validate_strategy_input(payload: Mapping[str, Any]) -> list[str]:
         if key != "claims" and not _non_empty_text(ledger.get(key)):
             errors.append(f"ledger_seed.{key} must not be empty")
     _as_list(ledger.get("claims"), "ledger_seed.claims", errors)
+
+    discovery: Mapping[str, Any] = _as_mapping(payload.get("discovery_context"), "discovery_context", errors)
+    if not _non_empty_text(discovery.get("policy")):
+        errors.append("discovery_context.policy must not be empty")
+    if not isinstance(discovery.get("candidate_funnel_present"), bool):
+        errors.append("discovery_context.candidate_funnel_present must be a boolean")
+    candidate_funnel: Any = facts.get("candidate_funnel")
+    if discovery.get("candidate_funnel_present") is True:
+        if not _non_empty_text(discovery.get("candidate_funnel_path")):
+            errors.append("discovery_context.candidate_funnel_path must not be empty when candidate_funnel_present is true")
+        if not isinstance(candidate_funnel, Mapping):
+            errors.append("observed_facts.candidate_funnel must be an object when candidate_funnel_present is true")
+        else:
+            funnel_errors: list[str] = validate_candidate_funnel(candidate_funnel)
+            errors.extend(f"observed_facts.candidate_funnel: {error}" for error in funnel_errors)
     return errors
 
 

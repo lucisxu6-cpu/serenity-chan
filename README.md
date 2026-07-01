@@ -2,7 +2,7 @@
 
 Language: [中文](#中文) | [English](#english)
 
-serenity-chan-stock-skill 是一个证据驱动的股票研究助手，面向 A 股、美股、港股和跨市场候选比较。它把一个主题、一只股票、一组候选或一个策略问题，组织成可以追踪、复核、比较和行动的研究流程。
+serenity-chan-stock-skill 是一个证据驱动的股票研究助手，面向 A 股、美股、港股和跨市场候选比较。它把一个开放机会、一个主题、一只股票、一组候选或一个策略问题，组织成可以追踪、复核、比较和行动的研究流程。
 
 它的定位是研究辅助、证据整理、候选比较、行动条件和复盘。投资决策由使用者自行负责。
 
@@ -12,12 +12,13 @@ serenity-chan-stock-skill 是一个证据驱动的股票研究助手，面向 A 
 
 ### 一句话
 
-serenity-chan 把“这家公司、这条主线、这组候选是否值得继续研究”拆成真实数据、产业位置、AI 深研、评分约束、行动条件和复盘线索。
+serenity-chan 把“当前有什么机会、这家公司、这条主线、这组候选是否值得继续研究”拆成机会发现、候选缩圈、真实数据、产业位置、AI 深研、评分约束、行动条件和复盘线索。
 
 ### 它适合处理什么
 
 | 输入 | 它会关注什么 | 你会得到什么 |
 |---|---|---|
+| 一个开放机会问题 | 大趋势、市场范围、价格约束、排除板块、候选宇宙和缩圈路径 | 可审计的候选漏斗、正式 shortlist 和被排除方向 |
 | 一个产业主题 | 产业链层级、真正的瓶颈、候选公司覆盖度、热门叙事的证据强度 | 值得优先研究的层级、候选池和需要降温的方向 |
 | 一只股票 | 市场归属、当前价格、财务质量、公告证据、客户订单产能、估值和买点 | 数据质量、研究评级边界、关键待补证据和下一步核验 |
 | 一组候选 | 是否同层可比、谁更接近瓶颈、谁证据更强、谁更接近行动 | 研究优先级、行动优先级、观察名单和候选池边界 |
@@ -27,23 +28,27 @@ serenity-chan 把“这家公司、这条主线、这组候选是否值得继续
 
 ```mermaid
 flowchart TB
-  A["问题进入<br/>主题 / 个股 / 候选池 / 策略"] --> B["市场识别<br/>A 股 / 美股 / 港股 / 跨市场"]
-  B --> C["证据获取<br/>行情 / 财报 / 公告 / 股本 / 市值 / 客户订单产能"]
-  C --> D["证据审计<br/>来源强度 / 时效 / 缺口 / 是否真正用上"]
-  D --> E["AI 深研工作台<br/>核心问题 / 假设 / 证据测试 / 反方观点 / 情景"]
-  E --> F["AI 研究投影<br/>深研档案 / 证据结论 / 冲突或缺口"]
-  F --> G["决策约束<br/>研究评级 / 证据置信 / 估值赔率 / 行动时机"]
-  G --> H["候选排序<br/>研究优先级 / 行动优先级 / 待补证据"]
-  H --> I["策略输出<br/>行动条件 / 触发器 / 失效条件 / 复盘记录"]
+  A["问题进入<br/>开放机会 / 主题 / 个股 / 候选池 / 策略"] --> B["机会发现<br/>趋势假设 / 市场范围 / 用户约束"]
+  B --> C["候选缩圈<br/>候选宇宙 / 硬过滤 / preflight 数据 / shortlist"]
+  C --> D["市场识别<br/>A 股 / 美股 / 港股 / 跨市场"]
+  D --> E["证据获取<br/>行情 / 财报 / 公告 / 股本 / 市值 / 客户订单产能"]
+  E --> F["证据审计<br/>来源强度 / 时效 / 缺口 / 是否真正用上"]
+  F --> G["AI 深研工作台<br/>核心问题 / 假设 / 证据测试 / 反方观点 / 情景"]
+  G --> H["AI 研究投影<br/>深研档案 / 证据结论 / 冲突或缺口"]
+  H --> I["决策约束<br/>研究评级 / 证据置信 / 估值赔率 / 行动时机"]
+  I --> J["候选排序<br/>研究优先级 / 行动优先级 / 待补证据"]
+  J --> K["策略输出<br/>行动条件 / 触发器 / 失效条件 / 复盘记录"]
 ```
 
-这条流程的重点是把 AI 的研究能力引到更深处：先让 AI 提出问题和假设，再让 AI 检验证据、拆分反方观点和情景，然后把研究判断投影成证据结论、冲突结论或待补证据，最后进入可执行的行动条件。
+这条流程的重点是把 AI 的研究能力引到更深处：开放问题先扩展候选宇宙，再用约束和真实数据缩圈；进入正式研究后，AI 提出问题和假设、检验证据、拆分反方观点和情景，然后把研究判断投影成证据结论、冲突结论或待补证据，最后进入可执行的行动条件。
 
 ### 研究原则
 
 | 原则 | 含义 |
 |---|---|
 | 证据先行 | 当前价、股本、市值、财报、公告、客户、订单、产能和买点都进入证据链 |
+| 先扩后缩 | 开放机会先建立候选宇宙和缩圈漏斗，再进入正式比较 |
+| 新主题可扩展 | 未内置的新主题先由 AI 建立真实候选宇宙，再进入同一套证据筛选 |
 | 市场分流 | A 股、美股、港股各自使用对应市场的披露和行情语境 |
 | 缺口可见 | 每个关键缺口都会留下状态、影响、下一证据和评级约束 |
 | AI 深研 | AI 负责提出假设、拆证据、识别反证、构建情景和行动条件 |
@@ -122,6 +127,7 @@ serenity-chan 会区分两类输出：
 
 | 你可以这样问 | serenity-chan 会做什么 |
 |---|---|
+| 当前大趋势下，A 股有什么便宜的可选，别科创板 | 先拆趋势和约束，构建候选宇宙，跑 preflight 数据，再缩成正式 shortlist |
 | 分析 688019 和 688322 | 做真实数据底稿、AI 深研、候选比较和行动约束 |
 | 分析机器人行业的 A 股 | 先拆产业链层级，再构建候选池并筛出优先方向 |
 | 现在有什么可操作方向 | 把研究结论转成情景、触发器、行动条件和失效条件 |
@@ -158,7 +164,7 @@ serenity-chan 追求的是“让 AI 像强研究员一样工作”：
 
 ### What It Does
 
-serenity-chan-stock-skill is an evidence-driven equity research assistant for A-share, US, HK, and cross-market workflows. It turns a theme, ticker, candidate pool, or strategy question into real-data research, AI investigation, decision constraints, action conditions, and reviewable follow-up.
+serenity-chan-stock-skill is an evidence-driven equity research assistant for A-share, US, HK, and cross-market workflows. It turns an open opportunity request, theme, ticker, candidate pool, or strategy question into opportunity discovery, candidate narrowing, real-data research, AI investigation, decision constraints, action conditions, and reviewable follow-up.
 
 It supports research assistance, evidence organization, candidate comparison, action framing, and forecast review. Users remain responsible for investment decisions.
 
@@ -166,6 +172,7 @@ It supports research assistance, evidence organization, candidate comparison, ac
 
 | Input | Focus | Output |
 |---|---|---|
+| Open Opportunity | Broad trends, market scope, price preference, board exclusions, candidate universe, narrowing path | Auditable funnel, formal shortlist, excluded directions |
 | Theme | Value-chain layers, bottlenecks, candidate coverage, narrative strength | Priority layers, candidate pool, cooled-down directions |
 | Ticker | Market, price, financials, filings, customer/order/capacity, valuation, timing | Data quality, evidence strength, rating boundary, next evidence |
 | Candidate Set | Comparable layer, bottleneck fit, evidence quality, action readiness | Research priority, action priority, constraints, tracked list |
@@ -175,23 +182,27 @@ It supports research assistance, evidence organization, candidate comparison, ac
 
 ```mermaid
 flowchart TB
-  A["Question<br/>theme / ticker / candidates / strategy"] --> B["Market Context<br/>A-share / US / HK / cross-market"]
-  B --> C["Evidence Acquisition<br/>quotes / financials / filings / shares / customer-order-capacity"]
-  C --> D["Evidence Audit<br/>source strength / freshness / gaps / evidence actually used"]
-  D --> E["AI Research Workbench<br/>question / hypotheses / evidence tests / bear case / scenarios"]
-  E --> F["AI Research Projection<br/>dossier / evidence result / conflict or gap"]
-  F --> G["Decision Constraints<br/>rating / confidence / payoff / action timing"]
-  G --> H["Candidate Ranking<br/>research priority / action priority / missing evidence"]
-  H --> I["Strategy Output<br/>conditions / triggers / invalidation / review record"]
+  A["Question<br/>opportunity / theme / ticker / candidates / strategy"] --> B["Opportunity Discovery<br/>trend hypotheses / market scope / user constraints"]
+  B --> C["Candidate Funnel<br/>universe / hard filters / preflight data / shortlist"]
+  C --> D["Market Context<br/>A-share / US / HK / cross-market"]
+  D --> E["Evidence Acquisition<br/>quotes / financials / filings / shares / customer-order-capacity"]
+  E --> F["Evidence Audit<br/>source strength / freshness / gaps / evidence actually used"]
+  F --> G["AI Research Workbench<br/>question / hypotheses / evidence tests / bear case / scenarios"]
+  G --> H["AI Research Projection<br/>dossier / evidence result / conflict or gap"]
+  H --> I["Decision Constraints<br/>rating / confidence / payoff / action timing"]
+  I --> J["Candidate Ranking<br/>research priority / action priority / missing evidence"]
+  J --> K["Strategy Output<br/>conditions / triggers / invalidation / review record"]
 ```
 
-The flow channels AI into deeper research: define the question, form hypotheses, test evidence, explore the bear case, build scenarios, project the research into an evidence result, conflict result, or missing-evidence path, then convert the judgment into executable conditions.
+The flow channels AI into deeper research: open questions first expand into a candidate universe, then narrow through constraints and real preflight data; formal research then defines the question, forms hypotheses, tests evidence, explores the bear case, builds scenarios, projects the research into an evidence result, conflict result, or missing-evidence path, then converts the judgment into executable conditions.
 
 ### Principles
 
 | Principle | Meaning |
 |---|---|
 | Evidence First | Price, shares, market cap, financials, filings, customers, orders, capacity, and timing enter the evidence chain |
+| Expand Then Narrow | Open opportunities build an auditable candidate universe and funnel before formal comparison |
+| Extensible Themes | New themes use AI-built candidate universes before entering the same evidence funnel |
 | Market-Aware Routing | A-share, US, and HK research use their own disclosure and market context |
 | Visible Gaps | Each key gap carries status, impact, next evidence, and rating constraint |
 | AI Research Depth | AI frames hypotheses, tests evidence, detects counterevidence, builds scenarios, and writes action conditions |
@@ -270,6 +281,7 @@ Ask naturally in Codex:
 
 | Request | What serenity-chan Does |
 |---|---|
+| What cheap A-share opportunities fit the current trend, excluding STAR Market | Builds trend hypotheses, applies constraints, runs preflight data, then narrows to a formal shortlist |
 | Analyze 688019 and 688322 | Builds a real-data base, AI research record, comparison, and action constraints |
 | Analyze A-share robotics | Maps value-chain layers, builds candidates, and ranks research priorities |
 | Give me an actionable direction | Converts research into scenarios, triggers, action conditions, and invalidation |

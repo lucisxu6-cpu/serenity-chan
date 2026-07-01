@@ -138,6 +138,7 @@ def run_theme_analysis(
     strategy_profile: str,
     research_mode: str,
     selection_policy: str,
+    candidate_funnel: str,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     if sec_user_agent:
@@ -175,6 +176,7 @@ def run_theme_analysis(
         research_mode=research_mode,
         theme_universe=str(prepared_universe_path),
         theme_research_packet=str(theme_packet_path),
+        candidate_funnel=candidate_funnel,
     )
     summary: dict[str, Any] = {
         "contract_type": "serenity_theme_research_workflow_summary",
@@ -211,6 +213,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--strategy-decision-use", default="watchlist allocation, action triggers, and invalidation")
     parser.add_argument("--strategy-profile", default="balanced")
     parser.add_argument("--research-mode", choices=["formal", "diagnostic"], default="formal")
+    parser.add_argument("--candidate-funnel", default="", help="optional candidate_funnel.json passed into AI research and strategy input")
     args: argparse.Namespace = parser.parse_args(argv)
     try:
         summary: dict[str, Any] = run_theme_analysis(
@@ -233,6 +236,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             strategy_profile=args.strategy_profile,
             research_mode=args.research_mode,
             selection_policy=args.selection_policy,
+            candidate_funnel=args.candidate_funnel,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     except Exception as exc:

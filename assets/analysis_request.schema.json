@@ -4,12 +4,26 @@
   "type": "object",
   "required": ["task_type", "market_scope"],
   "properties": {
-    "task_type": {"type": "string", "enum": ["theme_scan", "single_company", "candidate_comparison", "data_audit"]},
+    "task_type": {"type": "string", "enum": ["opportunity_discovery", "theme_scan", "single_company", "candidate_comparison", "strategy_forecast", "data_audit"]},
     "market_scope": {"type": "array", "items": {"type": "string", "enum": ["CN_A", "US", "HK", "GLOBAL"]}},
     "tickers": {"type": "array", "items": {"type": "string"}},
     "theme": {"type": "string"},
+    "themes": {"type": "array", "items": {"type": "string"}},
     "horizon": {"type": "string", "enum": ["3m", "6m", "12m", "3y", "5y", "long_term"]},
     "risk_preference": {"type": "string", "enum": ["low", "medium", "high", "option_like"]},
+    "price_preference": {
+      "type": "object",
+      "properties": {
+        "style": {"type": "string"},
+        "min_price": {"type": ["number", "null"]},
+        "max_price": {"type": ["number", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "excluded_boards": {"type": "array", "items": {"type": "string"}},
+    "shortlist_target": {"type": "integer", "minimum": 1},
+    "preflight_candidate_limit": {"type": "integer", "minimum": 1},
+    "candidate_funnel": {"type": "string"},
     "require_current_data": {"type": "boolean", "default": true},
     "allow_partial": {"type": "boolean", "default": true},
     "output_language": {"type": "string", "enum": ["zh-CN", "en"], "default": "zh-CN"}

@@ -20,6 +20,7 @@ try:
     from build_laplace_strategy_prompt import build_strategy_prompt
     from data_router import fetch_real_data
     from validate_and_merge_ai_overlay import build_validated_merged_report
+    from validate_candidate_funnel import validate_candidate_funnel
 except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_ai_committee_packet import build_ai_committee_packet
     from scripts.build_ai_overlay_prompt import build_ai_overlay_prompt
@@ -29,6 +30,7 @@ except ModuleNotFoundError:  # pragma: no cover
     from scripts.build_laplace_strategy_prompt import build_strategy_prompt
     from scripts.data_router import fetch_real_data
     from scripts.validate_and_merge_ai_overlay import build_validated_merged_report
+    from scripts.validate_candidate_funnel import validate_candidate_funnel
 
 
 DEFAULT_DATASETS: list[str] = [
@@ -57,14 +59,40 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text.rstrip() + "\n", encoding="utf-8")
 
 
-def _manifest_symbol(path: Path) -> str:
+def _load_json(path: Path) -> Mapping[str, Any]:
     payload: Any = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError(f"{path} must contain a JSON object")
+    return payload
+
+
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _manifest_symbol(path: Path) -> str:
+    payload: Mapping[str, Any] = _load_json(path)
     symbol: Any = payload.get("symbol")
     if isinstance(symbol, Mapping):
         return str(symbol.get("symbol") or "")
     return str(symbol or "")
+
+
+def _validate_candidate_funnel_scope(candidate_funnel: str, symbols: Sequence[str]) -> None:
+    if not candidate_funnel:
+        return
+    funnel_path: Path = Path(candidate_funnel)
+    payload: Mapping[str, Any] = _load_json(funnel_path)
+    errors: list[str] = validate_candidate_funnel(payload)
+    if errors:
+        raise ValueError(f"candidate_funnel is invalid: {'; '.join(errors)}")
+    shortlist: set[str] = {str(item).strip() for item in _as_list(payload.get("shortlist_symbols")) if str(item).strip()}
+    if not shortlist:
+        raise ValueError("candidate_funnel.shortlist_symbols is empty; repair discovery before formal research")
+    requested: set[str] = {str(symbol).strip() for symbol in symbols if str(symbol).strip()}
+    outside: list[str] = sorted(requested - shortlist)
+    if outside:
+        raise ValueError(f"symbols outside candidate_funnel shortlist: {', '.join(outside)}")
 
 
 def _assigned_symbols(values: Sequence[str]) -> set[str]:
@@ -150,6 +178,7 @@ def _agent_research_work_items(
             "overlay_prompt": artifact.get("ai_overlay_prompt", ""),
             "theme_universe": artifact.get("theme_universe", ""),
             "theme_research_packet": artifact.get("theme_research_packet", ""),
+            "candidate_funnel": artifact.get("candidate_funnel", ""),
             "dossier_schema": "assets/ai_research_dossier.schema.json",
             "overlay_schema": "assets/ai_research_overlay.schema.json",
             "outcome_schema": "assets/ai_review_outcome.schema.json",
@@ -278,10 +307,12 @@ def run_analysis(
     research_mode: str,
     theme_universe: str,
     theme_research_packet: str,
+    candidate_funnel: str,
 ) -> dict[str, Any]:
     if research_mode not in RESEARCH_MODES:
         raise ValueError(f"research_mode must be one of: {', '.join(sorted(RESEARCH_MODES))}")
     out_dir.mkdir(parents=True, exist_ok=True)
+    _validate_candidate_funnel_scope(candidate_funnel, symbols)
     if sec_user_agent:
         os.environ["SEC_USER_AGENT"] = sec_user_agent
 
@@ -318,6 +349,7 @@ def run_analysis(
             manifest_path,
             theme_universe_path=Path(theme_universe) if theme_universe else None,
             theme_research_packet_path=Path(theme_research_packet) if theme_research_packet else None,
+            candidate_funnel_path=Path(candidate_funnel) if candidate_funnel else None,
         )
         review_path: Path = artifact_dir / "ai_review_packet.json"
         committee_path: Path = artifact_dir / "ai_committee_packet.json"
@@ -332,6 +364,7 @@ def run_analysis(
             "ai_overlay_prompt": str(prompt_path),
             "theme_universe": theme_universe,
             "theme_research_packet": theme_research_packet,
+            "candidate_funnel": candidate_funnel,
         })
 
     baseline_report_path: Optional[Path] = None
@@ -397,6 +430,7 @@ def run_analysis(
         geography=strategy_geography or infer_geography(final_report),
         decision_use=strategy_decision_use,
         default_profile=strategy_profile,
+        candidate_funnel_path=Path(candidate_funnel) if candidate_funnel else None,
     )
     strategy_input_path: Path = out_dir / "laplace_strategy_input.json"
     _write_json(strategy_input_path, strategy_input)
@@ -419,6 +453,7 @@ def run_analysis(
         "missing_ai_result_symbols": [],
         "final_report": str(final_report_path),
         "final_markdown": str(final_markdown_path),
+        "candidate_funnel": candidate_funnel,
         "laplace_strategy_input": str(strategy_input_path),
         "laplace_strategy_prompt": str(strategy_prompt_path),
     }
@@ -446,6 +481,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--research-mode", choices=sorted(RESEARCH_MODES), default="formal", help="formal blocks delivery until AI research is merged; diagnostic emits data-only baseline")
     parser.add_argument("--theme-universe", default="", help="optional theme_candidate_universe.json passed into AI overlay prompts")
     parser.add_argument("--theme-research-packet", default="", help="optional theme_research_packet.json passed into AI overlay prompts")
+    parser.add_argument("--candidate-funnel", default="", help="optional candidate_funnel.json passed into AI overlay prompts and strategy input")
     args: argparse.Namespace = parser.parse_args(argv)
     try:
         summary: dict[str, Any] = run_analysis(
@@ -467,6 +503,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             research_mode=args.research_mode,
             theme_universe=args.theme_universe,
             theme_research_packet=args.theme_research_packet,
+            candidate_funnel=args.candidate_funnel,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     except Exception as exc:

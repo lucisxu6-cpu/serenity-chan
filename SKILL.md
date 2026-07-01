@@ -1,6 +1,6 @@
 ---
 name: serenity-chan-stock-skill
-description: Use when performing data-first equity research for A-share, US, HK, or cross-market stock screening, single-company thesis challenges, theme scans, candidate comparisons, evidence/falsification dashboards, valuation work, Chan/GF-DMA buy-point discipline, or strategy/forecast follow-through. Always route market data and filings through market-specific sources before making current price, financial, rating, entry, allocation, or forecast claims.
+description: Use when performing data-first equity research for A-share, US, HK, or cross-market stock screening, open opportunity discovery, theme scans, candidate narrowing, single-company thesis challenges, candidate comparisons, evidence/falsification dashboards, valuation work, Chan/GF-DMA buy-point discipline, or strategy/forecast follow-through. Always route market data and filings through market-specific sources before making current price, financial, rating, entry, allocation, or forecast claims.
 ---
 
 # Serenity Chan Stock Skill
@@ -29,12 +29,13 @@ Choose exactly one primary route. Read only the references needed for that route
 |---|---|---|---|
 | Current price, market, data availability, source check | Data audit | `references/01_data_first_market_router.md` | `python scripts/data_router.py resolve <symbol>` then `python scripts/data_router.py fetch <symbol>` |
 | Single stock analysis, thesis challenge, valuation, buy point | Single company | `references/01_data_first_market_router.md`, `references/02_serenity_bottleneck_workflow.md`, `references/03_fundamental_valuation_framework.md`, `references/04_chan_technical_framework.md`, `references/06_risk_compliance_no_guess.md` | `python scripts/data_router.py fetch <symbol>` then build/validate the relevant output contract |
+| Open opportunity discovery, broad trend, "what can I buy", constrained recommendations | Opportunity discovery | `references/17_industry_domain_packs.md`, `references/01_data_first_market_router.md` | `python scripts/run_opportunity_discovery.py "<request>" --out-dir <run_dir>` then run formal research on `candidate_funnel.shortlist_symbols` with `--candidate-funnel <candidate_funnel.json>` |
 | Theme scan, industry chain, candidate discovery | Theme scan | `references/17_industry_domain_packs.md`, `references/01_data_first_market_router.md` | `python scripts/build_theme_candidate_universe.py <theme> --out <universe.json>` then `python scripts/run_theme_research_analysis.py <theme> --out-dir <run_dir> --research-mode formal` |
 | Multiple candidate comparison | Candidate comparison | `references/01_data_first_market_router.md`, `references/02_serenity_bottleneck_workflow.md`, `references/03_fundamental_valuation_framework.md`, `references/04_chan_technical_framework.md`, `references/15_ai_overlay_execution_protocol.md` | `python scripts/run_research_analysis.py <symbol...> --out-dir <run_dir> --research-mode formal` |
 | Recommendation, allocation, action plan, trend forecast | Strategy forecast | `references/16_laplace_strategy_bridge.md`, `companion-skills/laplace-forecast/SKILL.md` | Build `laplace_strategy_input.json`, `laplace_strategy_prompt.json`, `laplace_strategy_judgment.json`, then render strategy report |
 | Report rendering or delivery validation | Delivery | `references/05_output_templates.md`, `references/06_risk_compliance_no_guess.md` | Formal: `python scripts/validate_research_delivery.py <comparison_final.json>` then `python scripts/render_research_report.py --comparison-report <comparison_final.json>`; research progress: `python scripts/render_research_report.py --comparison-report <baseline.json> --mode research_brief` |
 
-When a task crosses routes, complete the earlier evidence route first. For example, a strategy recommendation built from stocks must complete candidate comparison before entering strategy forecast.
+When a task crosses routes, complete the earlier evidence route first. Open-ended opportunity requests must build a candidate funnel before formal comparison. Strategy recommendations built from stocks must complete candidate comparison before entering strategy forecast.
 
 ## Data-First Rules
 
@@ -104,6 +105,35 @@ python scripts/validate_research_delivery.py <comparison_final.json>
 ```
 
 Formal delivery requires every candidate to have a validated dossier plus one validated projected result. Internal baselines, queues, diagnostic artifacts, and unexecuted AI work stay inside the execution workspace.
+
+## Opportunity Discovery And Narrowing
+
+Use this route for broad requests such as current market opportunities, cheap A-share ideas, non-STAR-board constraints, or "what else is worth looking at".
+
+Required flow:
+
+```bash
+python scripts/run_opportunity_discovery.py "<request>" \
+  --out-dir <discovery_dir> \
+  --market-scope CN_A \
+  --exclude-board STAR \
+  --max-price <optional_price_cap>
+```
+
+Then run formal comparison only on `candidate_funnel.shortlist_symbols`:
+
+```bash
+python scripts/run_research_analysis.py <shortlist_symbols...> \
+  --out-dir <formal_dir> \
+  --research-mode formal \
+  --candidate-funnel <discovery_dir>/candidate_funnel.json
+```
+
+The funnel is the boundary between idea discovery and formal research. It records the original universe, hard constraints, preflight data status, shortlisted candidates, deferred candidates, excluded directions, and next evidence. For open-ended opportunities, formal research receives only the funnel shortlist.
+
+If the discovery summary returns `THEME_UNIVERSE_RESEARCH_REQUIRED`, build a real `theme_candidate_universe` artifact for the user-defined theme with AI research, validate it, then rerun discovery with `--universe <theme_candidate_universe.json>` so preflight and funnel selection stay on the same route.
+
+If the discovery summary returns `CANDIDATE_FUNNEL_EMPTY`, expand the theme universe or repair missing preflight data before formal comparison.
 
 ## Candidate Comparison Logic
 

@@ -3425,6 +3425,7 @@
           "overlay_prompt": "/tmp/serenity-test/688019/ai_overlay_prompt.json",
           "theme_universe": "",
           "theme_research_packet": "",
+          "candidate_funnel": "",
           "dossier_schema": "assets/ai_research_dossier.schema.json",
           "overlay_schema": "assets/ai_research_overlay.schema.json",
           "outcome_schema": "assets/ai_review_outcome.schema.json",
@@ -3987,6 +3988,294 @@
       "selected_symbols.2": "300394.SZ",
       "selected_count": 3
     }
+  },
+  {
+    "name": "open-opportunity-builds-discovery-plan-before-comparison",
+    "kind": "opportunity_discovery_plan",
+    "prompt": "当前大趋势下，A股有什么便宜的可选，别科创板",
+    "market_scope": ["CN_A"],
+    "excluded_boards": ["STAR"],
+    "max_price": 20,
+    "shortlist_target": 6,
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true,
+      "discovery_mode": "open_opportunity",
+      "theme_keys.0": "grid_power",
+      "theme_keys.1": "ai_compute",
+      "market_scope.0": "CN_A",
+      "excluded_boards.0": "STAR"
+    }
+  },
+  {
+    "name": "unknown-specific-theme-requires-ai-built-universe",
+    "kind": "opportunity_discovery_plan",
+    "prompt": "最近拼豆很火，有什么值得研究的A股机会",
+    "market_scope": ["CN_A"],
+    "shortlist_target": 5,
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true,
+      "discovery_mode": "theme_research_required",
+      "theme_sources.0": "ai_built_required",
+      "market_scope.0": "CN_A"
+    }
+  },
+  {
+    "name": "candidate-funnel-applies-board-price-and-preflight-before-shortlist",
+    "kind": "candidate_funnel",
+    "prompt": "当前大趋势下，A股有什么便宜的电网方向，别科创板",
+    "themes": ["grid_power"],
+    "market_scope": ["CN_A"],
+    "excluded_boards": ["STAR"],
+    "max_price": 20,
+    "shortlist_target": 3,
+    "preflight_snapshot": {
+      "symbols": {
+        "600406.SH": {
+          "price": 24.8,
+          "rating_cap": "S",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "OK",
+            "filings_announcements": "OK",
+            "customer_order_capacity_evidence": "OK",
+            "valuation_inputs": "OK"
+          }
+        },
+        "000400.SZ": {
+          "price": 18.2,
+          "rating_cap": "S",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "OK",
+            "filings_announcements": "OK",
+            "customer_order_capacity_evidence": "OK",
+            "valuation_inputs": "OK"
+          }
+        },
+        "601179.SH": {
+          "price": 7.6,
+          "rating_cap": "A",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "OK",
+            "filings_announcements": "OK",
+            "customer_order_capacity_evidence": "PARTIAL",
+            "valuation_inputs": "OK"
+          }
+        },
+        "003816.SZ": {
+          "price": 4.1,
+          "rating_cap": "S",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "OK",
+            "filings_announcements": "OK",
+            "customer_order_capacity_evidence": "OK",
+            "valuation_inputs": "OK"
+          }
+        },
+        "600795.SH": {
+          "price": 5.4,
+          "rating_cap": "B",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "OK",
+            "filings_announcements": "OK",
+            "customer_order_capacity_evidence": "PARTIAL",
+            "valuation_inputs": "OK"
+          }
+        },
+        "688390.SH": {
+          "price": 19.5,
+          "rating_cap": "S",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "OK",
+            "filings_announcements": "OK",
+            "customer_order_capacity_evidence": "OK",
+            "valuation_inputs": "OK"
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true,
+      "shortlist_symbols.0": "000400.SZ",
+      "shortlist_symbols.1": "601179.SH",
+      "shortlist_symbols.2": "003816.SZ",
+      "stage_summary.3.output_count": 3
+    }
+  },
+  {
+    "name": "candidate-funnel-requires-core-preflight-before-shortlist",
+    "kind": "candidate_funnel",
+    "prompt": "当前大趋势下，A股有什么便宜的电网方向，别科创板",
+    "themes": ["grid_power"],
+    "market_scope": ["CN_A"],
+    "excluded_boards": ["STAR"],
+    "max_price": 20,
+    "shortlist_target": 3,
+    "preflight_snapshot": {
+      "symbols": {
+        "000400.SZ": {
+          "price": 18.2,
+          "rating_cap": "S",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "NOT_REQUESTED",
+            "filings_announcements": "NOT_REQUESTED",
+            "customer_order_capacity_evidence": "NOT_REQUESTED",
+            "valuation_inputs": "NOT_REQUESTED"
+          }
+        },
+        "601179.SH": {
+          "price": 7.6,
+          "rating_cap": "A",
+          "status_by_dataset": {
+            "current_quote": "OK",
+            "financials": "NOT_REQUESTED",
+            "filings_announcements": "NOT_REQUESTED",
+            "customer_order_capacity_evidence": "NOT_REQUESTED",
+            "valuation_inputs": "NOT_REQUESTED"
+          }
+        }
+      }
+    },
+    "expect_pass": true,
+    "expected_result": {
+      "ok": true,
+      "stage_summary.2.output_count": 0,
+      "stage_summary.3.output_count": 0,
+      "shortlist_symbols": []
+    }
+  },
+  {
+    "name": "candidate-funnel-scope-accepts-shortlisted-symbol",
+    "kind": "candidate_funnel_scope",
+    "candidate_funnel": {
+      "contract_type": "serenity_candidate_funnel",
+      "schema_version": "1.0",
+      "generated_at": "2026-06-30T00:00:00Z",
+      "source_plan_path": "/tmp/opportunity_discovery_plan.json",
+      "source_universe_paths": ["generated:grid_power"],
+      "constraints": {
+        "market_scope": ["CN_A"],
+        "excluded_boards": ["STAR"],
+        "price_preference": {
+          "style": "explicit_max_price",
+          "min_price": null,
+          "max_price": 20
+        },
+        "shortlist_target": 1
+      },
+      "stage_summary": [
+        {
+          "stage": "theme_universe",
+          "input_count": 1,
+          "output_count": 1,
+          "rule": "Build a broad candidate universe."
+        },
+        {
+          "stage": "hard_constraints",
+          "input_count": 1,
+          "output_count": 1,
+          "rule": "Apply hard constraints."
+        },
+        {
+          "stage": "formal_shortlist",
+          "input_count": 1,
+          "output_count": 1,
+          "rule": "Only shortlisted symbols enter formal research."
+        }
+      ],
+      "candidate_rows": [
+        {
+          "symbol": "000400.SZ",
+          "name": "许继电气",
+          "market": "CN_A",
+          "theme": "电网与电力设备",
+          "layer": "电网自动化",
+          "stage_status": "IN_SHORTLIST",
+          "final_bucket": "formal_shortlist",
+          "selected_for_formal": true,
+          "score": 81.3,
+          "reasons": ["进入正式 shortlist。"],
+          "evidence_tasks": ["验证收入、订单、客户、产能和现金流证据。"]
+        }
+      ],
+      "shortlist_symbols": ["000400.SZ"],
+      "excluded_directions": [],
+      "next_step": "Run formal research only on shortlist_symbols."
+    },
+    "symbols": ["000400.SZ"],
+    "expect_pass": true,
+    "expected_result": {
+      "accepted": true
+    }
+  },
+  {
+    "name": "candidate-funnel-scope-rejects-non-shortlisted-symbol",
+    "kind": "candidate_funnel_scope",
+    "candidate_funnel": {
+      "contract_type": "serenity_candidate_funnel",
+      "schema_version": "1.0",
+      "generated_at": "2026-06-30T00:00:00Z",
+      "source_plan_path": "/tmp/opportunity_discovery_plan.json",
+      "source_universe_paths": ["generated:grid_power"],
+      "constraints": {
+        "market_scope": ["CN_A"],
+        "excluded_boards": ["STAR"],
+        "price_preference": {
+          "style": "explicit_max_price",
+          "min_price": null,
+          "max_price": 20
+        },
+        "shortlist_target": 1
+      },
+      "stage_summary": [
+        {
+          "stage": "theme_universe",
+          "input_count": 1,
+          "output_count": 1,
+          "rule": "Build a broad candidate universe."
+        },
+        {
+          "stage": "hard_constraints",
+          "input_count": 1,
+          "output_count": 1,
+          "rule": "Apply hard constraints."
+        },
+        {
+          "stage": "formal_shortlist",
+          "input_count": 1,
+          "output_count": 1,
+          "rule": "Only shortlisted symbols enter formal research."
+        }
+      ],
+      "candidate_rows": [
+        {
+          "symbol": "000400.SZ",
+          "name": "许继电气",
+          "market": "CN_A",
+          "theme": "电网与电力设备",
+          "layer": "电网自动化",
+          "stage_status": "IN_SHORTLIST",
+          "final_bucket": "formal_shortlist",
+          "selected_for_formal": true,
+          "score": 81.3,
+          "reasons": ["进入正式 shortlist。"],
+          "evidence_tasks": ["验证收入、订单、客户、产能和现金流证据。"]
+        }
+      ],
+      "shortlist_symbols": ["000400.SZ"],
+      "excluded_directions": [],
+      "next_step": "Run formal research only on shortlist_symbols."
+    },
+    "symbols": ["600406.SH"],
+    "expect_pass": false
   },
   {
     "name": "laplace-strategy-judgment-contract-accepts-gated-watch-plan",
